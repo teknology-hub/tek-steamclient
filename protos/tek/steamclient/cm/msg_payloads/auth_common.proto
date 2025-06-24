@@ -1,0 +1,53 @@
+//===-- auth_common.proto - common authentication messages ----------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+import "tek/steamclient/cm/msg_payloads/os_type.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam Guard confirmation types.
+enum GuardType {
+  GUARD_TYPE_UNSPECIFIED = 0;
+  GUARD_TYPE_NONE = 1;
+  GUARD_TYPE_EMAIL_CODE = 2;
+  GUARD_TYPE_DEVICE_CODE = 3;
+  GUARD_TYPE_DEVICE_CONFIRMATION = 4;
+  GUARD_TYPE_EMAIL_CONFIRMATION = 5;
+  GUARD_TYPE_MACHINE_TOKEN = 6;
+  GUARD_TYPE_LEGACY_MACHINE_AUTH = 7;
+}
+
+// Steam client platform types.
+enum PlatformType {
+  PLATFORM_TYPE_UNSPECIFIED = 0;
+  PLATFORM_TYPE_STEAM_CLIENT = 1;
+  PLATFORM_TYPE_WEB_BROWSER = 2;
+  PLATFORM_TYPE_MOBILE_APP = 3;
+}
+
+// Allowed confirmation encapsulation message.
+message AllowedConfirmation {
+  // Type of the confirmation.
+  optional tek.steamclient.cm.msg_payloads.GuardType confirmation_type = 1;
+}
+
+// Authorized device details.
+message DeviceDetails {
+  // Device name that is displayed in the list of authorized devices in the
+  //    Steam mobile app.
+  optional string device_friendly_name = 1;
+  // Device's platform type.
+  optional tek.steamclient.cm.msg_payloads.PlatformType platform_type = 2;
+  // Device's operating system
+  optional tek.steamclient.cm.msg_payloads.OsType os_type = 3;
+}

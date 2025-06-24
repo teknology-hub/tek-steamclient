@@ -1,0 +1,59 @@
+//===-- pics_changes_since.proto - request & response message payloads ----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for EMSG_CLIENT_PICS_CHANGES_SINCE_REQUEST.
+message PicsChangesSinceRequest {
+  // Changenumber to get changes since.
+  optional uint32 since_changenumber = 1;
+  // Value indicating whether application info changes should be sent with the
+  //    response.
+  optional bool send_app_info_changes = 2;
+  // Value indicating whether package info changes should be sent with the
+  //    response.
+  optional bool send_package_info_changes = 3;
+}
+
+// Response message payload for EMSG_CLIENT_PICS_CHANGES_SINCE_RESPONSE.
+message PicsChangesSinceResponse {
+  // Application info change entry.
+  message AppChange {
+    // ID of the application.
+    optional uint32 app_id = 1;
+    // Value indicating whether requesting application info requires a token.
+    optional bool needs_token = 3;
+  }
+  // Package info change entry.
+  message PackageChange {
+    // ID of the package.
+    optional uint32 package_id = 1;
+    // Value indicating whether requesting package info requires a token.
+    optional bool needs_token = 3;
+  }
+  // Current PICS changenumber.
+  optional uint32 current_changenumber = 1;
+  // Value indicating whether there are too many changes globally and the
+  //    client should instead request info for all its items.
+  optional bool full_upd = 3;
+  // List of returned package info changes.
+  repeated PackageChange package_changes = 4;
+  // List of returned application info changes.
+  repeated AppChange app_changes = 5;
+  // Value indicating whether there are too many application changes and the
+  //    client should instead request info for all its applications.
+  optional bool full_app_upd = 6;
+  // Value indicating whether there are too many package changes and the client
+  //    should instead request info for all its packages.
+  optional bool full_package_upd = 7;
+}

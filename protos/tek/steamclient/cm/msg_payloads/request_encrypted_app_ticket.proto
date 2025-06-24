@@ -1,0 +1,46 @@
+//===-- request_encrypted_app_ticket.proto - request & response payloads --===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for EMSG_CLIENT_REQUEST_ENCRYPTED_APP_TICKET.
+message RequestEncryptedAppTicketRequest {
+  // ID of the application to request ticket for.
+  optional uint32 app_id = 1;
+  // Data to include into the ticket.
+  optional bytes user_data = 2;
+}
+
+// Response message payload for
+//    EMSG_CLIENT_REQUEST_ENCRYPTED_APP_TICKET_RESPONSE.
+message RequestEncryptedAppTicketResponse {
+  // Encrypted ticket message.
+  message Ticket {
+    // Ticket format version number.
+    optional uint32 ticket_version = 1;
+    // CRC-32 checksum of the encrypted ticket data.
+	  optional uint32 crc = 2;
+    // Size of the included user data, in bytes.
+	  optional uint32 user_data_size = 3;
+    // Size of the encrypted app ownership ticket data, in bytes.
+	  optional uint32 enc_ticket_size = 4;
+    // Raw ticket blob.
+    optional bytes data = 5;
+  }
+  // ID of the application that the ticket was requested for.
+  optional uint32 app_id = 1;
+  // Operation result code.
+  optional int32 eresult = 2;
+  // The received ticket.
+  optional Ticket ticket = 3;
+}

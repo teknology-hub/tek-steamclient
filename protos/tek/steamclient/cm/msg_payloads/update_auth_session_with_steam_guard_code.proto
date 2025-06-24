@@ -1,0 +1,29 @@
+//===-- update_auth_session_with_steam_guard_code.proto - request payload -===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+import "tek/steamclient/cm/msg_payloads/auth_common.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for
+//    "Authentication.UpdateAuthSessionWithSteamGuardCode#1".
+message UpdateAuthSessionWithSteamGuardCodeRequest {
+  // Unique client ID.
+  optional uint64 client_id = 1;
+  // Steam ID of the account.
+  optional fixed64 steam_id = 2;
+  // Steam Guard code to submit.
+  optional string code = 3;
+  // Confirmation type that the code belongs to
+  optional tek.steamclient.cm.msg_payloads.GuardType code_type = 4;
+}

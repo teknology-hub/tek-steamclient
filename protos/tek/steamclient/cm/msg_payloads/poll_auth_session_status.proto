@@ -1,0 +1,34 @@
+//===-- poll_auth_session_status.proto - request & response payloads ------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for "Authentication.PollAuthSessionStatus#1".
+message PollAuthSessionStatusRequest {
+  // Unique client ID.
+  optional uint64 client_id = 1;
+  // Unique request ID.
+  optional bytes request_id = 2;
+}
+
+// Response message payload for "Authentication.PollAuthSessionStatus#1".
+message PollAuthSessionStatusResponse {
+  // New client ID, if changed.
+  optional uint64 new_client_id = 1;
+  // New authenticaiton challenge URL, if changed.
+  optional string new_challenge_url = 2;
+  // On success, the authentication token.
+  optional string refresh_token = 3;
+  // On success, name of the account.
+  optional string account_name = 6;
+}

@@ -1,0 +1,48 @@
+//===-- pics_access_token.proto - request & response message payloads -----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for EMSG_CLIENT_PICS_ACCESS_TOKEN_REQUEST.
+message PicsAccessTokenRequest {
+  // IDs of packages to request access tokens for.
+  repeated uint32 package_ids = 1;
+  // IDs of applications to request access tokens for.
+  repeated uint32 app_ids = 2;
+}
+
+// Response message payload for EMSG_CLIENT_PICS_ACCESS_TOKEN_RESPONSE.
+message PicsAccessTokenResponse {
+  // Application token entry.
+  message AppToken {
+    // ID of the application.
+    optional uint32 app_id = 1;
+    // PICS access token for the application.
+    optional uint64 access_token = 2;
+  }
+  // Package token entry.
+  message PackageToken {
+    // ID of the package.
+    optional uint32 package_id = 1;
+    // PICS access token for the package.
+    optional uint64 access_token = 2;
+  }
+  // List of returned package tokens.
+  repeated PackageToken package_tokens = 1;
+  // IDs of packages for which access token requests were denied.
+  repeated uint32 denied_packages = 2;
+  // List of returned application tokens.
+  repeated AppToken app_tokens = 3;
+  // IDs of applications for which access token requests were denied.
+  repeated uint32 denied_apps = 4;
+}

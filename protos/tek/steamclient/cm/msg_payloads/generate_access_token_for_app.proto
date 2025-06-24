@@ -1,0 +1,36 @@
+//===-- generate_access_token_for_app.proto - request & response payloads -===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Authentication token renewal types.
+enum TokenRenewalType {
+  TOKEN_RENEWAL_TYPE_NONE = 0;
+  TOKEN_RENEWAL_TYPE_ALLOW = 1;
+}
+
+// Request message payload for "Authentication.GenerateAccessTokenForApp#1".
+message GenerateAccessTokenForAppRequest {
+  // The authentication token to attempt to renew.
+  optional string token = 1;
+  // Steam ID of the user that owns the token.
+  optional fixed64 steam_id = 2;
+  // Value specifying whether the token should be renewed.
+  optional tek.steamclient.cm.msg_payloads.TokenRenewalType renewal_type = 3;
+}
+
+// Response message payload for "Authentication.GenerateAccessTokenForApp#1".
+message GenerateAccessTokenForAppResponse {
+  // New authentication token.
+  optional string token = 2;
+}

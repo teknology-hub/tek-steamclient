@@ -1,0 +1,46 @@
+//===-- patch_payload.proto - Steam depot patch payload -------------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.content;
+
+option optimize_for = LITE_RUNTIME;
+
+// LZMA delta chunk data location options.
+enum DeltaChunkLocation {
+  // Delta chunks are stored in patch chunks' delta_chunk field.
+  DELTA_CHUNK_LOCATION_IN_PROTOBUF = 0;
+  // Delta chunks consecutively follow patch's Protobuf data.
+  DELTA_CHUNK_LOCATION_AFTER_PROTOBUF = 1;
+}
+
+// Steam depot patch payload chunk.
+message PatchChunk {
+  // SHA-1 hash of the chunk that the delta applies to.
+  optional bytes source_sha = 1;
+  // SHA-1 hash of the chunk produced by patching.
+  optional bytes target_sha = 2;
+  /// If delta chunks are located in Protobuf, LZMA delta chunk data.
+  optional bytes delta_chunk = 5;
+  // Size of the LZMA delta chunk, in bytes.
+  optional uint32 delta_chunk_size = 6;
+}
+
+// Steam depot patch payload.
+message PatchPayload {
+  // ID of the manifest providing source chunks.
+  uint64 source_manifest_id = 2;
+  // ID of the manifest providing target chunks.
+  uint64 target_manifest_id = 3;
+  // Patch chunk entries.
+  repeated tek.steamclient.content.PatchChunk chunks = 4;
+  // LZMA delta chunk data location.
+  optional tek.steamclient.content.DeltaChunkLocation delta_chunk_location = 5;
+}

@@ -1,0 +1,46 @@
+#define APSTUDIO_READONLY_SYMBOLS
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include <Windows.h>
+#include <winuser.h>
+#undef APSTUDIO_HIDDEN_SYMBOLS
+#undef APSTUDIO_READONLY_SYMBOLS
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "tek-sc-cli.manifest"
+APPICON ICON "tek-steamclient.ico"
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @file_version@
+PRODUCTVERSION  @file_version@
+FILEFLAGSMASK   0
+FILEFLAGS       0
+FILEOS          VOS_NT
+FILETYPE        VFT_APP
+FILESUBTYPE     0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "00000000"
+    BEGIN
+      VALUE "CompanyName", "TEKnology Hub"
+      VALUE "FileDescription", "TEK Steam Client CLI"
+      VALUE "FileVersion", "@pretty_version@"
+      VALUE "InternalName", "tek-sc-cli"
+      VALUE "LegalCopyright", "Copyright (c) 2025 Nuclearist"
+      VALUE "OriginalFilename", "tek-sc-cli.exe"
+      VALUE "ProductName", "TEK Steam Client"
+      VALUE "ProductVersion", "@pretty_version@"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0, 0
+  END
+END
+
+#ifdef TEK_SC_STATIC
+1000 RCDATA
+BEGIN
+  @loc_list@
+  L"\0"
+END
+@loc_defs@
+#endif // def TEK_SC_STATIC

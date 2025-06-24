@@ -1,0 +1,57 @@
+//===-- manifest_payload.proto - Steam depot manifest payload -------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.content;
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam depot manifest payload chunk.
+message ManifestChunk {
+  // SHA-1 hash of the chunk data.
+  optional bytes sha = 1;
+  /// Offset of chunk data from the beginning of containing file, in bytes.
+  optional uint64 offset = 3;
+  /// Size of chunk data on disk, in bytes.
+  optional uint32 size = 4;
+  /// Size of compressed chunk data on SteamPipe servers, in bytes.
+  optional uint32 comp_size = 5;
+}
+
+// Steam depot manifest file flags.
+enum ManifestFileFlag {
+  MANIFEST_FILE_FLAG_UNSPECIFIED = 0;
+  MANIFEST_FILE_FLAG_READ_ONLY = 8;
+  MANIFEST_FILE_FLAG_HIDDEN = 16;
+  MANIFEST_FILE_FLAG_EXECUTABLE = 32;
+  MANIFEST_FILE_FLAG_DIRECTORY = 64;
+  MANIFEST_FILE_FLAG_CUSTOM_EXECUTABLE = 128;
+  MANIFEST_FILE_FLAG_SYMLINK = 512;
+}
+
+// Steam depot manifest payload file/directory.
+message ManifestFile {
+  // Relative path to the file/directory from the root installation directory.
+  optional string path = 1;
+  // Size of the file on disk, in bytes.
+  optional uint64 size = 2;
+  /// Flags describing file type, attributes and/or permissions.
+  optional uint32 flags = 3;
+  // Chunk entries assigned to the file.
+  repeated tek.steamclient.content.ManifestChunk chunks = 6;
+  // Path to the symbolic link target.
+  optional string link_target = 7;
+}
+
+// Steam depot manifest payload.
+message ManifestPayload {
+  // Manifest file/directory entries.
+  repeated tek.steamclient.content.ManifestFile files = 1;
+}

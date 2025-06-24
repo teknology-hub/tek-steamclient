@@ -1,0 +1,32 @@
+//===-- get_depot_decryption_key.proto - request & response payloads ------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for EMSG_CLIENT_GET_DEPOT_DECRYPTION_KEY.
+message GetDepotDecryptionKeyRequest {
+  // ID of the depot to get decryption key for.
+  optional uint32 depot_id = 1;
+  // ID of the application that the depot belongs to.
+  optional uint32 app_id = 2;
+}
+
+// Response message payload for EMSG_CLIENT_GET_DEPOT_DECRYPTION_KEY_RESPONSE.
+message GetDepotDecryptionKeyResponse {
+  // Operation result code.
+  optional int32 eresult = 1;
+  // ID of the depot that the decryption key applies to.
+  optional uint32 depot_id = 2;
+  // AES-256 decryption key for the depot.
+  optional bytes decryption_key = 3;
+}

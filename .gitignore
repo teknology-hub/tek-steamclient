@@ -1,0 +1,6 @@
+/.*/
+!/.github/
+/build/
+/subprojects/*
+!/subprojects/packagefiles/
+!/subprojects/*.wrap

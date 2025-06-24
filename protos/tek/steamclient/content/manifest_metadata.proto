@@ -1,0 +1,24 @@
+//===-- manifest_metadata.proto - Steam depot manifest metadata -----------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.content;
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam depot manifest metadata.
+message ManifestMetadata {
+  // ID of the manifest.
+  optional uint64 manifest_id = 2;
+  // Value indicating whether paths in the manifest are AES-encrypted.
+  optional bool paths_encrypted = 4;
+  // Total size of all files listed in the manifest, in bytes.
+  optional uint64 data_size = 5;
+}

@@ -1,0 +1,36 @@
+//===-- begin_auth_session_via_qr.proto - request & response payloads -----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+import "tek/steamclient/cm/msg_payloads/auth_common.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for "Authentication.BeginAuthSessionViaQR#1".
+message BeginAuthSessionViaQrRequest {
+  // Details of the device to authenticate.
+  optional tek.steamclient.cm.msg_payloads.DeviceDetails device_details = 3;
+  // Website ID of the client.
+  optional string website_id = 4;
+}
+
+// Response message payload for "Authentication.BeginAuthSessionViaQR#1".
+message BeginAuthSessionViaQrResponse {
+  // Unique client ID.
+  optional uint64 client_id = 1;
+  // Authentication challenge URL that is used to generate QR code.
+  optional string challenge_url = 2;
+  // Unique request ID.
+  optional bytes request_id = 3;
+  // Preferred polling interval, in seconds
+  optional float interval = 4;
+}

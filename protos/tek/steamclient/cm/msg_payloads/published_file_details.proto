@@ -1,0 +1,39 @@
+//===-- published_file_details.proto - Steam Workshop item details msg ----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam Workshop item details.
+message PublishedFileDetails {
+  // Child item descriptor.
+  message Child {
+    // ID of the item.
+    optional uint64 id = 1;
+  }
+  // Operation result code.
+  optional uint32 eresult = 1;
+  // ID of the item.
+  optional uint64 id = 2;
+  // ID of the application that the item belongs to.
+  optional uint32 app_id = 5;
+  // URL of the item's preview image.
+  optional string preview_url = 11;
+  // In most cases, ID of the item's latest manifest.
+  optional fixed64 hcontent_file = 14;
+  // Name of the item.
+  optional string title = 16;
+  // Last item update timestamp.
+  optional uint32 last_updated = 20;
+  // If the item is a collection, IDs of items that compose it.
+  repeated Child children = 53;
+}

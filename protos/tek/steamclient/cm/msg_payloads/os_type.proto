@@ -1,0 +1,34 @@
+//===-- os_type.proto - OS types enumeration ------------------------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam CM operating system types.
+// It's a subset of the whole enum containing only Linux and Windows entires,
+//    as these are the only operating systems supported by tek-steamclient.
+//    Linux entries start with 4x as 4.11 is the oldest kernel version
+//    supporting statx syscall, Windows entries start with 10 as the oldest
+//    Windows version officially supported by Steam client since 2024.
+enum OsType {
+	OS_TYPE_WIN_UNKNOWN = 0;
+  OS_TYPE_LINUX_UNKNOWN = -203;
+	OS_TYPE_LINUX_4X = -192;
+	OS_TYPE_LINUX_414 = -188;
+	OS_TYPE_LINUX_419 = -187;
+	OS_TYPE_LINUX_5X = -186;
+	OS_TYPE_LINUX_6X = -184;
+	OS_TYPE_LINUX_7X = -183;
+	OS_TYPE_LINUX_510 = -182;
+	OS_TYPE_WINDOWS_10 = 16;
+	OS_TYPE_WIN_11 = 20;
+}

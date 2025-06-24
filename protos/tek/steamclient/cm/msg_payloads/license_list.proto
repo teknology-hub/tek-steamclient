@@ -1,0 +1,30 @@
+//===-- license_list.proto - license list message payload -----------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Account license entry.
+message License {
+  // ID of the package.
+  optional uint32 package_id = 1;
+  // Access token for the package.
+  optional uint64 access_token = 17;
+}
+
+// Response message payload for EMSG_CLIENT_LICENSE_LIST.
+message LicenseList {
+  // Result code.
+  optional int32 eresult = 1;
+  // Licenses owned on the account.
+  repeated License licenses = 2;
+}

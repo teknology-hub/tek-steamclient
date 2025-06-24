@@ -1,0 +1,85 @@
+//===-- pics_product_info.proto - request & response message payloads -----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for EMSG_CLIENT_PICS_PRODUCT_INFO_REQUEST.
+message PicsProductInfoRequest {
+  // Application entry.
+  message App {
+    // ID of the application.
+    optional uint32 app_id = 1;
+    // Access token for the application.
+    optional uint64 access_token = 2;
+  }
+  // Package entry.
+  message Package {
+    // ID of the package.
+    optional uint32 package_id = 1;
+    // Access token for the package.
+    optional uint64 access_token = 2;
+  }
+  // List of packages to request information for.
+  repeated Package packages = 1;
+  // List of applications to request information for.
+  repeated App apps = 2;
+}
+
+// Response message payload for EMSG_CLIENT_PICS_PRODUCT_INFO_RESPONSE.
+message PicsProductInfoResponse {
+  // Application entry.
+  message App {
+    // ID of the application.
+    optional uint32 app_id = 1;
+    // Value indicating whether application requires a token, but it was not
+    //    provided.
+    optional bool missing_token = 3;
+    // If application info is located on an HTTP host, SHA-1 hash identifying
+    //    it.
+    optional bytes sha = 4;
+    // If application info is provided with the message, buffer containing it.
+    optional bytes buffer = 5;
+    // Size of the application info buffer, in bytes.
+    optional uint32 size = 7;
+  }
+  // Package entry.
+  message Package {
+    // ID of the package.
+    optional uint32 package_id = 1;
+    // Value indicating whether package requires a token, but it was not
+    //    provided.
+    optional bool missing_token = 3;
+    // If package info is located on an HTTP host, SHA-1 hash identifying it.
+    optional bytes sha = 4;
+    // If package info is provided with the message, buffer containing it.
+    optional bytes buffer = 5;
+    // Size of the package info buffer, in bytes.
+    optional uint32 size = 6;
+  }
+  // List of returned application entries.
+  repeated App apps = 1;
+  // List of application IDs that were not recognized.
+  repeated uint32 unknown_app_ids = 2;
+  // List of returned package entries.
+  repeated Package packages = 3;
+  // List of package IDs that were not recognized.
+  repeated uint32 unknown_package_ids = 4;
+  // Value indicating whether more messages are to come.
+  optional bool response_pending = 6;
+  // Minimum size for an info buffer to be provided via HTTP rather than in the
+  //    message.
+  optional uint32 http_min_size = 7;
+  // URL of the host to download info data with size exceeding `http_min_size`
+  //    from.
+  optional string http_host = 8;
+}

@@ -1,0 +1,34 @@
+//===-- get_depot_patch_info.proto - request & response payloads ----------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for "ContentServerDirectory.GetDepotPatchInfo#1".
+message GetDepotPatchInfoRequest {
+  // ID of the application that the depot belongs to.
+  optional uint32 app_id = 1;
+  // ID of the depot that the manifests belong to.
+  optional uint32 depot_id = 2;
+  // ID of the source manifest for patching.
+  optional uint64 source_manifest_id = 3;
+  // ID of the target manifest for patching.
+  optional uint64 target_manifest_id = 4;
+}
+
+// Response message payload for "ContentServerDirectory.GetDepotPatchInfo#1".
+message GetDepotPatchInfoResponse {
+  // Value indicating whether a patch is available for specified manifests.
+  optional bool is_available = 1;
+  // Size of the patch file, in bytes.
+  optional uint64 size = 2;
+}

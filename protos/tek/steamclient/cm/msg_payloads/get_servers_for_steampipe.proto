@@ -1,0 +1,38 @@
+//===-- get_servers_for_steampipe.proto - request & response payloads -----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for
+//    "ContentServerDirectory.GetServersForSteamPipe#1".
+message GetServersForSteamPipeRequest {}
+
+// SteamPipe server entry.
+message SteamPipeServer {
+  // Type of the server. May be one of "CDN", "SteamCache", "OpenCache". There
+  //    may be other values that occur too rare for me to ever see them.
+  //    "OpenCache" is known to not provide depot content.
+  optional string type = 1;
+  // Server hostname.
+  optional string vhost = 9;
+  // Server HTTPS support status. Can be "unavailable", "optional" or
+  //    "mandatory".
+  optional string https_support = 12;
+}
+
+// Response message payload for
+//    "ContentServerDirectory.GetServersForSteamPipe#1".
+message GetServersForSteamPipeResponse {
+  // List of returned server entries.
+  repeated tek.steamclient.cm.msg_payloads.SteamPipeServer servers = 1;
+}

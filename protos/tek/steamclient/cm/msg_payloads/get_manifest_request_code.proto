@@ -1,0 +1,34 @@
+//===-- get_manifest_request_code.proto - request & response payloads -----===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for
+//    "ContentServerDirectory.GetManifestRequestCode#1".
+message GetManifestRequestCodeRequest {
+  // ID of the application that the depot belongs to.
+  optional uint32 app_id = 1;
+  // ID of the depot that the manifest belongs to.
+  optional uint32 depot_id = 2;
+  // ID of the manifest to get request code for.
+  optional uint64 manifest_id = 3;
+  // Content branch that the manifest belongs to.
+  optional string app_branch = 4;
+}
+
+// Response message payload for
+//    "ContentServerDirectory.GetManifestRequestCode#1".
+message GetManifestRequestCodeResponse {
+  // Current manifest request code value.
+  optional uint64 manifest_request_code = 1;
+}

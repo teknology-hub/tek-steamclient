@@ -1,0 +1,30 @@
+//===-- message_header.proto - Steam CM message header --------------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm;
+
+option optimize_for = LITE_RUNTIME;
+
+// Steam CM message header.
+message MessageHeader {
+  // Steam ID of currently authenticated user.
+  optional fixed64 steam_id = 1;
+  // ID of current account session.
+  optional uint32 session_id = 2;
+  // Job ID for the outgoing message.
+  optional fixed64 source_job_id = 10;
+  // Job ID of the incoming message.
+  optional fixed64 target_job_id = 11;
+  // Job (service method) name for the message.
+  optional string target_job_name = 12;
+  // Result code of the incoming message.
+  optional int32 eresult = 13;
+}

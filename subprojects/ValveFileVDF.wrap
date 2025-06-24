@@ -1,0 +1,7 @@
+[wrap-file]
+directory = ValveFileVDF-1.1.1
+
+source_url = https://github.com/TinyTinni/ValveFileVDF/archive/refs/tags/v1.1.1.tar.gz
+source_filename = ValveFileVDF-1.1.1.tar.gz
+source_hash = de16a199c535c3b49f2aa0bd17e3154e02b32fa7b0949053ba6d981f8c32197f
+patch_directory = ValveFileVDF

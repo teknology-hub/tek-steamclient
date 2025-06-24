@@ -1,0 +1,38 @@
+//===-- query_files.proto - request & response payloads -------------------===//
+//
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+import "tek/steamclient/cm/msg_payloads/published_file_details.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for "PublishedFile.QueryFiles#1".
+message QueryFilesRequest {
+  // Current page number.
+  optional uint32 page = 2;
+  // Maximum number of items to return.
+  optional uint32 num_per_page = 3;
+  // ID of the application to query Steam Workshop items for.
+  optional uint32 app_id = 5;
+  // Search query string.
+  optional string search_text = 11;
+  // Value indicating whether item metadata should be returned.
+  optional bool return_metadata = 32;
+}
+
+// Response message payload for "PublishedFile.QueryFiles#1".
+message QueryFilesResponse {
+  // Total number of items matching the query
+  optional uint32 total = 1;
+  // Details for the queried items.
+  repeated tek.steamclient.cm.msg_payloads.PublishedFileDetails details = 2;
+}

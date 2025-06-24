@@ -1,0 +1,8 @@
+src/cli/args.c
+src/cli/cmd_parser.c
+src/cli/cmd_runner.c
+src/cli/dump.c
+src/cli/main.c
+src/cli/os_windows.c
+src/cli/print_err.c
+src/lib/error_msgs.c
