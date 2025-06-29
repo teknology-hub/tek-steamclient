@@ -566,7 +566,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
       return tsc_err_basic(TEK_SC_ERRC_mem_alloc);
     }
     desc->desc.id = *args->item_id;
-    desc->desc.next = &(*desc_ptr)->desc;
+    desc->desc.next = *desc_ptr ? &(*desc_ptr)->desc : nullptr;
     *desc_ptr = desc;
     static const char query[] =
         "INSERT INTO items (app_id, depot_id, ws_item_id, status, "

@@ -323,11 +323,10 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
         sizeof(serialized_msg_hdr) + header_size + payload_size;
     auto msg_buf =
         std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size);
-    auto &hdr =
-        *reinterpret_cast<serialized_msg_hdr *>(msg_buf.get() + LWS_PRE);
+    auto &hdr = *reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE]);
     hdr.set_emsg(msg.type);
     hdr.header_size = header_size;
-    auto data_ptr = msg_buf.get() + LWS_PRE + sizeof hdr;
+    auto data_ptr = &msg_buf[LWS_PRE + sizeof hdr];
     if (!msg.header.SerializeToArray(data_ptr, header_size)) {
       return tsc_err_sub(errc, TEK_SC_ERRC_protobuf_serialize);
     }

@@ -166,7 +166,7 @@ int tek_sc_dm_serialize(const tek_sc_depot_manifest *manifest, void *buf,
                       sizeof(tscp_sdm_chunk) * manifest->num_chunks +
                       sizeof(tscp_sdm_file) * manifest->num_files +
                       sizeof(tscp_sdm_dir) * manifest->num_dirs;
-  char *cur_name = buf + required_size;
+  char *cur_name = buf ? buf + required_size : nullptr;
   for (int i = 0; i < manifest->num_files; ++i) {
     auto const file = &manifest->files[i];
     required_size += tsci_os_pstr_strlen(file->name);

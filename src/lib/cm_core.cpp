@@ -33,6 +33,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <curl/curl.h>
 #include <format>
 #include <functional>
@@ -219,7 +220,8 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
 [[using gnu: nonnull(2), access(read_only, 2, 3)]]
 static void process_msg(cm_client &client, const void *_Nonnull data,
                         int size) {
-  const auto &hdr = *reinterpret_cast<const serialized_msg_hdr *>(data);
+  serialized_msg_hdr hdr;
+  std::memcpy(&hdr, data, sizeof hdr);
   if (!hdr.is_proto()) {
     return;
   }
@@ -270,7 +272,8 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
     }
     // Process inner messages one by one
     for (auto i = msg_buf; i < msg_buf_end;) {
-      const auto msg_size = *reinterpret_cast<const std::uint32_t *>(i);
+      std::uint32_t msg_size;
+      std::memcpy(&msg_size, i, sizeof msg_size);
       i += sizeof msg_size;
       process_msg(client, i, msg_size);
       i += msg_size;
@@ -390,11 +393,10 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     const auto msg_size = sizeof(serialized_msg_hdr) + payload_size;
     auto msg_buf =
         std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size);
-    auto &hdr =
-        *reinterpret_cast<serialized_msg_hdr *>(msg_buf.get() + LWS_PRE);
+    auto &hdr = *reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE]);
     hdr.set_emsg(EMsg::EMSG_CLIENT_HELLO);
     hdr.header_size = 0;
-    if (!payload.SerializeToArray(msg_buf.get() + LWS_PRE + sizeof hdr,
+    if (!payload.SerializeToArray(&msg_buf[LWS_PRE + sizeof hdr],
                                   payload_size)) {
       client.wsi = nullptr;
       client.disconnect_reason = TEK_SC_ERRC_protobuf_serialize;
