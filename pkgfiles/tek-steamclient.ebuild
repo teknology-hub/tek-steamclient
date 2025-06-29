@@ -47,7 +47,10 @@ DEPEND="
 	${COMMON_DEPEND}
 	dev-libs/rapidjson
 "
-BDEPEND="nls? ( sys-devel/gettext )"
+BDEPEND="
+dev-libs/protobuf[protoc(+)]
+nls? ( sys-devel/gettext )
+"
 RDEPEND="${COMMON_DEPEND}"
 
 src_prepare() {
