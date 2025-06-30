@@ -229,7 +229,8 @@ static void tscp_dd_count_dir(const tek_sc_verification_cache *_Nonnull vcache,
   delta->num_files += vc_dir->num_dirty_files;
   delta->num_dirs += vc_dir->num_dirty_subdirs;
   // Iterate files
-  auto const vc_files = &vcache->files[dir->files - man->files];
+  auto const vc_files =
+      dir->files ? &vcache->files[dir->files - man->files] : nullptr;
   for (int i = 0; i < dir->num_files; ++i) {
     auto const file = &dir->files[i];
     auto const vc_file = &vc_files[i];
@@ -245,7 +246,8 @@ static void tscp_dd_count_dir(const tek_sc_verification_cache *_Nonnull vcache,
     }
     delta->num_chunks += vc_file->num_dirty_chunks;
     // Iterate chunks
-    auto const vc_chunks = &vcache->chunks[file->chunks - man->chunks];
+    auto const vc_chunks =
+        file->chunks ? &vcache->chunks[file->chunks - man->chunks] : nullptr;
     for (int j = 0; j < file->num_chunks; ++j) {
       if (!vc_chunks[j].match) {
         delta->download_size += file->chunks[j].comp_size;
@@ -253,7 +255,8 @@ static void tscp_dd_count_dir(const tek_sc_verification_cache *_Nonnull vcache,
     }
   }
   // Iterate subdirectories
-  auto const vc_subdirs = &vcache->dirs[dir->subdirs - man->dirs];
+  auto const vc_subdirs =
+      dir->subdirs ? &vcache->dirs[dir->subdirs - man->dirs] : nullptr;
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];
     auto const vc_subdir = &vc_subdirs[i];
@@ -402,7 +405,8 @@ static void tscp_dd_write_dir(tscp_dd_write_ctx *_Nonnull ctx,
   dd_dir->num_files = vc_dir->num_dirty_files;
   dd_dir->num_subdirs = vc_dir->num_dirty_subdirs;
   // Iterate files
-  auto const vc_files = &vcache->files[dir->files - man->files];
+  auto const vc_files =
+      dir->files ? &vcache->files[dir->files - man->files] : nullptr;
   for (int i = 0; i < dir->num_files; ++i) {
     auto const vc_file = &vc_files[i];
     auto const num_dirty_chunks = vc_file->num_dirty_chunks;
@@ -457,7 +461,8 @@ static void tscp_dd_write_dir(tscp_dd_write_ctx *_Nonnull ctx,
       dd_file->chunks = nullptr;
     }
     // Iterate chunks
-    auto const vc_chunks = &vcache->chunks[file->chunks - man->chunks];
+    auto const vc_chunks =
+        file->chunks ? &vcache->chunks[file->chunks - man->chunks] : nullptr;
     for (int j = 0; j < file->num_chunks; ++j) {
       if (!vc_chunks[j].match) {
         auto const chunk = &file->chunks[j];
@@ -472,7 +477,8 @@ static void tscp_dd_write_dir(tscp_dd_write_ctx *_Nonnull ctx,
     dd_file->num_chunks = num_dirty_chunks;
   } // for (files)
   // Iterate subdirectories
-  auto const vc_subdirs = &vcache->dirs[dir->subdirs - man->dirs];
+  auto const vc_subdirs =
+      dir->subdirs ? &vcache->dirs[dir->subdirs - man->dirs] : nullptr;
   auto dd_subdir = dd_dir->subdirs;
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];

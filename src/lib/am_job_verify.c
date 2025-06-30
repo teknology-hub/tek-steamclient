@@ -174,8 +174,10 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
                                   const tek_sc_dm_dir *_Nonnull dir,
                                   tek_sc_vc_dir *_Nonnull vc_dir) {
   auto const man = ctx->vcache.manifest;
-  auto const vc_files = &ctx->vcache.files[dir->files - man->files];
-  auto const vc_subdirs = &ctx->vcache.dirs[dir->subdirs - man->dirs];
+  auto const vc_files =
+      dir->files ? &ctx->vcache.files[dir->files - man->files] : nullptr;
+  auto const vc_subdirs =
+      dir->subdirs ? &ctx->vcache.dirs[dir->subdirs - man->dirs] : nullptr;
   auto const desc = &ctx->desc->desc;
   auto const state = &desc->job.state;
   auto const progress_current = &desc->job.progress_current_a;
@@ -299,7 +301,9 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
       }
       // Check which chunks are eligible for verification
       int64_t progress = 0;
-      auto const vc_chunks = &ctx->vcache.chunks[file->chunks - man->chunks];
+      auto const vc_chunks =
+          file->chunks ? &ctx->vcache.chunks[file->chunks - man->chunks]
+                       : nullptr;
       for (int i = 0; i < file->num_chunks; ++i) {
         auto const vc_chunk = &vc_chunks[i];
         if (vc_chunk->status == TEK_SC_JOB_ENTRY_STATUS_done) {
@@ -664,7 +668,8 @@ tscp_amjv_get_progress(const tek_sc_dm_dir *_Nonnull dir,
                        const tek_sc_verification_cache *_Nonnull vc) {
   int64_t progress = 0;
   auto const man = vc->manifest;
-  auto const vc_files = &vc->files[dir->files - man->files];
+  auto const vc_files =
+      dir->files ? &vc->files[dir->files - man->files] : nullptr;
   for (int i = 0; i < dir->num_files; ++i) {
     auto const file = &dir->files[i];
     if (!file->num_chunks) {
@@ -675,14 +680,16 @@ tscp_amjv_get_progress(const tek_sc_dm_dir *_Nonnull dir,
       progress += file->size;
       continue;
     }
-    auto const vc_chunks = &vc->chunks[file->chunks - man->chunks];
+    auto const vc_chunks =
+        file->chunks ? &vc->chunks[file->chunks - man->chunks] : nullptr;
     for (int j = 0; j < file->num_chunks; ++j) {
       if (vc_chunks[j].status == TEK_SC_JOB_ENTRY_STATUS_done) {
         progress += file->chunks[j].size;
       }
     }
   }
-  auto const vc_subdirs = &vc->dirs[dir->subdirs - man->dirs];
+  auto const vc_subdirs =
+      dir->subdirs ? &vc->dirs[dir->subdirs - man->dirs] : nullptr;
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];
     if (vc_subdirs[i].status == TEK_SC_JOB_ENTRY_STATUS_done) {

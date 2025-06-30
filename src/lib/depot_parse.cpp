@@ -626,30 +626,32 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
     }
   } // Unzip scope
   // Check section headers and sizes
-  const auto payload_hdr =
-      reinterpret_cast<const file_section_hdr *>(unzipped_data.get());
-  if (payload_hdr->magic != manifest_payload_magic) {
+  const auto &payload_hdr =
+      *reinterpret_cast<const file_section_hdr *>(unzipped_data.get());
+  if (payload_hdr.magic != manifest_payload_magic) {
     return dm_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
-  if (sizeof(file_section_hdr) * 2 + payload_hdr->size > unzipped_data_size) {
+  if (sizeof(file_section_hdr) * 2 + payload_hdr.size > unzipped_data_size) {
     return dm_parse_err(TEK_SC_ERRC_invalid_data);
   }
-  const auto metadata_hdr = reinterpret_cast<const file_section_hdr *>(
-      unzipped_data.get() + sizeof *payload_hdr + payload_hdr->size);
-  if (metadata_hdr->magic != manifest_metadata_magic) {
+  file_section_hdr metadata_hdr;
+  std::memcpy(&metadata_hdr,
+              &unzipped_data[sizeof payload_hdr + payload_hdr.size],
+              sizeof metadata_hdr);
+  if (metadata_hdr.magic != manifest_metadata_magic) {
     return dm_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
-  if (static_cast<std::uint32_t>(
-          reinterpret_cast<const unsigned char *>(metadata_hdr + 1) -
-          unzipped_data.get()) +
-          metadata_hdr->size >
+  if (sizeof payload_hdr + payload_hdr.size + sizeof metadata_hdr +
+          metadata_hdr.size >
       unzipped_data_size) {
     return dm_parse_err(TEK_SC_ERRC_invalid_data);
   }
   // Parse Protobuf data
   bool paths_encrypted;
-  if (ManifestMetadata metadata;
-      metadata.ParseFromArray(metadata_hdr + 1, metadata_hdr->size)) {
+  if (ManifestMetadata metadata; metadata.ParseFromArray(
+          &unzipped_data[sizeof payload_hdr + payload_hdr.size +
+                         sizeof metadata_hdr],
+          metadata_hdr.size)) {
     manifest->id = metadata.manifest_id();
     manifest->data_size = metadata.data_size();
     paths_encrypted = metadata.paths_encrypted();
@@ -659,7 +661,8 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
   {
     google::protobuf::Arena arena;
     auto &payload = *google::protobuf::Arena::Create<ManifestPayload>(&arena);
-    if (!payload.ParseFromArray(payload_hdr + 1, payload_hdr->size)) {
+    if (!payload.ParseFromArray(&unzipped_data[sizeof payload_hdr],
+                                payload_hdr.size)) {
       return dm_parse_err(TEK_SC_ERRC_protobuf_deserialize);
     }
     auto &files = *payload.mutable_files();
@@ -886,13 +889,12 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
     decrypted_data_size += last_block_len;
   } // Decrypt scope
   // Check section headers and sizes
-  const auto payload_hdr =
-      reinterpret_cast<const file_section_hdr *>(decrypted_data.get());
-  if (payload_hdr->magic != patch_payload_magic) {
+  const auto &payload_hdr =
+      *reinterpret_cast<const file_section_hdr *>(decrypted_data.get());
+  if (payload_hdr.magic != patch_payload_magic) {
     return dp_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
-  const int payload_size =
-      static_cast<int>(sizeof *payload_hdr + payload_hdr->size);
+  const int payload_size = sizeof payload_hdr + payload_hdr.size;
   if (payload_size > decrypted_data_size) {
     return dp_parse_err(TEK_SC_ERRC_invalid_data);
   }
@@ -900,7 +902,8 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
   {
     google::protobuf::Arena arena;
     auto &payload = *google::protobuf::Arena::Create<PatchPayload>(&arena);
-    if (!payload.ParseFromArray(payload_hdr + 1, payload_hdr->size)) {
+    if (!payload.ParseFromArray(&decrypted_data[sizeof payload_hdr],
+                                payload_hdr.size)) {
       return dp_parse_err(TEK_SC_ERRC_protobuf_deserialize);
     }
     if (payload.source_manifest_id() != source_manifest->id ||
@@ -925,8 +928,9 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
           decrypted_data_size) {
         return dp_parse_err(TEK_SC_ERRC_invalid_data);
       }
-      const auto delta_data_size = *reinterpret_cast<const std::uint32_t *>(
-          decrypted_data.get() + payload_size);
+      std::uint32_t delta_data_size;
+      std::memcpy(&delta_data_size, &decrypted_data[payload_size],
+                  sizeof delta_data_size);
       if (static_cast<int>(payload_size + sizeof(std::uint32_t) +
                            delta_data_size) > decrypted_data_size) {
         return dp_parse_err(TEK_SC_ERRC_invalid_data);
