@@ -572,7 +572,13 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       a_entry.sul.cb(&a_entry.sul);
     }
     client.a_entries_mtx.unlock();
-    lws_sul_cancel(&client.sign_in_entry.sul);
+    client.pending_msgs_mtx.lock();
+    client.pending_msgs.clear();
+    client.pending_msgs_mtx.unlock();
+    if (!lws_dll2_is_detached(&client.sign_in_entry.sul.list)) {
+      lws_sul_cancel(&client.sign_in_entry.sul);
+      client.sign_in_entry.sul.cb(&client.sign_in_entry.sul);
+    }
     client.lics_mtx.lock();
     client.num_lics = -1;
     client.lics.reset();
