@@ -286,22 +286,32 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   sp_ctx.data.manifest_id = manifest_id;
 // Get manifest request code
 #ifdef TEK_SCB_S3C
-  auto const s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
-                                                 item_id->depot_id);
+  auto s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
+                                           item_id->depot_id);
   if (s3_srv) {
     tek_sc_cm_data_mrc data_mrc;
     data_mrc.app_id = item_id->app_id;
     data_mrc.depot_id = item_id->depot_id;
     data_mrc.manifest_id = manifest_id;
-    tek_sc_s3c_get_mrc(s3_srv, 8000, &data_mrc);
+    /// Make up to 5 attempts to get MRC, so it uses different tek-s3 servers if
+    ///    available
+    for (int i = 0; i < 5; ++i) {
+      tek_sc_s3c_get_mrc(s3_srv, 8000, &data_mrc);
+      if (!tek_sc_err_success(&data_mrc.result)) {
+        s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
+                                            item_id->depot_id);
+        continue;
+      }
+      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
+          TEK_SC_AM_JOB_STATE_pause_pending) {
+        return tsc_err_basic(TEK_SC_ERRC_paused);
+      }
+      sp_ctx.data.request_code = data_mrc.request_code;
+      break;
+    }
     if (!tek_sc_err_success(&data_mrc.result)) {
       return data_mrc.result;
     }
-    if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-        TEK_SC_AM_JOB_STATE_pause_pending) {
-      return tsc_err_basic(TEK_SC_ERRC_paused);
-    }
-    sp_ctx.data.request_code = data_mrc.request_code;
   } else
 #endif // def TEK_SCB_S3C
   {

@@ -33,6 +33,7 @@
 #include <libwebsockets.h>
 #include <memory>
 #include <new>
+#include <ranges>
 #include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
@@ -246,7 +247,13 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
       ctx->s3_cache[static_cast<std::uint32_t>(sqlite3_column_int(
           stmt.get(),
           0))][static_cast<std::uint32_t>(sqlite3_column_int(stmt.get(), 1))]
-          .emplace_back(&ctx->s3_servers[sqlite3_column_int64(stmt.get(), 2)]);
+          .servers.emplace_back(
+              &ctx->s3_servers[sqlite3_column_int64(stmt.get(), 2)]);
+    }
+  }
+  for (auto &app : ctx->s3_cache | std::views::values) {
+    for (auto &depot : app | std::views::values) {
+      depot.it = depot.servers.cbegin();
     }
   }
 #endif // def TEK_SCB_S3C
@@ -426,8 +433,7 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
                        cache_stmt(stmt_ptr, sqlite3_finalize);
                    const auto &[app_id, depots] : ctx->s3_cache) {
                 for (const auto &[depot_id, srvs] : depots) {
-                  const auto server_it = std::ranges::find(srvs, &server);
-                  if (server_it == srvs.cend()) {
+                  if (!std::ranges::contains(srvs.servers, &server)) {
                     continue;
                   }
                   if (sqlite3_bind_int(cache_stmt.get(), 1,
