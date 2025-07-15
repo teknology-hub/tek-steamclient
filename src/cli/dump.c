@@ -1250,11 +1250,12 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
     fprintf(file,
             tsc_gettext("Delta from manifest %llu to manifest %llu for %s\n"
                         "Depot patch used: %s\n"),
-            source_manifest.id, target_manifest.id, item_id_str,
+            (unsigned long long)source_manifest.id,
+            (unsigned long long)target_manifest.id, item_id_str,
             patch_ptr ? tsc_gettext("Yes") : tsc_gettext("No"));
   } else {
     fprintf(file, tsc_gettext("Verification delta for manifest %llu for %s\n"),
-            target_manifest.id, item_id_str);
+            (unsigned long long)target_manifest.id, item_id_str);
   }
   const char *stage_str;
   switch (delta.stage) {

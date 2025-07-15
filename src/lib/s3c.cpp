@@ -593,12 +593,15 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
       // Clear all server references, in case some apps/depots have been removed
       //    from the manifest
       for (auto addr = std::to_address(srv_it);
-           auto &depots : lib_ctx->s3_cache | std::views::values) {
-        for (auto &srvs : depots | std::views::values) {
-          std::erase(srvs, addr);
+           auto &app : lib_ctx->s3_cache | std::views::values) {
+        for (auto &depot : app | std::views::values) {
+          if (std::erase(depot.servers, addr)) {
+            depot.it = depot.servers.cbegin();
+          }
         }
-        std::erase_if(depots,
-                      [](const auto &depot) { return depot.second.empty(); });
+        std::erase_if(app, [](const auto &depot) {
+          return depot.second.servers.empty();
+        });
       }
       std::erase_if(lib_ctx->s3_cache,
                     [](const auto &app) { return app.second.empty(); });
@@ -634,8 +637,10 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
         if (!depot.IsUint()) {
           continue;
         }
-        cache_app[static_cast<std::uint32_t>(depot.GetUint())].emplace_back(
-            srv);
+        auto &cache_depot =
+            cache_app[static_cast<std::uint32_t>(depot.GetUint())];
+        cache_depot.servers.emplace_back(srv);
+        cache_depot.it = cache_depot.servers.cbegin();
       }
     }
     lock.unlock();
@@ -677,10 +682,15 @@ const char *tek_sc_s3c_get_srv_for_mrc(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
   if (depot_it == app_it->second.end()) {
     return nullptr;
   }
-  if (depot_it->second.empty()) {
+  auto &entry = depot_it->second;
+  if (entry.servers.empty()) {
     return nullptr;
   }
-  return depot_it->second[0]->url.data();
+  const auto res = (*entry.it)->url.data();
+  if (++entry.it == entry.servers.cend()) {
+    entry.it = entry.servers.cbegin();
+  }
+  return res;
 }
 
 void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,

@@ -96,6 +96,15 @@ struct server {
   std::time_t timestamp;
 };
 
+/// tek-s3 cache entry.
+struct cache_entry {
+  /// Servers that can provide manifest request codes for given app and depot
+  /// ID.
+  std::vector<server *> servers;
+  /// Current interator into @ref servers.
+  decltype(servers)::const_iterator it;
+};
+
 /// tek-s3 authentication WebSocket connection context.
 struct ws_ctx {
   /// Doubly linked list element for libwebsockets timeout scheduling.
@@ -173,9 +182,8 @@ struct tek_sc_lib_ctx {
   std::vector<tek::steamclient::s3c::server> s3_servers;
   /// Map of app and depot IDs to tek-s3 server entries that can provide
   ///    manifest request codes for the depot.
-  std::map<
-      std::uint32_t,
-      std::map<std::uint32_t, std::vector<tek::steamclient::s3c::server *>>>
+  std::map<std::uint32_t,
+           std::map<std::uint32_t, tek::steamclient::s3c::cache_entry>>
       s3_cache;
   /// Mutex locking concurrent access to @ref s3_servers and @ref s3_cache.
   std::shared_mutex s3_mtx;
