@@ -1,6 +1,6 @@
 #define APSTUDIO_READONLY_SYMBOLS
 #define APSTUDIO_HIDDEN_SYMBOLS
-#include <Windows.h>
+#include <windows.h>
 #include <winuser.h>
 #undef APSTUDIO_HIDDEN_SYMBOLS
 #undef APSTUDIO_READONLY_SYMBOLS
