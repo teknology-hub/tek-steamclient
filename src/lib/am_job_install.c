@@ -329,49 +329,6 @@ static bool tscp_amji_process_dir(tscp_amji_ctx *_Nonnull ctx,
             &subdir->status_a, &expected, TEK_SC_JOB_ENTRY_STATUS_setup,
             memory_order_acquire, memory_order_acquire)) {
       // Setup the subdirectory
-      enum {
-        DD_DIR_NEW_NON_EMPTY =
-            TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_download
-      };
-      if ((subdir->flags & DD_DIR_NEW_NON_EMPTY) == DD_DIR_NEW_NON_EMPTY &&
-          !copy_args->not_same_dev) {
-        // Attempt to move the directory first.
-        if (tsci_os_move(dir->cache_handle, dir->handle, subdir->dir->name)) {
-          if (atomic_fetch_sub_explicit(&dir->ref_count, 1,
-                                        memory_order_relaxed) == 1) {
-            tsci_os_close_handle(dir->handle);
-            dir->handle = TSCI_OS_INVALID_HANDLE;
-            tsci_os_close_handle(dir->cache_handle);
-            dir->cache_handle = TSCI_OS_INVALID_HANDLE;
-          }
-          atomic_store_explicit(&subdir->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
-                                memory_order_relaxed);
-          tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
-          if (atomic_fetch_sub_explicit(&dir->num_rem_children_a, 1,
-                                        memory_order_relaxed) == 1) {
-            tsci_am_job_finish_dir(dir);
-            return true;
-          }
-          continue;
-        } else { // if (tsci_os_move(...))
-          switch (tsci_os_get_last_error()) {
-          case TSCI_OS_ERR_NOT_SAME_DEV:
-            copy_args->not_same_dev = true;
-            break;
-          case TSCI_OS_ERR_DIR_NOT_EMPTY:
-            break;
-          default:
-            wt_ctx->result = tsci_os_io_err_at(
-                dir->cache_handle, subdir->dir->name, TEK_SC_ERRC_am_io,
-                tsci_os_get_last_error(), TEK_SC_ERR_IO_TYPE_move);
-            atomic_store_explicit(&subdir->status_a,
-                                  TEK_SC_JOB_ENTRY_STATUS_pending,
-                                  memory_order_relaxed);
-            tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
-            return false;
-          }
-        } // if (tsci_os_move(...)) else
-      } // if (new non empty && !copy_args->not_same_dev)
       auto const handle =
           (subdir->flags & TEK_SC_DD_DIR_FLAG_new)
               ? tsci_os_dir_create_at(dir->handle, subdir->dir->name)
