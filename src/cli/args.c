@@ -120,7 +120,6 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
     switch (cmd->type) {
     case TSCL_CMD_TYPE_help:
     case TSCL_CMD_TYPE_exit:
-    case TSCL_CMD_TYPE_s3c_sync_manifest:
     case TSCL_CMD_TYPE_s3c_signin: {
       const char *name;
       switch (cmd->type) {
@@ -129,9 +128,6 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         break;
       case TSCL_CMD_TYPE_exit:
         name = "exit/quit";
-        break;
-      case TSCL_CMD_TYPE_s3c_sync_manifest:
-        name = "s3c sync-manifest";
         break;
       case TSCL_CMD_TYPE_s3c_signin:
         name = "s3c signin";
