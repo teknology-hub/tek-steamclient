@@ -165,6 +165,8 @@ struct tek_sc_lib_ctx {
   /// Value indicating whether @ref tek_sc_lib_cleanup should attempt saving
   ///    cached data to a file.
   bool use_file_cache;
+  /// Futex that is set to 1 after @ref lws_ctx is initialized.
+  std::atomic_uint32_t lws_init;
   /// CM client instances assinged to the context.
   std::forward_list<tek_sc_cm_client *> cm_clients;
   /// Mutex locking concurrent access to @ref cm_clients.
