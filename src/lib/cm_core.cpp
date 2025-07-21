@@ -339,6 +339,10 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
   switch (reason) {
   case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
     auto &client = *reinterpret_cast<cm_client *>(user);
+    if (client.conn_state.load(std::memory_order::relaxed) !=
+        conn_state::connecting) {
+      return 0;
+    }
     if (client.destroy_requested.load(std::memory_order::relaxed)) {
       destroy(client);
       return 0;
@@ -385,7 +389,12 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
   case LWS_CALLBACK_CLIENT_ESTABLISHED: {
     auto &client = *reinterpret_cast<tek_sc_cm_client *>(user);
     client.wsi = wsi;
-    client.conn_state.store(conn_state::connected, std::memory_order::release);
+    if (auto expected = conn_state::connecting;
+        !client.conn_state.compare_exchange_strong(
+            expected, conn_state::connected, std::memory_order::release,
+            std::memory_order::relaxed)) {
+      return 0;
+    }
     // Send hello message
     msg_payloads::Hello payload;
     payload.set_protocol_version(protocol_ver);
@@ -413,6 +422,10 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
   }
   case LWS_CALLBACK_CLIENT_RECEIVE: {
     auto &client = *reinterpret_cast<cm_client *>(user);
+    if (client.conn_state.load(std::memory_order::relaxed) <
+        conn_state::connected) {
+      return 0;
+    }
     if (!lws_frame_is_binary(wsi)) {
       // Ignore non-binary frames
       client.pending_recv_buf.clear();
@@ -447,6 +460,10 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
   }
   case LWS_CALLBACK_CLIENT_WRITEABLE: {
     auto &client = *reinterpret_cast<cm_client *>(user);
+    if (client.conn_state.load(std::memory_order::relaxed) <
+        conn_state::connected) {
+      return 0;
+    }
     client.pending_msgs_mtx.lock();
     if (client.pending_msgs.empty()) {
       client.pending_msgs_mtx.unlock();
@@ -559,8 +576,11 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
   } // case LWS_CALLBACK_EVENT_WAIT_CANCELLED
   case LWS_CALLBACK_CLIENT_CLOSED: {
     auto &client = *reinterpret_cast<cm_client *>(user);
-    client.conn_state.store(conn_state::disconnected,
-                            std::memory_order::relaxed);
+    if (client.conn_state.exchange(conn_state::disconnected,
+                                   std::memory_order::relaxed) ==
+        conn_state::disconnected) {
+      break;
+    }
     client.wsi = nullptr;
     client.steam_id = 0;
     client.session_id = 0;
