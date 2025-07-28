@@ -9,7 +9,7 @@ This repository also provides tek-sc-cli, simple command-line interface on top o
 
 - Cross-platform
 - Does *not* require Steam application to be installed, and in fact offers alternative to some of its functionality
-- Can utilize tek-s3 servers to work with applications owned by other people, without logging into their accounts locally
+- Can utilize [tek-s3](https://github.com/teknology-hub/tek-s3) servers to work with applications owned by other people, without logging into their accounts locally
 - Is fully 64-bit, and efficiently utilizes modern OS features to achieve best I/O performance
 - Uses homemade update algorithms that allow utilizing much less disk space for pathcing than Steam app does
 
@@ -55,7 +55,7 @@ For developers, libtek-steamclient interfaces are provided via header files:
 - `include` - C header files providing public library interface.
 - `pkgfiles` - Files or file templates for package managers to use.
 - `po` - Localization files.
-- `protos` - Protobuf definition files for various Steam messages. Based on data [SteamDatabase/Protobufs](https://github.com/SteamDatabase/Protobufs) project.
+- `protos` - Protobuf definition files for various Steam messages. Based on data from [SteamDatabase/Protobufs](https://github.com/SteamDatabase/Protobufs) project.
 - `res` - Resource files for Windows binaries
 - `src` - Source code:
   + `cli` - tek-sc-cli program source code
