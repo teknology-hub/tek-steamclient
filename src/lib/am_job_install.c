@@ -112,7 +112,7 @@ static bool tscp_amji_process_dir(tscp_amji_ctx *_Nonnull ctx,
         // Move the file, fallback to copying if the installation is on
         //    different filesystem
         if (!copy_args->not_same_dev) {
-          if (!tsci_os_move(dir->cache_handle, dir->handle, name)) {
+          if (!tsci_os_file_move(dir->cache_handle, dir->handle, name)) {
             auto const errc = tsci_os_get_last_error();
             if (errc == TSCI_OS_ERR_NOT_SAME_DEV) {
               copy_args->not_same_dev = true;

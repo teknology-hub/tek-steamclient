@@ -35,6 +35,7 @@
 //===-- Declarations missing from winternl.h ------------------------------===//
 
 #define FileDispositionInformationEx 64
+#define FileRenameInformationEx 65
 #define ThreadNameInformation 38
 
 NTSTATUS NTAPI NtQueryAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes,
@@ -476,61 +477,6 @@ tek_sc_os_errc tsci_os_path_exists_at(tek_sc_os_handle parent_dir_handle,
   return NT_SUCCESS(status) ? 0 : RtlNtStatusToDosError(status);
 }
 
-bool tsci_os_move(tek_sc_os_handle src_dir_handle,
-                  tek_sc_os_handle tgt_dir_handle, const tek_sc_os_char *name) {
-  const USHORT name_size = wcslen(name) * sizeof *name;
-  IO_STATUS_BLOCK isb;
-  HANDLE handle;
-  auto status =
-      NtOpenFile(&handle, DELETE,
-                 &(OBJECT_ATTRIBUTES){
-                     .Length = sizeof(OBJECT_ATTRIBUTES),
-                     .RootDirectory = src_dir_handle,
-                     .ObjectName = &(UNICODE_STRING){.Length = name_size,
-                                                     .MaximumLength = name_size,
-                                                     .Buffer = (PWSTR)name},
-                     .Attributes = OBJ_CASE_INSENSITIVE},
-                 &isb, FILE_SHARE_VALID_FLAGS, 0);
-  if (!NT_SUCCESS(status)) {
-    SetLastError(RtlNtStatusToDosError(status));
-    return false;
-  }
-  auto const info_size = offsetof(FILE_RENAME_INFO, FileName) + name_size;
-  FILE_RENAME_INFO *const info = malloc(info_size);
-  if (!info) {
-    NtClose(handle);
-    SetLastError(ERROR_OUTOFMEMORY);
-    return false;
-  }
-  info->Flags =
-      FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
-  info->RootDirectory = tgt_dir_handle;
-  info->FileNameLength = name_size;
-  memcpy(info->FileName, name, name_size);
-  status = NtSetInformationFile(handle, &isb, info, info_size,
-                                FileRenameInformation);
-  free(info);
-  if (NT_SUCCESS(status)) {
-    NtClose(handle);
-    return true;
-  }
-  auto errc = RtlNtStatusToDosError(status);
-  if (errc == ERROR_ACCESS_DENIED) {
-    FILE_STANDARD_INFORMATION info;
-    if (NT_SUCCESS(NtQueryInformationFile(handle, &isb, &info, sizeof info,
-                                          FileStandardInformation)) &&
-        info.Directory) {
-      // ERROR_ACCESS_DENIED is also returned when moving a directory fails due
-      //    to target one existing and being not empty, adjust the errc for
-      //    cross-platform code to handle it correctly
-      errc = ERROR_DIR_NOT_EMPTY;
-    }
-  }
-  NtClose(handle);
-  SetLastError(errc);
-  return false;
-}
-
 //===--- Diectory create/open ---------------------------------------------===//
 
 tek_sc_os_handle tsci_os_dir_create(const tek_sc_os_char *path) {
@@ -824,7 +770,7 @@ bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
   return res;
 }
 
-//===--- File copy --------------------------------------------------------===//
+//===--- File copy/move ---------------------------------------------------===//
 
 bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
                              int64_t tgt_offset, size_t size) {
@@ -927,6 +873,49 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
   NtClose(tgt_handle);
   NtClose(src_handle);
   return res;
+}
+
+bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
+                       tek_sc_os_handle tgt_dir_handle,
+                       const tek_sc_os_char *name) {
+  const USHORT name_size = wcslen(name) * sizeof *name;
+  IO_STATUS_BLOCK isb;
+  HANDLE handle;
+  auto status =
+      NtOpenFile(&handle, DELETE,
+                 &(OBJECT_ATTRIBUTES){
+                     .Length = sizeof(OBJECT_ATTRIBUTES),
+                     .RootDirectory = src_dir_handle,
+                     .ObjectName = &(UNICODE_STRING){.Length = name_size,
+                                                     .MaximumLength = name_size,
+                                                     .Buffer = (PWSTR)name},
+                     .Attributes = OBJ_CASE_INSENSITIVE},
+                 &isb, FILE_SHARE_VALID_FLAGS, FILE_NON_DIRECTORY_FILE);
+  if (!NT_SUCCESS(status)) {
+    SetLastError(RtlNtStatusToDosError(status));
+    return false;
+  }
+  auto const info_size = offsetof(FILE_RENAME_INFO, FileName) + name_size;
+  FILE_RENAME_INFO *const info = malloc(info_size);
+  if (!info) {
+    NtClose(handle);
+    SetLastError(ERROR_OUTOFMEMORY);
+    return false;
+  }
+  info->Flags =
+      FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+  info->RootDirectory = tgt_dir_handle;
+  info->FileNameLength = name_size;
+  memcpy(info->FileName, name, name_size);
+  status = NtSetInformationFile(handle, &isb, info, info_size,
+                                FileRenameInformationEx);
+  free(info);
+  NtClose(handle);
+  if (NT_SUCCESS(status)) {
+    return true;
+  }
+  SetLastError(RtlNtStatusToDosError(status));
+  return false;
 }
 
 //===--- File delete ------------------------------------------------------===//

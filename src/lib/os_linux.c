@@ -238,11 +238,6 @@ tek_sc_os_errc tsci_os_path_exists_at(tek_sc_os_handle parent_dir_handle,
   return faccessat(parent_dir_handle, name, F_OK, AT_EACCESS) < 0 ? errno : 0;
 }
 
-bool tsci_os_move(tek_sc_os_handle src_dir_handle,
-                  tek_sc_os_handle tgt_dir_handle, const tek_sc_os_char *name) {
-  return !renameat(src_dir_handle, name, tgt_dir_handle, name);
-}
-
 //===--- Diectory create/open ---------------------------------------------===//
 
 tek_sc_os_handle tsci_os_dir_create(const tek_sc_os_char *path) {
@@ -543,7 +538,7 @@ bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
   }
 }
 
-//===--- File copy --------------------------------------------------------===//
+//===--- File copy/move ---------------------------------------------------===//
 
 bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
                              int64_t tgt_offset, size_t size) {
@@ -642,6 +637,12 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
   close(tgt_fd);
   close(src_fd);
   return res;
+}
+
+bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
+                       tek_sc_os_handle tgt_dir_handle,
+                       const tek_sc_os_char *name) {
+  return !renameat(src_dir_handle, name, tgt_dir_handle, name);
 }
 
 //===--- File delete ------------------------------------------------------===//
