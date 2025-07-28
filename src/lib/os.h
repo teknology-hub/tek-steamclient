@@ -106,13 +106,14 @@ enum tsci_os_file_access {
 
 /// GNU/Linux asynchronous I/O context stub or implementation.
 struct tsci_os_aio_ctx {
+  /// Current "registered" fd, or `-1` if io_uring is used.
+  int fd;
 #ifdef TEK_SCB_IO_URING
+  /// Value indicating whether the ring has registered a buffer.
+  bool buf_registered;
   /// io_uring instance.
   struct io_uring ring;
-#else  // def TEK_SCB_IO_URING
-  // Current "registered" fd.
-  int fd;
-#endif // def TEK_SCB_IO_URING else
+#endif // def TEK_SCB_IO_URING
 };
 
 #endif // def _WIN32 elifdef __linux__
