@@ -98,12 +98,38 @@ static OsType get_os_type() noexcept {
 #endif // ifdef _WIN32 elifdef __linux__
 }
 
-/// Run libwebsockets event loop.
+/// Initialize libwebsockets and run its event loop.
 ///
 /// @param [in, out] lib_ctx
 ///    Library context owning the libwebsockets context.
 static void tsc_lws_loop(tek_sc_lib_ctx &lib_ctx) noexcept {
   tsci_os_set_thread_name(TEK_SC_OS_STR("tsc lws loop"));
+  lws_context_creation_info info{};
+  info.extensions = ws_pm_ext;
+  info.port = CONTEXT_PORT_NO_LISTEN;
+  info.timeout_secs = 10;
+  info.connect_timeout_secs = 5;
+  // Try to use libuv for better event loop performance
+  info.options = LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+  info.user = &lib_ctx;
+#ifdef TEK_SCB_S3C
+  const lws_protocols *pprotocols[]{&cm::protocol, &s3c::protocol, nullptr};
+#else  // #def TEK_SCB_S3C
+  const lws_protocols *pprotocols[]{&cm::protocol, nullptr};
+#endif // #def TEK_SCB_S3C else
+  info.pprotocols = pprotocols;
+  lib_ctx.lws_ctx = lws_create_context(&info);
+  if (!lib_ctx.lws_ctx) {
+    // Probably libwebsockets was compiled without libuv support, try
+    //    disabling it
+    info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    lib_ctx.lws_ctx = lws_create_context(&info);
+  }
+  lib_ctx.lws_init.store(1, std::memory_order::release);
+  tsci_os_futex_wake(&lib_ctx.lws_init);
+  if (!lib_ctx.lws_ctx) {
+    return;
+  }
   while (!lws_service(lib_ctx.lws_ctx, 0))
     ;
 }
@@ -124,39 +150,19 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
   }
   const auto ctx = new (std::nothrow) tek_sc_lib_ctx();
   if (!ctx) {
+    curl_global_cleanup();
     return nullptr;
   }
-  {
-    // Create libwebsockets context
-    lws_context_creation_info info{};
-    info.extensions = ws_pm_ext;
-    info.port = CONTEXT_PORT_NO_LISTEN;
-    info.timeout_secs = 10;
-    info.connect_timeout_secs = 5;
-    // Try to use libuv for better event loop performance
-    info.options =
-        LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-    info.user = ctx;
-#ifdef TEK_SCB_S3C
-    const lws_protocols *pprotocols[]{&cm::protocol, &s3c::protocol, nullptr};
-#else  // #def TEK_SCB_S3C
-    const lws_protocols *pprotocols[]{&cm::protocol, nullptr};
-#endif // #def TEK_SCB_S3C else
-    info.pprotocols = pprotocols;
-    ctx->lws_ctx = lws_create_context(&info);
-    if (!ctx->lws_ctx) {
-      // Probably libwebsockets was compiled without libuv support, try
-      //    disabling it
-      info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-      ctx->lws_ctx = lws_create_context(&info);
-      if (!ctx->lws_ctx) {
-        // And this is a real failure
-        delete ctx;
-        return nullptr;
-      }
-    }
-  }
   ctx->lws_thread = std::thread(&tsc_lws_loop, std::ref(*ctx));
+  tsci_os_futex_wait(&ctx->lws_init, 0, 3000);
+  if (!ctx->lws_ctx) {
+    if (ctx->lws_thread.joinable()) {
+      ctx->lws_thread.join();
+    }
+    delete ctx;
+    curl_global_cleanup();
+    return nullptr;
+  }
   ctx->use_file_cache = use_file_cache;
   ctx->os_type = get_os_type();
   if (!use_file_cache) {

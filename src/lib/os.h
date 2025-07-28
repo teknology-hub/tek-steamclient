@@ -106,13 +106,14 @@ enum tsci_os_file_access {
 
 /// GNU/Linux asynchronous I/O context stub or implementation.
 struct tsci_os_aio_ctx {
+  /// Current "registered" fd, or `-1` if io_uring is used.
+  int fd;
 #ifdef TEK_SCB_IO_URING
+  /// Value indicating whether the ring has registered a buffer.
+  bool buf_registered;
   /// io_uring instance.
   struct io_uring ring;
-#else  // def TEK_SCB_IO_URING
-  // Current "registered" fd.
-  int fd;
-#endif // def TEK_SCB_IO_URING else
+#endif // def TEK_SCB_IO_URING
 };
 
 #endif // def _WIN32 elifdef __linux__
@@ -307,22 +308,6 @@ tek_sc_err tsci_os_io_err_at(
 tek_sc_os_errc tsci_os_path_exists_at(
     [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
     const tek_sc_os_char *_Nonnull name);
-
-/// Move specified file/subdirectory from one directory to another.
-///
-/// @param src_dir_handle
-///    Handle for the directory to move the file/subdirectory from.
-/// @param tgt_dir_handle
-///    Handle for the directory to move the file/subdirectory to.
-/// @param [in] name
-///    Name of the file/subdirectory to move, as a null-terminated string.
-/// @return Value indicating whether the function succeeded. Use
-///    @ref tsci_os_get_last_error to get the error code in case of failure.
-[[gnu::visibility("internal"), gnu::fd_arg(1), gnu::fd_arg(2), gnu::nonnull(3),
-  gnu::access(read_only, 3), gnu::null_terminated_string_arg(3)]]
-bool tsci_os_move([[clang::use_handle("os")]] tek_sc_os_handle src_dir_handle,
-                  [[clang::use_handle("os")]] tek_sc_os_handle tgt_dir_handle,
-                  const tek_sc_os_char *_Nonnull name);
 
 //===--- Diectory create/open ---------------------------------------------===//
 
@@ -602,7 +587,7 @@ bool tsci_os_file_apply_flags_at(
     [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
     const tek_sc_os_char *_Nonnull name, tek_sc_dm_file_flag flags);
 
-//===--- File copy --------------------------------------------------------===//
+//===--- File copy/move ---------------------------------------------------===//
 
 /// Copy specified chunk of data from one file to another.
 ///
@@ -638,6 +623,23 @@ bool tsci_os_file_copy_chunk(tsci_os_copy_args *_Nonnull args,
 bool tsci_os_file_copy(tsci_os_copy_args *_Nonnull args,
                        const tek_sc_os_char *_Nonnull name, int64_t size,
                        tek_sc_errc errc);
+
+/// Move specified file from one directory to another.
+///
+/// @param src_dir_handle
+///    Handle for the directory to move the file from.
+/// @param tgt_dir_handle
+///    Handle for the directory to move the file to.
+/// @param [in] name
+///    Name of the file to move, as a null-terminated string.
+/// @return Value indicating whether the function succeeded. Use
+///    @ref tsci_os_get_last_error to get the error code in case of failure.
+[[gnu::visibility("internal"), gnu::fd_arg(1), gnu::fd_arg(2), gnu::nonnull(3),
+  gnu::access(read_only, 3), gnu::null_terminated_string_arg(3)]]
+bool tsci_os_file_move(
+    [[clang::use_handle("os")]] tek_sc_os_handle src_dir_handle,
+    [[clang::use_handle("os")]] tek_sc_os_handle tgt_dir_handle,
+    const tek_sc_os_char *_Nonnull name);
 
 //===--- File delete ------------------------------------------------------===//
 

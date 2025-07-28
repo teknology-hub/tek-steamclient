@@ -238,11 +238,6 @@ tek_sc_os_errc tsci_os_path_exists_at(tek_sc_os_handle parent_dir_handle,
   return faccessat(parent_dir_handle, name, F_OK, AT_EACCESS) < 0 ? errno : 0;
 }
 
-bool tsci_os_move(tek_sc_os_handle src_dir_handle,
-                  tek_sc_os_handle tgt_dir_handle, const tek_sc_os_char *name) {
-  return !renameat(src_dir_handle, name, tgt_dir_handle, name);
-}
-
 //===--- Diectory create/open ---------------------------------------------===//
 
 tek_sc_os_handle tsci_os_dir_create(const tek_sc_os_char *path) {
@@ -543,7 +538,7 @@ bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
   }
 }
 
-//===--- File copy --------------------------------------------------------===//
+//===--- File copy/move ---------------------------------------------------===//
 
 bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
                              int64_t tgt_offset, size_t size) {
@@ -644,6 +639,12 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
   return res;
 }
 
+bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
+                       tek_sc_os_handle tgt_dir_handle,
+                       const tek_sc_os_char *name) {
+  return !renameat(src_dir_handle, name, tgt_dir_handle, name);
+}
+
 //===--- File delete ------------------------------------------------------===//
 
 bool tsci_os_file_delete_at(tek_sc_os_handle parent_dir_handle,
@@ -661,15 +662,15 @@ bool tsci_os_symlink_at(const tek_sc_os_char *target,
 
 //===-- Asynchronous I/O functions ----------------------------------------===//
 
+tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx,
+                                    [[maybe_unused]] void *buffer,
+                                    [[maybe_unused]] size_t buffer_size) {
 #ifdef TEK_SCB_IO_URING
-
-tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, void *buffer,
-                                    size_t buffer_size) {
   auto const version = tsci_os_get_version();
   const int ver_num = version.major * 1000 + version.minor;
   if (ver_num < 5005) {
     // Kernels before 5.5 do not support IORING_REGISTER_FILES_UPDATE
-    return ENOSYS;
+    goto skip_uring;
   }
   unsigned flags = 0;
   // Set flags supported by current kernel version
@@ -684,113 +685,101 @@ tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, void *buffer,
   }
   int res = io_uring_queue_init(1, &ctx->ring, flags);
   if (res < 0) {
-    return -res;
+    if (-res == ENOSYS) {
+      goto skip_uring;
+    } else {
+      return -res;
+    }
   }
   res = io_uring_register_buffers(
       &ctx->ring,
       &(const struct iovec){.iov_base = buffer, .iov_len = buffer_size}, 1);
+  switch (res) {
+  case 0:
+    ctx->buf_registered = true;
+    break;
+  case -ENOMEM:
+    ctx->buf_registered = false;
+    break;
+  default:
+    goto fail;
+  }
+  res = io_uring_register_files_sparse(&ctx->ring, 1);
   if (res < 0) {
-    return -res;
+    goto fail;
   }
-  return -io_uring_register_files_sparse(&ctx->ring, 1);
-}
-
-void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) {
+  ctx->fd = -1;
+  return 0;
+fail:
   io_uring_queue_exit(&ctx->ring);
-}
-
-tek_sc_os_errc tsci_os_aio_register_file(tsci_os_aio_ctx *ctx,
-                                         tek_sc_os_handle handle) {
-  const int res = io_uring_register_files_update(&ctx->ring, 0, &handle, 1);
-  return res < 0 ? -res : 0;
-}
-
-tek_sc_os_errc tsci_os_aio_read(tsci_os_aio_ctx *ctx, void *buf, size_t n,
-                                int64_t offset) {
-  for (;;) {
-    auto const sqe = io_uring_get_sqe(&ctx->ring);
-    if (!sqe) {
-      return EBUSY;
-    }
-    io_uring_prep_read_fixed(sqe, 0, buf, n, offset, 0);
-    io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
-    int res = io_uring_submit_and_wait(&ctx->ring, 1);
-    if (res < 0) {
-      return -res;
-    }
-    struct io_uring_cqe *cqe;
-    res = io_uring_peek_cqe(&ctx->ring, &cqe);
-    if (res < 0) {
-      return -res;
-    }
-    res = cqe->res;
-    io_uring_cqe_seen(&ctx->ring, cqe);
-    if (res < 0) {
-      return -res;
-    }
-    if (!res) {
-      return ERANGE;
-    }
-    n -= res;
-    if (!n) {
-      return 0;
-    }
-    buf += res;
-    offset += res;
-  }
-}
-
-tek_sc_os_errc tsci_os_aio_write(tsci_os_aio_ctx *ctx, const void *buf,
-                                 size_t n, int64_t offset) {
-  for (;;) {
-    auto const sqe = io_uring_get_sqe(&ctx->ring);
-    if (!sqe) {
-      return EBUSY;
-    }
-    io_uring_prep_write_fixed(sqe, 0, buf, n, offset, 0);
-    io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
-    int res = io_uring_submit_and_wait(&ctx->ring, 1);
-    if (res < 0) {
-      return -res;
-    }
-    struct io_uring_cqe *cqe;
-    res = io_uring_peek_cqe(&ctx->ring, &cqe);
-    if (res < 0) {
-      return -res;
-    }
-    res = cqe->res;
-    io_uring_cqe_seen(&ctx->ring, cqe);
-    if (res < 0) {
-      return -res;
-    }
-    if (!res) {
-      return ERANGE;
-    }
-    n -= res;
-    if (!n) {
-      return 0;
-    }
-    buf += res;
-    offset += res;
-  }
-}
-
-#else // def TEK_SCB_IO_URING
-
-tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *, void *, size_t) {
+  return -res;
+skip_uring:
+#endif // def TEK_SCB_IO_URING
+  ctx->fd = 0;
   return 0;
 }
 
-void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *) {}
+void tsci_os_aio_ctx_destroy([[maybe_unused]] tsci_os_aio_ctx *ctx) {
+#ifdef TEK_SCB_IO_URING
+  if (ctx->fd < 0) {
+    io_uring_queue_exit(&ctx->ring);
+  }
+#endif // def TEK_SCB_IO_URING
+}
 
 tek_sc_os_errc tsci_os_aio_register_file(tsci_os_aio_ctx *ctx,
                                          tek_sc_os_handle handle) {
+#ifdef TEK_SCB_IO_URING
+  if (ctx->fd < 0) {
+    const int res = io_uring_register_files_update(&ctx->ring, 0, &handle, 1);
+    return res < 0 ? -res : 0;
+  }
+#endif // def TEK_SCB_IO_URING
   ctx->fd = handle;
   return 0;
 }
 
 tek_sc_os_errc tsci_os_aio_read(tsci_os_aio_ctx *ctx, void *buf, size_t n,
                                 int64_t offset) {
+#ifdef TEK_SCB_IO_URING
+  if (ctx->fd < 0) {
+    for (;;) {
+      auto const sqe = io_uring_get_sqe(&ctx->ring);
+      if (!sqe) {
+        return EBUSY;
+      }
+      if (ctx->buf_registered) {
+        io_uring_prep_read_fixed(sqe, 0, buf, n, offset, 0);
+      } else {
+        io_uring_prep_read(sqe, 0, buf, n, offset);
+      }
+      io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
+      int res = io_uring_submit_and_wait(&ctx->ring, 1);
+      if (res < 0) {
+        return -res;
+      }
+      struct io_uring_cqe *cqe;
+      res = io_uring_peek_cqe(&ctx->ring, &cqe);
+      if (res < 0) {
+        return -res;
+      }
+      res = cqe->res;
+      io_uring_cqe_seen(&ctx->ring, cqe);
+      if (res < 0) {
+        return -res;
+      }
+      if (!res) {
+        return ERANGE;
+      }
+      n -= res;
+      if (!n) {
+        return 0;
+      }
+      buf += res;
+      offset += res;
+    }
+  }
+#endif // def TEK_SCB_IO_URING
   for (;;) {
     auto const bytes_read = pread(ctx->fd, buf, n, offset);
     if (bytes_read < 0) {
@@ -812,6 +801,45 @@ tek_sc_os_errc tsci_os_aio_read(tsci_os_aio_ctx *ctx, void *buf, size_t n,
 
 tek_sc_os_errc tsci_os_aio_write(tsci_os_aio_ctx *ctx, const void *buf,
                                  size_t n, int64_t offset) {
+#ifdef TEK_SCB_IO_URING
+  if (ctx->fd < 0) {
+    for (;;) {
+      auto const sqe = io_uring_get_sqe(&ctx->ring);
+      if (!sqe) {
+        return EBUSY;
+      }
+      if (ctx->buf_registered) {
+        io_uring_prep_write_fixed(sqe, 0, buf, n, offset, 0);
+      } else {
+        io_uring_prep_write(sqe, 0, buf, n, offset);
+      }
+      io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
+      int res = io_uring_submit_and_wait(&ctx->ring, 1);
+      if (res < 0) {
+        return -res;
+      }
+      struct io_uring_cqe *cqe;
+      res = io_uring_peek_cqe(&ctx->ring, &cqe);
+      if (res < 0) {
+        return -res;
+      }
+      res = cqe->res;
+      io_uring_cqe_seen(&ctx->ring, cqe);
+      if (res < 0) {
+        return -res;
+      }
+      if (!res) {
+        return ERANGE;
+      }
+      n -= res;
+      if (!n) {
+        return 0;
+      }
+      buf += res;
+      offset += res;
+    }
+  }
+#endif // def TEK_SCB_IO_URING
   for (;;) {
     auto const bytes_written = pwrite(ctx->fd, buf, n, offset);
     if (bytes_written < 0) {
@@ -830,8 +858,6 @@ tek_sc_os_errc tsci_os_aio_write(tsci_os_aio_ctx *ctx, const void *buf,
     offset += bytes_written;
   }
 }
-
-#endif // def TEK_SCB_IO_URING else
 
 //===-- Virtual memory functions ------------------------------------------===//
 
