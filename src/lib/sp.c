@@ -209,6 +209,12 @@ struct tscp_sp_multi_thrd_ctx {
   int num_insts;
   /// Number of currently active chunk downloader instances.
   int num_active;
+  /// Current maximum number of simultaneous connections per host.
+  int max_conns;
+  /// A counter that has initial value of `num_insts * 2` and is decremented
+  ///    every time an error that implies server overload is received. When it
+  ///    reaches zero, it's reset and @ref max_conns is decremented.
+  int rate_limit_counter;
   /// Chunk decoding context.
   tek_sc_sp_dec_ctx dec_ctx;
 };
@@ -1058,14 +1064,20 @@ tek_sc_sp_multi_dlr_create(tek_sc_sp_multi_dlr_desc *desc, uint32_t depot_id,
       }
       goto cleanup_insts;
     }
+    curl_multi_setopt(thrd_ctx->curlm, CURLMOPT_MAX_HOST_CONNECTIONS,
+                      TEK_SCB_CHUNKS_PER_SRV);
     thrd_ctx->insts = &insts[i * srvs_per_thread * TEK_SCB_CHUNKS_PER_SRV];
     thrd_ctx->num_insts = srvs_per_thread * TEK_SCB_CHUNKS_PER_SRV;
     thrd_ctx->num_active = 0;
+    thrd_ctx->max_conns = TEK_SCB_CHUNKS_PER_SRV;
+    thrd_ctx->rate_limit_counter = thrd_ctx->num_insts * 2;
     thrd_ctx->dec_ctx.flags = 0;
     thrd_ctx->dec_ctx.decryption_key =
         (const tek_sc_aes256_key *)decryption_key;
   }
-  dlr->thrd_ctxs[desc->num_threads - 1].num_insts = desc->num_reqs_last_thread;
+  auto const last_ctx = &dlr->thrd_ctxs[desc->num_threads - 1];
+  last_ctx->num_insts = desc->num_reqs_last_thread;
+  last_ctx->rate_limit_counter = desc->num_reqs_last_thread * 2;
   *err = tsc_err_ok();
   return dlr;
 cleanup_insts:
@@ -1186,6 +1198,22 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
         return req;
       }
     }
+    if (thrd_ctx->max_conns > 1 && req_res == CURLE_HTTP_RETURNED_ERROR) {
+      long status;
+      curl_easy_getinfo(inst->curl, CURLINFO_RESPONSE_CODE, &status);
+      switch (status) {
+      case 429:
+      case 502:
+      case 503:
+      case 504:
+        if (!--thrd_ctx->rate_limit_counter) {
+          curl_multi_setopt(thrd_ctx->curlm, CURLMOPT_MAX_HOST_CONNECTIONS,
+                            --thrd_ctx->max_conns);
+          thrd_ctx->rate_limit_counter = thrd_ctx->num_insts * 2;
+        }
+        goto retry;
+      }
+    }
     if (++inst->num_retries >= TSCP_MAX_NUM_RETRIES) {
       inst->req = nullptr;
       inst->num_retries = 0;
@@ -1203,24 +1231,7 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
                                  .uri = url_buf};
       return req;
     }
-    bool switch_srv = false;
-    if (req_res == CURLE_HTTP_RETURNED_ERROR) {
-      long status;
-      curl_easy_getinfo(inst->curl, CURLINFO_RESPONSE_CODE, &status);
-      switch (status) {
-      case 429:
-      case 502:
-      case 503:
-      case 504:
-        switch_srv = true;
-      }
-    } else if (req_res == CURLE_OPERATION_TIMEDOUT) {
-      switch_srv = true;
-    }
-    if (inst->num_retries % 4 == 0) {
-      switch_srv = true;
-    }
-    if (switch_srv) {
+    if (req_res == CURLE_OPERATION_TIMEDOUT || inst->num_retries % 4 == 0) {
       auto const srv_insts =
           inst - ((inst - thrd_ctx->insts) % TEK_SCB_CHUNKS_PER_SRV);
       int srv_ind = srv_insts->srv_ind;
@@ -1236,6 +1247,7 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
         inst->srv_ind = srv_ind;
       }
     }
+  retry:
     auto const res = curl_multi_add_handle(curlm, inst->curl);
     if (res != CURLM_OK) {
       inst->req = nullptr;
