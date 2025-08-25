@@ -118,7 +118,7 @@ static bool tscp_amji_process_dir(tscp_amji_ctx *_Nonnull ctx,
               copy_args->not_same_dev = true;
             } else {
               wt_ctx->result =
-                  tsci_os_io_err_at(dir->handle, name, TEK_SC_ERRC_am_io, errc,
+                  tsci_os_io_err_at(dir->cache_handle, name, TEK_SC_ERRC_am_io, errc,
                                     TEK_SC_ERR_IO_TYPE_move);
               return false;
             }
