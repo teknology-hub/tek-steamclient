@@ -597,6 +597,10 @@ tek_sc_err tek_sc_sp_download_dm(tek_sc_sp_data_dm *data, long timeout_ms,
     data->common.data = nullptr;
     data->common.data_size = 0;
     curl_res = curl_easy_perform(curl);
+    if (curl_res == CURLE_COULDNT_RESOLVE_HOST) {
+      curl_easy_setopt(curl, CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+      curl_res = curl_easy_perform(curl);
+    }
     if (cancel_flag &&
         atomic_load_explicit(cancel_flag, memory_order_relaxed)) {
       free(data->common.data);
@@ -706,6 +710,10 @@ tek_sc_err tek_sc_sp_download_dp(tek_sc_sp_data_dp *data, long timeout_ms,
     data->common.data = nullptr;
     data->common.data_size = 0;
     curl_res = curl_easy_perform(curl);
+    if (curl_res == CURLE_COULDNT_RESOLVE_HOST) {
+      curl_easy_setopt(curl, CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+      curl_res = curl_easy_perform(curl);
+    }
     if (cancel_flag &&
         atomic_load_explicit(cancel_flag, memory_order_relaxed)) {
       free(data->common.data);
@@ -799,7 +807,11 @@ tek_sc_err tek_sc_sp_download_chunk(const tek_sc_cm_sp_srv_entry *srv,
   curl_easy_setopt(curl, CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl, CURLOPT_CURLU, curlu);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, tscp_sp_curl_write_chunk);
-  auto const curl_res = curl_easy_perform(curl);
+  auto curl_res = curl_easy_perform(curl);
+  if (curl_res == CURLE_COULDNT_RESOLVE_HOST) {
+    curl_easy_setopt(curl, CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+    curl_res = curl_easy_perform(curl);
+  }
   if (cancel_flag && atomic_load_explicit(cancel_flag, memory_order_relaxed)) {
     res = tsc_err_basic(TEK_SC_ERRC_paused);
     goto cleanup_curl;
@@ -1230,6 +1242,9 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
                                  .extra = (int)status,
                                  .uri = url_buf};
       return req;
+    }
+    if (req_res == CURLE_COULDNT_RESOLVE_HOST) {
+      curl_easy_setopt(inst->curl, CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
     }
     if (req_res == CURLE_OPERATION_TIMEDOUT || inst->num_retries % 4 == 0) {
       auto const srv_insts =
