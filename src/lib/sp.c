@@ -578,6 +578,7 @@ tek_sc_err tek_sc_sp_download_dm(tek_sc_sp_data_dm *data, long timeout_ms,
   tscp_dw_ctx_dm_dp ctx = {
       .curl = curl, .cancel_flag = cancel_flag, .data = &data->common};
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl, CURLOPT_CURLU, curlu);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, tscp_sp_curl_write_dm_dp);
   // Try downloading from provided servers
@@ -686,6 +687,7 @@ tek_sc_err tek_sc_sp_download_dp(tek_sc_sp_data_dp *data, long timeout_ms,
   tscp_dw_ctx_dm_dp ctx = {
       .curl = curl, .cancel_flag = cancel_flag, .data = &data->common};
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl, CURLOPT_CURLU, curlu);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, tscp_sp_curl_write_dm_dp);
   // Try downloading from provided servers
@@ -788,6 +790,7 @@ tek_sc_err tek_sc_sp_download_chunk(const tek_sc_cm_sp_srv_entry *srv,
   tscp_dw_ctx_chunk ctx = {
       .curl = curl, .cancel_flag = cancel_flag, .data = data};
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl, CURLOPT_CURLU, curlu);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, tscp_sp_curl_write_chunk);
   auto const curl_res = curl_easy_perform(curl);
@@ -1010,6 +1013,7 @@ tek_sc_sp_multi_dlr_create(tek_sc_sp_multi_dlr_desc *desc, uint32_t depot_id,
       curl_easy_setopt(inst->curl, CURLOPT_TIMEOUT_MS, 180000L);
       curl_easy_setopt(inst->curl, CURLOPT_CONNECTTIMEOUT_MS, 16000L);
       curl_easy_setopt(inst->curl, CURLOPT_PIPEWAIT, 1L);
+      curl_easy_setopt(inst->curl, CURLOPT_USERAGENT, TEK_SC_UA);
       curl_easy_setopt(inst->curl, CURLOPT_WRITEFUNCTION,
                        tscp_sp_curl_write_multi);
     }

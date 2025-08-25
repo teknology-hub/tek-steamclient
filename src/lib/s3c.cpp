@@ -15,6 +15,7 @@
 #include "tek-steamclient/s3c.h"
 
 #include "common/error.h"
+#include "config.h"
 #include "lib_ctx.hpp"
 #include "s3c.hpp"
 #include "tek-steamclient/base.h"
@@ -540,6 +541,7 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   const std::string_view url_view(url);
   const auto req_url = std::string(url_view).append("/manifest");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, req_url.data());
+  curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEFUNCTION,
                    tsc_curl_write_manifest);
@@ -713,6 +715,7 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
       std::locale::classic(), "{}/mrc?app_id={}&depot_id={}&manifest_id={}",
       url, data->app_id, data->depot_id, data->manifest_id);
   curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
+  curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_mrc);
   if (const auto res = curl_easy_perform(curl.get()); res != CURLE_OK) {
     const auto url_buf =

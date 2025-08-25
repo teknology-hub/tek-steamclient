@@ -74,6 +74,7 @@ configure_file(
   output: 'config.h',
   configuration: {
     'TEK_SC_VERSION': '"' + meson.project_version() + '"',
+    'TEK_SC_UA': '"tek-steamclient/' + meson.project_version() + '"',
     'TEK_SCB_SOVERSION': f'"@soversion@"',
     'TEK_SCB_ZNG': zlib_dep.name() == 'zlib-ng',
     'TEK_SCB_GETTEXT': get_option('gettext'),
