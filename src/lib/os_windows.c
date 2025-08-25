@@ -909,6 +909,12 @@ bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
   memcpy(info->FileName, name, name_size);
   status = NtSetInformationFile(handle, &isb, info, info_size,
                                 FileRenameInformationEx);
+  if (status == STATUS_INVALID_PARAMETER) {
+    info->Flags = 0;
+    info->ReplaceIfExists = TRUE;
+    status = NtSetInformationFile(handle, &isb, info, info_size,
+                                  FileRenameInformation);
+  }
   free(info);
   NtClose(handle);
   if (NT_SUCCESS(status)) {

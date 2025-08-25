@@ -19,7 +19,12 @@
 
 #include "base.h" // IWYU pragma: keep
 
+#ifdef TEK_SC_IMPL
 // Include windows.h with API set reduced as much as possible
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
+#endif
+#define _WIN32_WINNT 0xA000
 #define WIN32_LEAN_AND_MEAN
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES
@@ -52,6 +57,7 @@
 #define NOPROFILER
 #define NODEFERWINDOWPOS
 #define NOMCX
+#endif // def TEK_SC_IMPL
 #include <windows.h>
 
 /// OS type for pathname characters.
