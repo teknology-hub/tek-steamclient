@@ -907,9 +907,15 @@ bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
   info->RootDirectory = tgt_dir_handle;
   info->FileNameLength = name_size;
   memcpy(info->FileName, name, name_size);
-  status = NtSetInformationFile(handle, &isb, info, info_size,
-                                FileRenameInformationEx);
-  if (status == STATUS_INVALID_PARAMETER) {
+  static bool fallback = false;
+  if (!fallback) {
+    status = NtSetInformationFile(handle, &isb, info, info_size,
+                                  FileRenameInformationEx);
+    if (status == STATUS_INVALID_PARAMETER) {
+      fallback = true;
+    }
+  }
+  if (fallback) {
     info->Flags = 0;
     info->ReplaceIfExists = TRUE;
     status = NtSetInformationFile(handle, &isb, info, info_size,
