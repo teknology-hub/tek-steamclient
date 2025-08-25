@@ -170,7 +170,7 @@ struct tek_sc_lib_ctx {
   /// CM client instances assinged to the context.
   std::forward_list<tek_sc_cm_client *> cm_clients;
   /// Mutex locking concurrent access to @ref cm_clients.
-  std::recursive_mutex cm_clients_mtx;
+  std::mutex cm_clients_mtx;
   /// Cached list of Steam CM servers.
   std::vector<tek::steamclient::cm_server> cm_servers;
   /// Mutex locking concurrent access to @ref cm_servers.
