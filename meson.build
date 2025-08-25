@@ -16,6 +16,7 @@ endif
 if get_option('cli_dump') and not get_option('app_manager') 
   error('"cli_dump" option requires "app_manager" to be enabled as well')
 endif
+add_project_arguments('-DTEK_SC_IMPL', language: ['c', 'cpp'])
 is_windows = host_machine.system() == 'windows'
 if is_windows
   add_project_arguments('-DUNICODE', '-D_UNICODE', language: ['c', 'cpp'])

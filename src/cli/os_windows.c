@@ -278,7 +278,11 @@ free_path:
   CoTaskMemFree(path);
 skip_loc:
 #endif // TEK_SCB_GETTEXT
-  _beginthreadex(nullptr, 0, tscl_wnd_thrd_proc, nullptr, 0, nullptr);
+  auto const thread =
+      _beginthreadex(nullptr, 0, tscl_wnd_thrd_proc, nullptr, 0, nullptr);
+  if (thread) {
+    CloseHandle((HANDLE)thread);
+  }
 }
 
 void tscl_os_close_handle(tek_sc_os_handle handle) { NtClose(handle); }
