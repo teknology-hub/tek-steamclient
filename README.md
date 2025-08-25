@@ -11,7 +11,7 @@ This repository also provides tek-sc-cli, simple command-line interface on top o
 - Does *not* require Steam application to be installed, and in fact offers alternative to some of its functionality
 - Can utilize [tek-s3](https://github.com/teknology-hub/tek-s3) servers to work with applications owned by other people, without logging into their accounts locally
 - Is fully 64-bit, and efficiently utilizes modern OS features to achieve best I/O performance
-- Uses homemade update algorithms that allow utilizing much less disk space for pathcing than Steam app does
+- Uses homemade update algorithms that allow utilizing much less disk space for patching than Steam app does
 
 ## Installing
 
@@ -21,9 +21,9 @@ There are statically linked binaries for libtek-steamclient-1.dll and tek-sc-cli
 
 ### Linux
 
-There are 2 Linux AppImage builds of tek-sc-cli in [releases](https://github.com/teknology-hub/tek-steamclient/releases), which are built in a CachyOS container and signed by Nuclearist's [GPG key](https://teknology-hub.com/public-keys/nuclearist.asc). The .full.AppImage also includes libstdc++.so and libc.so, so it can run on systems that have too old versions of those, or don't use libstdc++. Both AppImages can be run with `TEK_SC_USE_SYSTEM_LIBS=1` environment variable to prefer system libraries over bundled ones.
+There is `tek-sc-cli-x86_64.AppImage` in [releases](https://github.com/teknology-hub/tek-steamclient/releases), which is built in a Fedora 42 container and signed by Nuclearist's [GPG key](https://teknology-hub.com/public-keys/nuclearist.asc). It can be run with `TEK_SC_USE_SYSTEM_LIBS=1` environment variable to prefer system libraries over bundled ones.
 
-To use the library, you have to install a package for your distro listed below, or [build from source](https://github.com/teknology-hub/tek-steamclient/blob/main/BUILD.md) if it's not.
+To use the library, you have to install a package for your distro listed below, or [build from source](https://github.com/teknology-hub/tek-steamclient/blob/main/BUILD.md) if it's not there.
 
 |Distro|Package|
 |-|-|
