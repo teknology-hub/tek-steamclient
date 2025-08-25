@@ -16,6 +16,7 @@
 #include "cm.hpp"
 
 #include "common/error.h"
+#include "config.h"
 #include "lib_ctx.hpp"
 #include "os.h"
 #include "tek-steamclient/base.h"
@@ -148,6 +149,7 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
   constexpr char url[] = "https://api.steampowered.com/ISteamDirectory/"
                          "GetCMListForConnect/v1?cmtype=websockets";
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, url);
+  curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write);
   if (const auto curl_res = curl_easy_perform(curl_ctx.curl.get());

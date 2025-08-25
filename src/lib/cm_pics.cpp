@@ -16,6 +16,7 @@
 #include "cm.hpp"
 
 #include "common/error.h"
+#include "config.h"
 #include "tek-steamclient/base.h"
 #include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
@@ -460,6 +461,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       curl_easy_setopt(ctx.curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 16000L);
       curl_easy_setopt(ctx.curl.get(), CURLOPT_PIPEWAIT, 1L);
       curl_easy_setopt(ctx.curl.get(), CURLOPT_WRITEDATA, &ctx);
+      curl_easy_setopt(ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
       curl_easy_setopt(ctx.curl.get(), CURLOPT_PRIVATE, &ctx);
       curl_easy_setopt(ctx.curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write);
     }
