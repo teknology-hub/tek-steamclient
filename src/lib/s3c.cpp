@@ -553,8 +553,12 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
                                    : static_cast<curl_off_t>(srv->timestamp);
   lib_ctx->s3_mtx.unlock_shared();
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEVALUE_LARGE, timestamp);
-  if (const auto res = curl_easy_perform(curl_ctx.curl.get());
-      res != CURLE_OK) {
+  auto res = curl_easy_perform(curl_ctx.curl.get());
+  if (res == CURLE_COULDNT_RESOLVE_HOST) {
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+    res = curl_easy_perform(curl_ctx.curl.get());
+  }
+  if (res != CURLE_OK) {
     const auto url_buf =
         reinterpret_cast<char *>(std::malloc(req_url.length() + 1));
     if (url_buf) {
@@ -717,7 +721,12 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
   curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_mrc);
-  if (const auto res = curl_easy_perform(curl.get()); res != CURLE_OK) {
+  auto res = curl_easy_perform(curl.get());
+  if (res == CURLE_COULDNT_RESOLVE_HOST) {
+    curl_easy_setopt(curl.get(), CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+    res = curl_easy_perform(curl.get());
+  }
+  if (res != CURLE_OK) {
     const auto url_buf =
         reinterpret_cast<char *>(std::malloc(req_url.length() + 1));
     if (url_buf) {
