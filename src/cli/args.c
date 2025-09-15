@@ -133,6 +133,7 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         name = "s3c signin";
         break;
       default:
+        name = nullptr;
         break;
       }
       fprintf(
