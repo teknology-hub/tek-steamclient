@@ -712,8 +712,6 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
         }
         decrypted_size += last_block_len;
         path.resize(decrypted_size - 1);
-        // Warning: I don't know if link target paths actually are encrypted
-        //    as well, so assuming that they are
         if (file.flags() & ManifestFileFlag::MANIFEST_FILE_FLAG_SYMLINK) {
           auto &link_target = *file.mutable_link_target();
           const auto udata =
