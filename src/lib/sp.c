@@ -1077,7 +1077,7 @@ tek_sc_sp_multi_dlr_create(tek_sc_sp_multi_dlr_desc *desc, uint32_t depot_id,
       goto cleanup_insts;
     }
     curl_multi_setopt(thrd_ctx->curlm, CURLMOPT_MAX_HOST_CONNECTIONS,
-                      TEK_SCB_CHUNKS_PER_SRV);
+                      (long)TEK_SCB_CHUNKS_PER_SRV);
     thrd_ctx->insts = &insts[i * srvs_per_thread * TEK_SCB_CHUNKS_PER_SRV];
     thrd_ctx->num_insts = srvs_per_thread * TEK_SCB_CHUNKS_PER_SRV;
     thrd_ctx->num_active = 0;
@@ -1220,7 +1220,7 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
       case 504:
         if (!--thrd_ctx->rate_limit_counter) {
           curl_multi_setopt(thrd_ctx->curlm, CURLMOPT_MAX_HOST_CONNECTIONS,
-                            --thrd_ctx->max_conns);
+                            (long)--thrd_ctx->max_conns);
           thrd_ctx->rate_limit_counter = thrd_ctx->num_insts * 2;
         }
         goto retry;
