@@ -220,6 +220,7 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
     if (uncomp_size == ZSTD_CONTENTSIZE_UNKNOWN ||
         uncomp_size == ZSTD_CONTENTSIZE_ERROR) {
       tsci_os_mem_free(file_buf, file_size);
+      tsci_os_file_delete_at(dir_handle, file_name);
       return tsc_err_sub(TEK_SC_ERRC_manifest_deserialize, TEK_SC_ERRC_zstd);
     }
     auto const uncomp_buf = tsci_os_mem_alloc(uncomp_size);
@@ -233,10 +234,14 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
     tsci_os_mem_free(file_buf, file_size);
     if (decomp_res != uncomp_size) {
       tsci_os_mem_free(uncomp_buf, uncomp_size);
+      tsci_os_file_delete_at(dir_handle, file_name);
       return tsc_err_sub(TEK_SC_ERRC_manifest_deserialize, TEK_SC_ERRC_zstd);
     }
     auto const res = tek_sc_dm_deserialize(uncomp_buf, uncomp_size, manifest);
     tsci_os_mem_free(uncomp_buf, uncomp_size);
+    if (!tek_sc_err_success(&res)) {
+      tsci_os_file_delete_at(dir_handle, file_name);
+    }
     return res;
   } // if (file_handle != TSCI_OS_INVALID_HANDLE)
   auto const errc = tsci_os_get_last_error();
@@ -426,6 +431,9 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
         tek_sc_dp_deserialize(file_buf, file_size, &ctx->source_manifest,
                               &ctx->target_manifest, &ctx->patch);
     tsci_os_mem_free(file_buf, file_size);
+    if (!tek_sc_err_success(&res)) {
+      tsci_os_file_delete_at(ctx->dir_handle, file_name);
+    }
     return res;
   } // if (file_handle != TSCI_OS_INVALID_HANDLE)
   auto const errc = tsci_os_get_last_error();
