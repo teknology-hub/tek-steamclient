@@ -73,6 +73,8 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
   case TEK_SC_ERRC_am_uninst_unknown:
     return tsc_gettext(
         "Attempting to uninstall an item with unknown current manifest ID");
+  case TEK_SC_ERRC_am_ws_dir:
+    return tsc_gettext("Failed to set Steam Workshop item directory");
   case TEK_SC_ERRC_am_wt:
     return tsc_gettext("Worker thread error");
   case TEK_SC_ERRC_cm_access_token:
