@@ -1012,7 +1012,7 @@ tek_sc_sp_multi_dlr_create(tek_sc_sp_multi_dlr_desc *desc, uint32_t depot_id,
   for (int i = 0, srv_ind = 0; i < num_insts; ++i) {
     auto const inst = &insts[i];
     if (i) {
-      if (srv_ind % TEK_SCB_CHUNKS_PER_SRV == 0) {
+      if (i % TEK_SCB_CHUNKS_PER_SRV == 0) {
         ++srv_ind;
       }
       inst->curl = curl_easy_duphandle(insts[i - 1].curl);
