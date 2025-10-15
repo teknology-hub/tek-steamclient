@@ -21,6 +21,8 @@
 #include "tek-steamclient/cm.h"
 #include "tek/steamclient/cm/msg_payloads/os_type.pb.h"
 
+#include "os.h" // IWYU pragma: keep
+
 #include <atomic>
 #include <cstdint>
 #ifdef TEK_SCB_S3C
