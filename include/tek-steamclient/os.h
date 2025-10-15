@@ -25,6 +25,7 @@
 #undef _WIN32_WINNT
 #endif
 #define _WIN32_WINNT 0xA000
+#include <sdkddkver.h>
 #define WIN32_LEAN_AND_MEAN
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES
