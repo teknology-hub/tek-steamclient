@@ -189,8 +189,8 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
                      TEK_SC_OS_STR("%" PRIx32 "-%" PRIx32 "_%" PRIx64 ".zst"),
                      item_id->app_id, item_id->depot_id, manifest_id);
   }
-  auto file_handle =
-      tsci_os_file_open_at(dir_handle, file_name, TSCI_OS_FILE_ACCESS_read);
+  auto file_handle = tsci_os_file_open_at(
+      dir_handle, file_name, TSCI_OS_FILE_ACCESS_read, TSCI_OS_FILE_OPT_sync);
   if (file_handle != TSCI_OS_INVALID_HANDLE) {
     // Load existing file
     auto const file_size = tsci_os_file_get_size(file_handle);
@@ -373,7 +373,8 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   }
   // Write compressed data to file
   file_handle =
-      tsci_os_file_create_at(dir_handle, file_name, TSCI_OS_FILE_ACCESS_write);
+      tsci_os_file_create_at(dir_handle, file_name, TSCI_OS_FILE_ACCESS_write,
+                             TSCI_OS_FILE_OPT_sync | TSCI_OS_FILE_OPT_trunc);
   if (file_handle != TSCI_OS_INVALID_HANDLE) {
     if (!tsci_os_file_write(file_handle, comp_buf, comp_size)) {
       tsci_os_file_delete_at(dir_handle, file_name);
@@ -400,8 +401,9 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
                                      tsci_am_item_desc *_Nonnull desc,
                                      tsci_am_job_ctx *_Nonnull ctx) {
   static const tek_sc_os_char file_name[] = TEK_SC_OS_STR("patch");
-  auto file_handle = tsci_os_file_open_at(ctx->dir_handle, file_name,
-                                          TSCI_OS_FILE_ACCESS_read);
+  auto file_handle =
+      tsci_os_file_open_at(ctx->dir_handle, file_name, TSCI_OS_FILE_ACCESS_read,
+                           TSCI_OS_FILE_OPT_sync);
   if (file_handle != TSCI_OS_INVALID_HANDLE) {
     // Load existing file
     auto const file_size = tsci_os_file_get_size(file_handle);
@@ -512,8 +514,9 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
     return res;
   }
   // Serialize patch data to file
-  file_handle = tsci_os_file_create_at(ctx->dir_handle, file_name,
-                                       TSCI_OS_FILE_ACCESS_write);
+  file_handle = tsci_os_file_create_at(
+      ctx->dir_handle, file_name, TSCI_OS_FILE_ACCESS_write,
+      TSCI_OS_FILE_OPT_sync | TSCI_OS_FILE_OPT_trunc);
   if (file_handle != TSCI_OS_INVALID_HANDLE) {
     const int ser_size = tek_sc_dp_serialize(&ctx->patch, nullptr, 0);
     auto const ser_buf = tsci_os_mem_alloc(ser_size);
@@ -779,8 +782,9 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
   }
   static const tek_sc_os_char delta_file_name[] = TEK_SC_OS_STR("delta");
   // Load or create delta
-  auto delta_file_handle = tsci_os_file_open_at(ctx.dir_handle, delta_file_name,
-                                                TSCI_OS_FILE_ACCESS_read);
+  auto delta_file_handle =
+      tsci_os_file_open_at(ctx.dir_handle, delta_file_name,
+                           TSCI_OS_FILE_ACCESS_read, TSCI_OS_FILE_OPT_sync);
   if (delta_file_handle == TSCI_OS_INVALID_HANDLE) {
     auto const errc = tsci_os_get_last_error();
     if (errc != TSCI_OS_ERR_FILE_NOT_FOUND) {
@@ -901,8 +905,9 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
   }
 save_delta:
   if (!tek_sc_err_success(&res)) {
-    delta_file_handle = tsci_os_file_create_at(ctx.dir_handle, delta_file_name,
-                                               TSCI_OS_FILE_ACCESS_write);
+    delta_file_handle = tsci_os_file_create_at(
+        ctx.dir_handle, delta_file_name, TSCI_OS_FILE_ACCESS_write,
+        TSCI_OS_FILE_OPT_sync | TSCI_OS_FILE_OPT_trunc);
     if (delta_file_handle == TSCI_OS_INVALID_HANDLE) {
       if (res.primary == TEK_SC_ERRC_paused) {
         res = tsci_os_io_err_at(ctx.dir_handle, delta_file_name,

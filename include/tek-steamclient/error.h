@@ -270,7 +270,11 @@ enum tek_sc_err_io_type {
   /// Creating a symbolic link.
   TEK_SC_ERR_IO_TYPE_symlink,
   /// Registering a file for asynchronous I/O.
-  TEK_SC_ERR_IO_TYPE_aio_reg
+  TEK_SC_ERR_IO_TYPE_aio_reg,
+  /// Submitting an asynchronous I/O request.
+  TEK_SC_ERR_IO_TYPE_aio_submit,
+  /// Waiting for asynchronous I/O completions.
+  TEK_SC_ERR_IO_TYPE_aio_wait
 };
 /// @copydoc tek_sc_err_io_type
 typedef enum tek_sc_err_io_type tek_sc_err_io_type;

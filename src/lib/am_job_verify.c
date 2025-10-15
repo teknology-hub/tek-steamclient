@@ -31,7 +31,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/// @def TSCP_NUM_REQS_PER_THREAD
+/// The number of chunk read requests that each worker thread will process
+///    concurrently.
+#define TSCP_NUM_REQS_PER_THREAD 4
+
 //===-- Private types -----------------------------------------------------===//
+
+/// Chunk verification request descriptor.
+typedef struct tscp_amjv_req tscp_amjv_req;
+/// @copydoc tscp_amjv_req
+struct tscp_amjv_req {
+  /// Asynchronous I/O request descriptor.
+  tsci_os_aio_req aio_req;
+  /// Pointer to the next request descriptor available for submission.
+  tscp_amjv_req *_Nullable next;
+  /// Pointer to the associated manifest chunk entry.
+  const tek_sc_dm_chunk *_Nonnull chunk;
+  /// Pointer to the buffer segment to read chunk into.
+  void *_Nonnull buffer;
+  /// Offset to request for next read operation.
+  int64_t offset;
+};
 
 /// Shared verification context.
 typedef struct tscp_amjv_ctx tscp_amjv_ctx;
@@ -42,12 +63,16 @@ typedef struct tscp_amjv_wt_ctx tscp_amjv_wt_ctx;
 struct tscp_amjv_wt_ctx {
   /// Pointer to the verification context.
   tscp_amjv_ctx *_Nonnull ctx;
-  /// Pointer to the buffer segment to read chunks into.
-  void *_Nonnull buffer;
   /// Pointer to the OpenSSL EVP message digest context.
   EVP_MD_CTX *_Nonnull md_ctx;
+  /// Number of currently submitted chunk verification requests.
+  int num_submitted_reqs;
+  /// Pointer to the next chunk verification request available for submission.
+  tscp_amjv_req *_Nullable next_req;
   /// The result of running the thread. Receives an error if one occurs.
   tek_sc_err result;
+  /// Chunk verification requests.
+  tscp_amjv_req reqs[TSCP_NUM_REQS_PER_THREAD];
   /// Asynchronous I/O context.
   tsci_os_aio_ctx aio_ctx;
 };
@@ -62,8 +87,10 @@ struct tscp_amjv_ctx {
   void *_Nonnull buffer;
   /// Pointer to the worker thread context array.
   tscp_amjv_wt_ctx *_Nonnull wt_ctxs;
-  /// Pointer to the worker thread array.
-  pthread_t *_Nonnull threads;
+  /// Current verification progress value.
+  _Atomic(int64_t) progress;
+  /// Number of currently running worker threads.
+  _Atomic(uint32_t) num_wts_active;
   /// Verification cache instance.
   tek_sc_verification_cache vcache;
 };
@@ -138,6 +165,84 @@ tscp_amjv_finish_file(const tek_sc_vc_file *_Nonnull vc_file,
   return false;
 }
 
+/// Process chunk read completion.
+///
+/// @param [in, out] ctx
+///    Pointer to the verification context.
+/// @param [in, out] wt_ctx
+///    Pointer to the worker thread context.
+/// @param [in, out] req
+///    Pointer to the chunk verification request to process.
+/// @return Value indicating whether the operation was successful.
+static bool tscp_amjv_process_req(tscp_amjv_ctx *_Nonnull ctx,
+                                  tscp_amjv_wt_ctx *_Nonnull wt_ctx,
+                                  tscp_amjv_req *_Nonnull req) {
+  auto const chunk = req->chunk;
+  if (req->aio_req.result) {
+    wt_ctx->result =
+        tsci_os_io_err(req->aio_req.handle, TEK_SC_ERRC_am_io,
+                       req->aio_req.result, TEK_SC_ERR_IO_TYPE_read);
+    return false;
+  }
+  // If read is incomplete, submit the request again
+  if (req->offset + req->aio_req.bytes_transferred < chunk->size) {
+    req->offset += req->aio_req.bytes_transferred;
+    auto const errc = tsci_os_aio_submit_read(
+        &wt_ctx->aio_ctx, &req->aio_req, req->buffer + req->offset,
+        chunk->size - req->offset, chunk->offset + req->offset, false);
+    if (errc) {
+      wt_ctx->result = tsci_os_io_err(req->aio_req.handle, TEK_SC_ERRC_am_io,
+                                      errc, TEK_SC_ERR_IO_TYPE_aio_submit);
+      return false;
+    }
+    ++wt_ctx->num_submitted_reqs;
+    return true;
+  }
+  // Verify chunk's SHA-1 hash
+  auto const md_ctx = wt_ctx->md_ctx;
+  if (!EVP_DigestInit_ex2(md_ctx, ctx->sha1, nullptr)) {
+    wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
+    return false;
+  }
+  if (!EVP_DigestUpdate(md_ctx, req->buffer, chunk->size)) {
+    wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
+    return false;
+  }
+  tek_sc_sha1_hash hash;
+  if (!EVP_DigestFinal_ex(md_ctx, hash.bytes, nullptr)) {
+    wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
+    return false;
+  }
+  // Update verification cache entries
+  auto const man = ctx->vcache.manifest;
+  auto const vc_chunk = &ctx->vcache.chunks[chunk - man->chunks];
+  atomic_store_explicit(&vc_chunk->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
+                        memory_order_relaxed);
+  vc_chunk->match =
+      hash.high32 == chunk->sha.high32 && hash.low128 == chunk->sha.low128;
+  auto const file = chunk->parent;
+  auto const vc_file = &ctx->vcache.files[file - man->files];
+  if (!vc_chunk->match) {
+    atomic_fetch_add_explicit(&vc_file->num_dirty_chunks_a, 1,
+                              memory_order_relaxed);
+  }
+  if (atomic_fetch_sub_explicit(&vc_file->num_rem_chunks_a, 1,
+                                memory_order_acq_rel) == 1) {
+    atomic_store_explicit(&vc_file->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
+                          memory_order_relaxed);
+    tsci_os_close_handle(vc_file->handle);
+    vc_file->handle = TSCI_OS_INVALID_HANDLE;
+    auto const dir = file->parent;
+    tscp_amjv_finish_file(vc_file, dir, &ctx->vcache.dirs[dir - man->dirs],
+                          &ctx->vcache);
+  }
+  // Report progress
+  atomic_fetch_add_explicit(&ctx->progress, chunk->size, memory_order_relaxed);
+  req->next = wt_ctx->next_req;
+  wt_ctx->next_req = req;
+  return true;
+}
+
 /// Get total size of all files in a directory tree.
 ///
 /// @param [in] dir
@@ -178,12 +283,7 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
       dir->files ? &ctx->vcache.files[dir->files - man->files] : nullptr;
   auto const vc_subdirs =
       dir->subdirs ? &ctx->vcache.dirs[dir->subdirs - man->dirs] : nullptr;
-  auto const desc = &ctx->desc->desc;
-  auto const state = &desc->job.state;
-  auto const progress_current = &desc->job.progress_current_a;
-  auto const upd_handler = ctx->desc->job_upd_handler;
-  auto const sha1 = wt_ctx->ctx->sha1;
-  auto const md_ctx = wt_ctx->md_ctx;
+  auto const state = &ctx->desc->desc.job.state;
   // Iterate files
   for (int i = 0; i < dir->num_files; ++i) {
     auto const file = &dir->files[i];
@@ -242,8 +342,9 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
         }
         continue;
       } // if (!file->num_chunks)
-      auto const handle = tsci_os_file_open_at(vc_dir->handle, file->name,
-                                               TSCI_OS_FILE_ACCESS_read);
+      auto const handle =
+          tsci_os_file_open_at(vc_dir->handle, file->name,
+                               TSCI_OS_FILE_ACCESS_read, TSCI_OS_FILE_OPT_none);
       if (handle == TSCI_OS_INVALID_HANDLE) {
         auto const errc = tsci_os_get_last_error();
         if (errc != TSCI_OS_ERR_FILE_NOT_FOUND) {
@@ -266,14 +367,9 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
         atomic_store_explicit(&vc_file->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
                               memory_order_relaxed);
         tsci_os_futex_wake((_Atomic(uint32_t) *)&vc_file->status_a);
-        const bool last_ref =
-            tscp_amjv_finish_file(vc_file, dir, vc_dir, &ctx->vcache);
-        atomic_fetch_add_explicit(progress_current, file->size,
+        atomic_fetch_add_explicit(&ctx->progress, file->size,
                                   memory_order_relaxed);
-        if (upd_handler) {
-          upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-        }
-        if (last_ref) {
+        if (tscp_amjv_finish_file(vc_file, dir, vc_dir, &ctx->vcache)) {
           return true;
         }
         continue;
@@ -335,20 +431,13 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
                                       : TEK_SC_JOB_ENTRY_STATUS_done,
                             memory_order_release);
       tsci_os_futex_wake((_Atomic(uint32_t) *)&vc_file->status_a);
-      bool last_ref;
-      if (!ref_count) {
-        last_ref = tscp_amjv_finish_file(vc_file, dir, vc_dir, &ctx->vcache);
-      }
       if (progress) {
         // Report progress gained by marking past-EOF chunks
-        atomic_fetch_add_explicit(progress_current, progress,
+        atomic_fetch_add_explicit(&ctx->progress, progress,
                                   memory_order_relaxed);
-        if (upd_handler) {
-          upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-        }
       }
       if (!ref_count) {
-        if (last_ref) {
+        if (tscp_amjv_finish_file(vc_file, dir, vc_dir, &ctx->vcache)) {
           return true;
         }
         continue;
@@ -404,8 +493,26 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
         wt_ctx->result = tsc_err_basic(TEK_SC_ERRC_paused);
         return false;
       }
-      // Register the file for AIO if necessary
       if (!registered) {
+        // Register the file, but flush all running requests first
+        while (wt_ctx->num_submitted_reqs) {
+          tscp_amjv_req *reqs[TSCP_NUM_REQS_PER_THREAD];
+          const int num_reqs = tsci_os_aio_get_compls(
+              &wt_ctx->aio_ctx, (tsci_os_aio_req **)reqs,
+              TSCP_NUM_REQS_PER_THREAD, wt_ctx->num_submitted_reqs);
+          if (num_reqs < 0) {
+            wt_ctx->result =
+                tsci_err_os(TEK_SC_ERRC_am_io, tsci_os_get_last_error());
+            wt_ctx->result.extra = TEK_SC_ERR_IO_TYPE_aio_wait;
+            return false;
+          }
+          wt_ctx->num_submitted_reqs -= num_reqs;
+          for (int k = 0; k < num_reqs; ++k) {
+            if (!tscp_amjv_process_req(ctx, wt_ctx, reqs[k])) {
+              return false;
+            }
+          }
+        }
         auto const errc =
             tsci_os_aio_register_file(&wt_ctx->aio_ctx, vc_file->handle);
         if (errc) {
@@ -415,63 +522,40 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
         }
         registered = true;
       }
+      // If all request descriptors are busy, wait for at least one to complete
+      while (wt_ctx->num_submitted_reqs == TSCP_NUM_REQS_PER_THREAD) {
+        tscp_amjv_req *reqs[TSCP_NUM_REQS_PER_THREAD];
+        const int num_reqs =
+            tsci_os_aio_get_compls(&wt_ctx->aio_ctx, (tsci_os_aio_req **)reqs,
+                                   TSCP_NUM_REQS_PER_THREAD, 1);
+        if (num_reqs < 0) {
+          wt_ctx->result =
+              tsci_err_os(TEK_SC_ERRC_am_io, tsci_os_get_last_error());
+          wt_ctx->result.extra = TEK_SC_ERR_IO_TYPE_aio_wait;
+          return false;
+        }
+        wt_ctx->num_submitted_reqs -= num_reqs;
+        for (int k = 0; k < num_reqs; ++k) {
+          if (!tscp_amjv_process_req(ctx, wt_ctx, reqs[k])) {
+            return false;
+          }
+        }
+      }
+      // Pick a free request descriptor and submit read operation for the chunk
+      auto const req = wt_ctx->next_req;
+      wt_ctx->next_req = req->next;
       auto const chunk = &file->chunks[j];
-      // Read the chunk
-      auto const errc = tsci_os_aio_read(&wt_ctx->aio_ctx, wt_ctx->buffer,
-                                         chunk->size, chunk->offset);
+      req->chunk = chunk;
+      req->offset = 0;
+      auto const errc =
+          tsci_os_aio_submit_read(&wt_ctx->aio_ctx, &req->aio_req, req->buffer,
+                                  chunk->size, chunk->offset, false);
       if (errc) {
-        wt_ctx->result = tsci_os_io_err(vc_file->handle, TEK_SC_ERRC_am_io,
-                                        errc, TEK_SC_ERR_IO_TYPE_read);
+        wt_ctx->result = tsci_os_io_err(req->aio_req.handle, TEK_SC_ERRC_am_io,
+                                        errc, TEK_SC_ERR_IO_TYPE_aio_submit);
         return false;
       }
-      // Verify chunk's SHA-1 hash
-      if (!EVP_DigestInit_ex2(md_ctx, sha1, nullptr)) {
-        wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
-        return false;
-      }
-      if (!EVP_DigestUpdate(md_ctx, wt_ctx->buffer, chunk->size)) {
-        wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
-        return false;
-      }
-      tek_sc_sha1_hash hash;
-      if (!EVP_DigestFinal_ex(md_ctx, hash.bytes, nullptr)) {
-        wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
-        return false;
-      }
-      // Update verification cache entries
-      atomic_store_explicit(&vc_chunk->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
-                            memory_order_relaxed);
-      vc_chunk->match =
-          hash.high32 == chunk->sha.high32 && hash.low128 == chunk->sha.low128;
-      if (!vc_chunk->match) {
-        atomic_fetch_add_explicit(&vc_file->num_dirty_chunks_a, 1,
-                                  memory_order_relaxed);
-      }
-      enum { NEXT_CHUNK, NEXT_FILE, NEXT_DIR } proceed_type;
-      if (atomic_fetch_sub_explicit(&vc_file->num_rem_chunks_a, 1,
-                                    memory_order_acq_rel) == 1) {
-        atomic_store_explicit(&vc_file->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
-                              memory_order_relaxed);
-        tsci_os_close_handle(vc_file->handle);
-        vc_file->handle = TSCI_OS_INVALID_HANDLE;
-        proceed_type = tscp_amjv_finish_file(vc_file, dir, vc_dir, &ctx->vcache)
-                           ? NEXT_DIR
-                           : NEXT_FILE;
-      } else {
-        proceed_type = NEXT_CHUNK;
-      }
-      // Report progress
-      atomic_fetch_add_explicit(progress_current, chunk->size,
-                                memory_order_relaxed);
-      if (upd_handler) {
-        upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-      }
-      if (proceed_type == NEXT_FILE) {
-        break;
-      }
-      if (proceed_type == NEXT_DIR) {
-        return true;
-      }
+      ++wt_ctx->num_submitted_reqs;
     } // for (int j = 0; j < file->num_chunks; ++j)
   } // for (int i = 0; i < dir->num_files; ++i)
   // Iterate subdirectories
@@ -541,19 +625,12 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
         tsci_os_futex_wake((_Atomic(uint32_t) *)&vc_subdir->status_a);
         atomic_fetch_add_explicit(&vc_dir->num_dirty_subdirs_a, 1,
                                   memory_order_relaxed);
-        bool last_ref = false;
+        atomic_fetch_add_explicit(&ctx->progress,
+                                  tscp_amjv_get_dir_size(subdir),
+                                  memory_order_relaxed);
         if (atomic_fetch_sub_explicit(&vc_dir->num_rem_children_a, 1,
                                       memory_order_acq_rel) == 1) {
           tscp_amjv_finish_dir(dir, vc_dir, &ctx->vcache);
-          last_ref = true;
-        }
-        atomic_fetch_add_explicit(progress_current,
-                                  tscp_amjv_get_dir_size(subdir),
-                                  memory_order_relaxed);
-        if (upd_handler) {
-          upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-        }
-        if (last_ref) {
           return true;
         }
         continue;
@@ -621,28 +698,28 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
     *_Nullable tscp_amjv_wt_proc(void *_Nonnull arg) {
   tscp_amjv_wt_ctx *const wt_ctx = arg;
   auto const ctx = wt_ctx->ctx;
-  const int ind = wt_ctx - ctx->wt_ctxs;
   tek_sc_os_char name[16];
   TSCI_OS_SNPRINTF(name, sizeof name / sizeof *name,
-                   TEK_SC_OS_STR("tsc worker #%u"), ind);
+                   TEK_SC_OS_STR("tsc worker #%u"),
+                   (unsigned)(wt_ctx - ctx->wt_ctxs));
   tsci_os_set_thread_name(name);
   auto const state = &ctx->desc->desc.job.state;
-  wt_ctx->buffer = ctx->buffer + 0x100000 * ind;
   wt_ctx->md_ctx = EVP_MD_CTX_new();
   if (!wt_ctx->md_ctx) {
     atomic_store_explicit(state, TEK_SC_AM_JOB_STATE_pause_pending,
                           memory_order_relaxed);
     wt_ctx->result = tsc_err_sub(TEK_SC_ERRC_am_wt, TEK_SC_ERRC_sha);
-    return nullptr;
+    goto exit;
   }
-  auto const errc =
-      tsci_os_aio_ctx_init(&wt_ctx->aio_ctx, wt_ctx->buffer, 0x100000);
+  auto const errc = tsci_os_aio_ctx_init(
+      &wt_ctx->aio_ctx, TSCP_NUM_REQS_PER_THREAD, wt_ctx->reqs[0].buffer,
+      0x100000 * TSCP_NUM_REQS_PER_THREAD);
   if (errc) {
-    EVP_MD_CTX_free(wt_ctx->md_ctx);
     atomic_store_explicit(state, TEK_SC_AM_JOB_STATE_pause_pending,
                           memory_order_relaxed);
+    EVP_MD_CTX_free(wt_ctx->md_ctx);
     wt_ctx->result = tsci_err_os(TEK_SC_ERRC_aio_init, errc);
-    return nullptr;
+    goto exit;
   }
   wt_ctx->result = tsc_err_ok();
   if (!tscp_amjv_process_dir(ctx, wt_ctx, ctx->vcache.manifest->dirs,
@@ -650,8 +727,31 @@ static bool tscp_amjv_process_dir(tscp_amjv_ctx *_Nonnull ctx,
     atomic_store_explicit(state, TEK_SC_AM_JOB_STATE_pause_pending,
                           memory_order_relaxed);
   }
+  while (wt_ctx->num_submitted_reqs) {
+    tscp_amjv_req *reqs[TSCP_NUM_REQS_PER_THREAD];
+    const int num_reqs = tsci_os_aio_get_compls(
+        &wt_ctx->aio_ctx, (tsci_os_aio_req **)reqs, TSCP_NUM_REQS_PER_THREAD,
+        wt_ctx->num_submitted_reqs);
+    if (num_reqs < 0) {
+      if (tek_sc_err_success(&wt_ctx->result)) {
+        wt_ctx->result =
+            tsci_err_os(TEK_SC_ERRC_am_io, tsci_os_get_last_error());
+        wt_ctx->result.extra = TEK_SC_ERR_IO_TYPE_aio_wait;
+      }
+      break;
+    }
+    wt_ctx->num_submitted_reqs -= num_reqs;
+    for (int i = 0; i < num_reqs; ++i) {
+      tscp_amjv_process_req(ctx, wt_ctx, reqs[i]);
+    }
+  }
   tsci_os_aio_ctx_destroy(&wt_ctx->aio_ctx);
   EVP_MD_CTX_free(wt_ctx->md_ctx);
+exit:
+  if (atomic_fetch_sub_explicit(&ctx->num_wts_active, 1,
+                                memory_order_relaxed) == 1) {
+    tsci_os_futex_wake(&ctx->num_wts_active);
+  }
   return nullptr;
 }
 
@@ -709,8 +809,9 @@ tek_sc_err tsci_am_job_verify(tek_sc_am *am, tsci_am_item_desc *desc,
   vctx.desc = desc;
   // Load or create verification cache
   static const tek_sc_os_char vc_file_name[] = TEK_SC_OS_STR("vcache");
-  auto vc_file_handle = tsci_os_file_open_at(ctx->dir_handle, vc_file_name,
-                                             TSCI_OS_FILE_ACCESS_read);
+  auto vc_file_handle =
+      tsci_os_file_open_at(ctx->dir_handle, vc_file_name,
+                           TSCI_OS_FILE_ACCESS_read, TSCI_OS_FILE_OPT_sync);
   if (vc_file_handle == TSCI_OS_INVALID_HANDLE) {
     auto const errc = tsci_os_get_last_error();
     if (errc == TSCI_OS_ERR_FILE_NOT_FOUND) {
@@ -786,40 +887,80 @@ tek_sc_err tsci_am_job_verify(tek_sc_am *am, tsci_am_item_desc *desc,
   // Initialize the rest of verification context
   vctx.sha1 = EVP_sha1();
   const int num_threads = ctx->nproc;
-  const size_t buf_size = 0x100000 * num_threads;
+  const size_t buf_size = 0x100000 * TSCP_NUM_REQS_PER_THREAD * num_threads;
   vctx.buffer = tsci_os_mem_alloc(buf_size);
   if (!vctx.buffer) {
     res = tsci_err_os(TEK_SC_ERRC_mem_alloc, tsci_os_get_last_error());
     goto close_root_dir;
   }
-  vctx.wt_ctxs =
-      malloc((sizeof *vctx.wt_ctxs + sizeof *vctx.threads) * num_threads);
+  vctx.wt_ctxs = malloc(sizeof *vctx.wt_ctxs * num_threads);
   if (!vctx.wt_ctxs) {
     res = tsc_err_basic(TEK_SC_ERRC_mem_alloc);
     goto free_buffer;
   }
-  vctx.threads = (pthread_t *)(vctx.wt_ctxs + num_threads);
   for (int i = 0; i < num_threads; ++i) {
-    vctx.wt_ctxs[i].ctx = &vctx;
+    auto const wt_ctx = &vctx.wt_ctxs[i];
+    wt_ctx->ctx = &vctx;
+    wt_ctx->num_submitted_reqs = 0;
+    wt_ctx->next_req = &wt_ctx->reqs[0];
+    wt_ctx->reqs[0].buffer =
+        vctx.buffer + 0x100000 * TSCP_NUM_REQS_PER_THREAD * i;
+    for (int j = 1; j < TSCP_NUM_REQS_PER_THREAD; ++j) {
+      wt_ctx->reqs[j - 1].next = &wt_ctx->reqs[j];
+      wt_ctx->reqs[j].buffer = wt_ctx->reqs[0].buffer + 0x100000 * j;
+    }
+    wt_ctx->reqs[TSCP_NUM_REQS_PER_THREAD - 1].next = nullptr;
   }
+  atomic_init(&vctx.progress, job->progress_current);
+  atomic_init(&vctx.num_wts_active, 0);
   // Start worker threads
+  pthread_attr_t attr;
+  if (pthread_attr_init(&attr)) {
+    res = tsc_err_basic(TEK_SC_ERRC_wt_start);
+    goto free_arrs;
+  }
+  if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
+    pthread_attr_destroy(&attr);
+    res = tsc_err_basic(TEK_SC_ERRC_wt_start);
+    goto free_arrs;
+  }
   for (int i = 0; i < num_threads; ++i) {
-    if (pthread_create(&vctx.threads[i], nullptr, tscp_amjv_wt_proc,
-                       &vctx.wt_ctxs[i])) {
+    atomic_fetch_add_explicit(&vctx.num_wts_active, 1, memory_order_relaxed);
+    pthread_t id;
+    if (pthread_create(&id, &attr, tscp_amjv_wt_proc, &vctx.wt_ctxs[i])) {
+      atomic_fetch_sub_explicit(&vctx.num_wts_active, 1, memory_order_relaxed);
       atomic_store_explicit(&job->state, TEK_SC_AM_JOB_STATE_pause_pending,
                             memory_order_relaxed);
+      pthread_attr_destroy(&attr);
+      for (auto num =
+               atomic_load_explicit(&vctx.num_wts_active, memory_order_relaxed);
+           num; num = atomic_load_explicit(&vctx.num_wts_active,
+                                           memory_order_relaxed)) {
+        tsci_os_futex_wait(&vctx.num_wts_active, num, UINT32_MAX);
+      }
       for (int j = 0; j < i; ++j) {
-        pthread_join(vctx.threads[j], nullptr);
         free((void *)vctx.wt_ctxs[j].result.uri);
       }
       res = tsc_err_basic(TEK_SC_ERRC_wt_start);
       goto free_arrs;
     }
   }
-  // Wait for worker threads to exit and gather their results
+  pthread_attr_destroy(&attr);
+  // Poll the progress every 200ms while waiting for worker threads to finish
+  for (auto num =
+           atomic_load_explicit(&vctx.num_wts_active, memory_order_relaxed);
+       num;
+       num = atomic_load_explicit(&vctx.num_wts_active, memory_order_relaxed)) {
+    tsci_os_futex_wait(&vctx.num_wts_active, num, 200);
+    job->progress_current =
+        atomic_load_explicit(&vctx.progress, memory_order_relaxed);
+    if (upd_handler) {
+      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_progress);
+    }
+  }
+  // Gather worker thread context results
   res = tsc_err_ok();
   for (int i = 0; i < num_threads; ++i) {
-    pthread_join(vctx.threads[i], nullptr);
     auto const wt_res = &vctx.wt_ctxs[i].result;
     if (tek_sc_err_success(wt_res)) {
       continue;
@@ -854,8 +995,9 @@ tek_sc_err tsci_am_job_verify(tek_sc_am *am, tsci_am_item_desc *desc,
     }
   } else { // if (tek_sc_err_success(&res))
     // Save verification cache to file
-    vc_file_handle = tsci_os_file_create_at(ctx->dir_handle, vc_file_name,
-                                            TSCI_OS_FILE_ACCESS_write);
+    vc_file_handle = tsci_os_file_create_at(
+        ctx->dir_handle, vc_file_name, TSCI_OS_FILE_ACCESS_write,
+        TSCI_OS_FILE_OPT_sync | TSCI_OS_FILE_OPT_trunc);
     if (vc_file_handle == TSCI_OS_INVALID_HANDLE) {
       if (res.primary == TEK_SC_ERRC_paused) {
         res = tsci_os_io_err_at(ctx->dir_handle, vc_file_name,

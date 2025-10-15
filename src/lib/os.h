@@ -31,6 +31,8 @@
 
 #ifdef _WIN32
 
+#include <ioringapi.h>
+
 /// @def TSCI_OS_ERR_DIR_NOT_EMPTY
 /// @ref tek_sc_os_errc value indicating that target directory is not empty.
 #define TSCI_OS_ERR_DIR_NOT_EMPTY ERROR_DIR_NOT_EMPTY
@@ -61,10 +63,23 @@ enum tsci_os_file_access {
       TSCI_OS_FILE_ACCESS_read | TSCI_OS_FILE_ACCESS_write
 };
 
-/// Windows asynchronous I/O context stub.
+/// Windows asynchronous I/O context implementation.
 struct tsci_os_aio_ctx {
-  // Current "registered" file handle.
-  HANDLE _Null_unspecified file_handle;
+  /// When not using I/O ring API, the capacity of @ref reqs, otherwise `-1`.
+  int num_reqs;
+  /// When not using I/O ring API, number of currently "submitted" requests.
+  int num_submitted;
+  union {
+    /// When not using I/O ring API, pointer to the array of "submitted" request
+    ///    pointers.
+    struct tsci_os_aio_req *_Nullable *_Nonnull reqs;
+    /// Handle for the I/O ring instance.
+    HIORING _Nonnull ring;
+  };
+  /// Last registered file handle.
+  HANDLE _Null_unspecified reg_handle;
+  /// Pointer to the registered buffer.
+  void *_Nullable reg_buf;
 };
 
 #elifdef __linux__ // def _WIN32
@@ -104,13 +119,27 @@ enum tsci_os_file_access {
   TSCI_OS_FILE_ACCESS_rdwr = O_RDWR
 };
 
-/// GNU/Linux asynchronous I/O context stub or implementation.
+/// GNU/Linux asynchronous I/O context implementation.
 struct tsci_os_aio_ctx {
-  /// Current "registered" fd, or `-1` if io_uring is used.
-  int fd;
+  /// When not using io_uring, the capacity of @ref reqs, otherwise `-1`.
+  int num_reqs;
+  /// Last registered file descriptor.
+  int reg_fd;
+  union {
+    /// When io_uring is not used, pointer to the array of "submitted" request
+    ///    pointers.
+    struct tsci_os_aio_req *_Nullable *_Nonnull reqs;
+    /// On kernels supporting `IORING_SETUP_NO_MMAP`, pointer to the buffer
+    ///    allocated for the ring, otherwise `MAP_FAILED`.
+    void *_Nullable buf;
+  };
+  union {
+    /// When io_uring is not used, number of currently "submitted" requests.
+    int num_submitted;
+    /// Value indicating whether the ring has registered buffer.
+    bool buf_registered;
+  };
 #ifdef TEK_SCB_IO_URING
-  /// Value indicating whether the ring has registered a buffer.
-  bool buf_registered;
   /// io_uring instance.
   struct io_uring ring;
 #endif // def TEK_SCB_IO_URING
@@ -123,14 +152,31 @@ struct tsci_os_aio_ctx {
 /// @copydoc tsci_os_file_access
 typedef enum tsci_os_file_access tsci_os_file_access;
 
+/// Extra options for creating/opening files.
+enum [[clang::flag_enum]] tsci_os_file_opt {
+  TSCI_OS_FILE_OPT_none,
+  /// Create/open the file for synchronous I/O.
+  TSCI_OS_FILE_OPT_sync = 1 << 0,
+  /// If the file already exists, truncate it to 0 bytes.
+  TSCI_OS_FILE_OPT_trunc = 1 << 1
+};
+/// @copydoc tsci_os_file_opt
+typedef enum tsci_os_file_opt tsci_os_file_opt;
+
 /// Asynchronous I/O context.
-///
-/// Despite the name, it's not truly asynchronous, the functions have regular
-///    blocking read/write semantics, and in fact are implemented on top of them
-///    unless using liburing on Linux, but even it is used in blocking manner as
-///    well, which however still does benefit performance due to fd and buffer
-///    registration.
 typedef struct tsci_os_aio_ctx tsci_os_aio_ctx;
+
+/// Asynchronous I/O request descriptor for receiving completion data.
+typedef struct tsci_os_aio_req tsci_os_aio_req;
+/// @copydoc tsci_os_aio_req
+struct tsci_os_aio_req {
+  /// Handle for the file on which the operation was performed.
+  tek_sc_os_handle handle;
+  /// Result code of the operation.
+  tek_sc_os_errc result;
+  /// On success, the number of bytes transferred by the operation.
+  int bytes_transferred;
+};
 
 /// Arguments for  @ref tsci_os_file_copy_chunk and @ref tsci_os_file_copy.
 typedef struct tsci_os_copy_args tsci_os_copy_args;
@@ -392,8 +438,7 @@ tek_sc_err tsci_os_dir_delete_at_rec(
 
 //===--- File create/open -------------------------------------------------===//
 
-/// Open a file at specified directory, or create it if it doesn't exist, and
-///    truncate it to 0 bytes.
+/// Open a file at specified directory, or create it if it doesn't exist.
 ///
 /// @param parent_dir_handle
 ///    Handle for the parent directory of the file.
@@ -401,6 +446,8 @@ tek_sc_err tsci_os_dir_delete_at_rec(
 ///    Name of the file to open/create, as a null-terminated string.
 /// @param access
 ///    Access mode for the file.
+/// @param options
+///    Extra options.
 /// @return Handle for the opened file, or @ref TSCI_OS_INVALID_HANDLE if the
 ///    function fails. Use @ref tsci_os_get_last_error to get the error code.
 ///    The returned handle must be closed with @ref tsci_os_close_handle after
@@ -410,27 +457,8 @@ tek_sc_err tsci_os_dir_delete_at_rec(
   clang::acquire_handle("os")]]
 tek_sc_os_handle tsci_os_file_create_at(
     [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
-    const tek_sc_os_char *_Nonnull name, tsci_os_file_access access);
-
-/// Open a file at specified directory, or create it if it doesn't exist,
-///    without truncation.
-///
-/// @param parent_dir_handle
-///    Handle for the parent directory of the file.
-/// @param [in] name
-///    Name of the file to open/create, as a null-terminated string.
-/// @param access
-///    Access mode for the file.
-/// @return Handle for the opened file, or @ref TSCI_OS_INVALID_HANDLE if the
-///    function fails. Use @ref tsci_os_get_last_error to get the error code.
-///    The returned handle must be closed with @ref tsci_os_close_handle after
-///    use.
-[[gnu::visibility("internal"), gnu::fd_arg(1), gnu::nonnull(2),
-  gnu::access(read_only, 2), gnu::null_terminated_string_arg(2),
-  clang::acquire_handle("os")]]
-tek_sc_os_handle tsci_os_file_create_at_notrunc(
-    [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
-    const tek_sc_os_char *_Nonnull name, tsci_os_file_access access);
+    const tek_sc_os_char *_Nonnull name, tsci_os_file_access access,
+    tsci_os_file_opt options);
 
 /// Open a file at specified directory.
 ///
@@ -440,6 +468,8 @@ tek_sc_os_handle tsci_os_file_create_at_notrunc(
 ///    Name of the file to open, as a null-terminated string.
 /// @param access
 ///    Access mode for the file.
+/// @param options
+///    Extra options.
 /// @return Handle for the opened file, or @ref TSCI_OS_INVALID_HANDLE if the
 ///    function fails. Use @ref tsci_os_get_last_error to get the error code.
 ///    The returned handle must be closed with @ref tsci_os_close_handle after
@@ -449,7 +479,8 @@ tek_sc_os_handle tsci_os_file_create_at_notrunc(
   clang::acquire_handle("os")]]
 tek_sc_os_handle tsci_os_file_open_at(
     [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
-    const tek_sc_os_char *_Nonnull name, tsci_os_file_access access);
+    const tek_sc_os_char *_Nonnull name, tsci_os_file_access access,
+    tsci_os_file_opt options);
 
 //===--- File read/write --------------------------------------------------===//
 
@@ -684,6 +715,8 @@ bool tsci_os_symlink_at(
 ///
 /// @param [out] ctx
 ///    Pointer to the asynchronous I/O context to initialize.
+/// @param num_reqs
+///    Number of requests that the context will be able to run concurrently.
 /// @param buffer
 ///    Pointer to the memory region that will be used for I/O
 ///    (read to/written from).
@@ -691,10 +724,10 @@ bool tsci_os_symlink_at(
 ///    Size of the buffer pointed to by @p buffer, in bytes.
 /// @return A @ref tek_sc_os_errc indicating the result of operation.
 ///    Successfully initialized context must be destroyed with
-///    @ref tsci_os_aio_ctx_destroy after use.
-[[gnu::visibility("internal"), gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  gnu::access(none, 2, 3)]]
-tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *_Nonnull ctx,
+///    @ref tsci_os_aio_tctx_destroy after use.
+[[gnu::visibility("internal"), gnu::nonnull(1, 3), gnu::access(read_write, 1),
+  gnu::access(none, 3, 4)]]
+tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *_Nonnull ctx, int num_reqs,
                                     void *_Nonnull buffer, size_t buffer_size);
 
 /// Destroy an asynchronous I/O context.
@@ -708,7 +741,7 @@ void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *_Nonnull ctx);
 ///    registration if any.
 ///
 /// @param [in, out] ctx
-///    Pointer to the asynchronous I/O context to register file to.
+///    Pointer to the asynchronous I/O context to register file on.
 /// @param handle
 ///    Handle for the file to register.
 /// @return A @ref tek_sc_os_errc indicating the result of operation.
@@ -718,40 +751,80 @@ tek_sc_os_errc
 tsci_os_aio_register_file(tsci_os_aio_ctx *_Nonnull ctx,
                           [[clang::use_handle("os")]] tek_sc_os_handle handle);
 
-/// Read data from file at specified offset using asynchronous I/O. Exactly @p n
-///    bytes will be read.
+/// Submit a request to perform asynchronous read of data from currently
+///    registered file at specified offset.
 ///
 /// @param [in, out] ctx
 ///    Pointer to the asynchronous I/O context to perform read on.
+/// @param [in, out] req
+///    Pointer to the request descriptor that will receive completion data.
 /// @param [out] buf
 ///    Pointer to the buffer that receives the read data.
 /// @param n
 ///    Number of bytes to read.
 /// @param offset
 ///    Offset in the file to read from, in bytes.
-/// @return A @ref tek_sc_os_errc indicating the result of operation.
-[[gnu::visibility("internal"), gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  gnu::access(write_only, 2, 3)]]
-tek_sc_os_errc tsci_os_aio_read(tsci_os_aio_ctx *_Nonnull ctx,
-                                void *_Nonnull buf, size_t n, int64_t offset);
+/// @param submit
+///    If `false` and OS supports it, the request won't be submitted to the
+///    kernel immediately, instead it'll stay in the queue until
+///    @ref tsci_os_aio_get_compls is called.
+/// @return A @ref tek_sc_os_errc indicating the result of submission.
+[[gnu::visibility("internal"), gnu::nonnull(1, 2, 3),
+  gnu::access(read_write, 1), gnu::access(read_write, 2),
+  gnu::access(write_only, 3, 4)]]
+tek_sc_os_errc tsci_os_aio_submit_read(tsci_os_aio_ctx *_Nonnull ctx,
+                                       tsci_os_aio_req *_Nonnull req,
+                                       void *_Nonnull buf, size_t n,
+                                       int64_t offset, bool submit);
 
-/// Write data to file at specified offset using asynchronous I/O. Exactly @p n
-///    bytes will be written.
+/// Submit a request to perform asynchronous write of data to currently
+///    registered file at specified offset.
 ///
 /// @param [in, out] ctx
 ///    Pointer to the asynchronous I/O context to perform write on.
+/// @param [in, out] req
+///    Pointer to the request descriptor that will receive completion data.
 /// @param [in] buf
 ///    Pointer to the buffer containing the data to write.
 /// @param n
 ///    Number of bytes to write.
 /// @param offset
 ///    Offset in the file to write to, in bytes.
-/// @return A @ref tek_sc_os_errc indicating the result of operation.
+/// @param submit
+///    If `false` and OS supports it, the request won't be submitted to the
+///    kernel immediatly, instead it'll stay in the queue until
+///    @ref tsci_os_aio_get_compls is called.
+/// @return A @ref tek_sc_os_errc indicating the result of submission.
+[[gnu::visibility("internal"), gnu::nonnull(1, 2, 3),
+  gnu::access(read_write, 1), gnu::access(read_write, 2),
+  gnu::access(read_only, 3, 4)]]
+tek_sc_os_errc tsci_os_aio_submit_write(tsci_os_aio_ctx *_Nonnull ctx,
+                                        tsci_os_aio_req *_Nonnull req,
+                                        const void *_Nonnull buf, size_t n,
+                                        int64_t offset, bool submit);
+
+/// Submit all pending requests to the kernel and wait until at least
+///    @p num_wait completions are available on the context, then peek up to
+///    @p num_reqs completions.
+///
+/// @param [in, out] ctx
+///    Pointer to the asynchronous I/O context to get completions from.
+/// @param [out] reqs
+///    Pointer to the array that on success receives pointers to completed
+///    request descriptors.
+/// @param num_reqs
+///    The maximum number of completions to get.
+/// @param num_wait
+///    The minimum number of completions that must be available before
+///    returning. If there are not enough available completions, the function
+///    waits for them.
+/// @return The number of received completions. On failure, `-1` is returned,
+///    and @ref tsci_os_get_last_error can be used to get the error code.
 [[gnu::visibility("internal"), gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  gnu::access(read_only, 2, 3)]]
-tek_sc_os_errc tsci_os_aio_write(tsci_os_aio_ctx *_Nonnull ctx,
-                                 const void *_Nonnull buf, size_t n,
-                                 int64_t offset);
+  gnu::access(write_only, 2)]]
+int tsci_os_aio_get_compls(tsci_os_aio_ctx *_Nonnull ctx,
+                           tsci_os_aio_req *_Nullable *_Nullable reqs,
+                           int num_reqs, int num_wait);
 
 //===-- Virtual memory functions ------------------------------------------===//
 
