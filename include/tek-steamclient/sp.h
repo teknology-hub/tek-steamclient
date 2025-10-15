@@ -186,8 +186,8 @@ extern "C" {
 ///    Optional pointer to the flag that may be set by another thread to cancel
 ///    the operation.
 /// @return A @ref tek_sc_err indicating the result of operation.
-[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_only, 1),
-  gnu::access(read_write, 2), gnu::access(read_only, 4)]]
+[[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_only, 1),
+  gnu::access(read_only, 3)]]
 tek_sc_err tek_sc_sp_download_dm(tek_sc_sp_data_dm *_Nonnull data,
                                  long timeout_ms,
                                  const atomic_bool *_Nullable cancel_flag);
@@ -202,8 +202,8 @@ tek_sc_err tek_sc_sp_download_dm(tek_sc_sp_data_dm *_Nonnull data,
 ///    Optional pointer to the flag that may be set by another thread to cancel
 ///    the operation.
 /// @return A @ref tek_sc_err indicating the result of operation.
-[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_only, 1),
-  gnu::access(read_write, 2), gnu::access(read_only, 4)]]
+[[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_only, 1),
+  gnu::access(read_only, 3)]]
 tek_sc_err tek_sc_sp_download_dp(tek_sc_sp_data_dp *_Nonnull data,
                                  long timeout_ms,
                                  const atomic_bool *_Nullable cancel_flag);
@@ -349,16 +349,19 @@ tek_sc_sp_multi_dlr_submit_req(const tek_sc_sp_multi_dlr *_Nonnull dlr,
 ///    Pointer to the multi downloader instance to process requests for.
 /// @param thrd_index
 ///    Index of the thread processing the requests.
+/// @param poll
+///    If `true` and there are no completed requests at the moment, wait for at
+///    least to complete.
 /// @param [out] err
 ///    Address of variable that receives the error on failure.
 /// @return Pointer to a completed request. Call the function again to get other
 ///    requests if there are any. `nullptr` is returned when there are no more
 ///    requests to process for now, or an error has occurred (which is indicated
 ///    by @p err).
-[[gnu::TEK_SC_API, gnu::nonnull(1, 3), gnu::access(read_only, 1),
-  gnu::access(write_only, 3)]]
+[[gnu::TEK_SC_API, gnu::nonnull(1, 4), gnu::access(read_only, 1),
+  gnu::access(write_only, 4)]]
 tek_sc_sp_multi_chunk_req *_Nullable tek_sc_sp_multi_dlr_process(
-    const tek_sc_sp_multi_dlr *_Nonnull dlr, int thrd_index,
+    const tek_sc_sp_multi_dlr *_Nonnull dlr, int thrd_index, bool poll,
     tek_sc_err *_Nonnull err);
 
 /// Cancel all running downloads on multi downloader. This will also prevent
