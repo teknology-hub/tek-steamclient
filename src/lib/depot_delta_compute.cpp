@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <compare>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -162,7 +163,7 @@ struct write_ctx {
   std::vector<transfer_op_desc> weighted_transfer_ops;
 };
 
-static constexpr std::int64_t max_reloc_size = 0x20000000; // 512 MiB
+static constexpr std::int64_t max_reloc_size{0x20000000}; // 512 MiB
 
 //===-- Private functions -------------------------------------------------===//
 
@@ -207,7 +208,8 @@ static void count_del_dir(count_ctx &ctx, const tek_sc_dm_dir &dir,
   delta.num_files += dir.num_files;
   ++delta.num_dirs;
   delta.num_deletions += 1 + dir.num_files;
-  for (const auto &subdir : std::span(dir.subdirs, dir.num_subdirs)) {
+  for (const auto &subdir :
+       std::span{dir.subdirs, static_cast<std::size_t>(dir.num_subdirs)}) {
     count_del_dir(ctx, subdir, delta);
   }
 }
@@ -224,20 +226,23 @@ static void count_del_dir(count_ctx &ctx, const tek_sc_dm_dir &dir,
 static tek_sc_dd_dir_flag count_new_dir(count_ctx &ctx,
                                         const tek_sc_dm_dir &dir,
                                         tek_sc_depot_delta &delta) noexcept {
-  auto flags = TEK_SC_DD_DIR_FLAG_children_new;
+  auto flags{TEK_SC_DD_DIR_FLAG_children_new};
   delta.num_files += dir.num_files;
   ++delta.num_dirs;
-  for (const auto &file : std::span(dir.files, dir.num_files)) {
+  for (const auto &file :
+       std::span{dir.files, static_cast<std::size_t>(dir.num_files)}) {
     if (!file.num_chunks) {
       continue;
     }
     flags |= TEK_SC_DD_DIR_FLAG_children_download;
     delta.num_chunks += file.num_chunks;
     delta.download_size = std::ranges::fold_left(
-        std::span(file.chunks, file.num_chunks), delta.download_size,
+        std::span{file.chunks, static_cast<std::size_t>(file.num_chunks)},
+        delta.download_size,
         [](auto acc, const auto &chunk) { return acc + chunk.comp_size; });
   }
-  for (const auto &subdir : std::span(dir.subdirs, dir.num_subdirs)) {
+  for (const auto &subdir :
+       std::span{dir.subdirs, static_cast<std::size_t>(dir.num_subdirs)}) {
     flags |= count_new_dir(ctx, subdir, delta);
   }
   return flags;
@@ -259,18 +264,21 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
                                     const tek_sc_dm_dir &src_dir,
                                     const tek_sc_dm_dir &tgt_dir,
                                     tek_sc_depot_delta &delta) {
-  const std::span pchunks(ctx.patch ? ctx.patch->chunks : nullptr,
-                          ctx.patch ? ctx.patch->num_chunks : 0);
-  auto &dir_desc = ctx.next_desc++->dir;
-  const std::span src_files(src_dir.files, src_dir.num_files);
-  const std::span tgt_files(tgt_dir.files, tgt_dir.num_files);
+  const std::span pchunks{
+      ctx.patch ? ctx.patch->chunks : nullptr,
+      ctx.patch ? static_cast<std::size_t>(ctx.patch->num_chunks) : 0};
+  auto &dir_desc{ctx.next_desc++->dir};
+  const std::span src_files{src_dir.files,
+                            static_cast<std::size_t>(src_dir.num_files)};
+  const std::span tgt_files{tgt_dir.files,
+                            static_cast<std::size_t>(tgt_dir.num_files)};
   // Iterate the intersecting range, that may contain matching files
-  auto src_file_it = src_files.begin();
-  auto tgt_file_it = tgt_files.begin();
+  auto src_file_it{src_files.begin()};
+  auto tgt_file_it{tgt_files.begin()};
   while (src_file_it < src_files.end() && tgt_file_it < tgt_files.end()) {
-    const auto &src_file = *src_file_it;
-    const auto &tgt_file = *tgt_file_it;
-    const int file_diff = tsci_os_pstrcmp(src_file.name, tgt_file.name);
+    const auto &src_file{*src_file_it};
+    const auto &tgt_file{*tgt_file_it};
+    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
     if (file_diff < 0) {
       // The file has been delisted and is to be deleted
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
@@ -280,7 +288,8 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       ++src_file_it;
       continue;
     }
-    const std::span tgt_chunks(tgt_file.chunks, tgt_file.num_chunks);
+    const std::span tgt_chunks{tgt_file.chunks,
+                               static_cast<std::size_t>(tgt_file.num_chunks)};
     if (file_diff > 0) {
       // The file has been added to the directory
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_new;
@@ -326,25 +335,28 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       ++tgt_file_it;
       continue;
     }
-    auto &file_desc = ctx.next_desc++->file;
-    int num_dw_chunks = 0;
-    int num_pchunks = 0;
+    auto &file_desc{ctx.next_desc++->file};
+    int num_dw_chunks{};
+    int num_pchunks{};
     // Populate chunk pointer buffers and sort them by sha/offset
-    const std::span src_chunk_ptrs(ctx.src_chunk_ptrs, src_file.num_chunks);
-    std::ranges::transform(std::span(src_file.chunks, src_file.num_chunks),
+    const std::span src_chunk_ptrs{
+        ctx.src_chunk_ptrs, static_cast<std::size_t>(src_file.num_chunks)};
+    std::ranges::transform(std::span{src_file.chunks, static_cast<std::size_t>(
+                                                          src_file.num_chunks)},
                            src_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(src_chunk_ptrs, cmp_dm_chunk_sha_and_off);
-    const std::span tgt_chunk_ptrs(ctx.tgt_chunk_ptrs, tgt_file.num_chunks);
+    const std::span tgt_chunk_ptrs{
+        ctx.tgt_chunk_ptrs, static_cast<std::size_t>(tgt_file.num_chunks)};
     std::ranges::transform(tgt_chunks, tgt_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(tgt_chunk_ptrs, cmp_dm_chunk_sha_and_off);
     // Iterate the intersecting range of chunks
-    auto tgt_chunk_it = tgt_chunk_ptrs.begin();
-    for (auto src_chunk_it = src_chunk_ptrs.begin();
+    auto tgt_chunk_it{tgt_chunk_ptrs.begin()};
+    for (auto src_chunk_it{src_chunk_ptrs.begin()};
          src_chunk_it < src_chunk_ptrs.end() &&
          tgt_chunk_it < tgt_chunk_ptrs.end();) {
-      const auto &src_chunk = **src_chunk_it;
-      const auto &tgt_chunk = **tgt_chunk_it;
-      const auto chunk_diff = src_chunk <=> tgt_chunk;
+      const auto &src_chunk{**src_chunk_it};
+      const auto &tgt_chunk{**tgt_chunk_it};
+      const auto chunk_diff{src_chunk <=> tgt_chunk};
       if (chunk_diff == std::strong_ordering::less) {
         // The chunk has been removed from the file, might result in file
         //    truncation, which will be checked for later
@@ -384,10 +396,10 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     } // for (intersecting chunks)
     // There is no reason for iterating remaining source chunks, so use the
     //    last one to compare remaining target chunks against
-    const auto &last_src_chunk = *src_chunk_ptrs.back();
+    const auto &last_src_chunk{*src_chunk_ptrs.back()};
     // Iterate remaining target chunks
     for (; tgt_chunk_it < tgt_chunk_ptrs.end(); ++tgt_chunk_it) {
-      const auto &tgt_chunk = **tgt_chunk_it;
+      const auto &tgt_chunk{**tgt_chunk_it};
       if (last_src_chunk.sha == tgt_chunk.sha) {
         if (last_src_chunk.offset == tgt_chunk.offset) {
           continue;
@@ -433,8 +445,8 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
         std::ranges::sort(ctx.relocs, {}, [](const auto &desc) {
           return std::tie(desc.src_off, desc.tgt_off);
         });
-        auto batched_it = ctx.relocs.begin();
-        for (auto it = ctx.relocs.cbegin() + 1; it < ctx.relocs.cend(); ++it) {
+        auto batched_it{ctx.relocs.begin()};
+        for (auto it{ctx.relocs.cbegin() + 1}; it < ctx.relocs.cend(); ++it) {
           if (batched_it->src_end() == it->src_off &&
               batched_it->tgt_end() == it->tgt_off) {
             batched_it->size += it->size;
@@ -467,7 +479,7 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     ++tgt_file_it;
   } // while (intersecting files)
   // Account remaining source files
-  const int num_rem_src_files = std::distance(src_file_it, src_files.end());
+  const auto num_rem_src_files{std::distance(src_file_it, src_files.end())};
   if (num_rem_src_files) {
     dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
     dir_desc.num_files += num_rem_src_files;
@@ -475,33 +487,36 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     delta.num_deletions += num_rem_src_files;
   }
   // Iterate remaining target files
-  const int num_rem_tgt_files = std::distance(tgt_file_it, tgt_files.end());
+  const auto num_rem_tgt_files{std::distance(tgt_file_it, tgt_files.end())};
   if (num_rem_tgt_files) {
     dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_new;
     dir_desc.num_files += num_rem_tgt_files;
     delta.num_files += num_rem_tgt_files;
     for (const auto &tgt_file :
-         std::ranges::subrange(tgt_file_it, tgt_files.end())) {
+         std::ranges::subrange{tgt_file_it, tgt_files.end()}) {
       if (tgt_file.num_chunks) {
         dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_download;
         delta.num_chunks += tgt_file.num_chunks;
         delta.download_size = std::ranges::fold_left(
-            std::span(tgt_file.chunks, tgt_file.num_chunks),
+            std::span{tgt_file.chunks,
+                      static_cast<std::size_t>(tgt_file.num_chunks)},
             delta.download_size,
             [](auto acc, const auto &chunk) { return acc + chunk.comp_size; });
       }
     }
   }
-  const std::span src_subdirs(src_dir.subdirs, src_dir.num_subdirs);
-  const std::span tgt_subdirs(tgt_dir.subdirs, tgt_dir.num_subdirs);
+  const std::span src_subdirs{src_dir.subdirs,
+                              static_cast<std::size_t>(src_dir.num_subdirs)};
+  const std::span tgt_subdirs{tgt_dir.subdirs,
+                              static_cast<std::size_t>(tgt_dir.num_subdirs)};
   // Iterate the intersecting range, that may contain matching subdirectories
-  auto src_subdir_it = src_subdirs.begin();
-  auto tgt_subdir_it = tgt_subdirs.begin();
+  auto src_subdir_it{src_subdirs.begin()};
+  auto tgt_subdir_it{tgt_subdirs.begin()};
   while (src_subdir_it < src_subdirs.end() &&
          tgt_subdir_it < tgt_subdirs.end()) {
-    const auto &src_subdir = *src_subdir_it;
-    const auto &tgt_subdir = *tgt_subdir_it;
-    const int subdir_diff = tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name);
+    const auto &src_subdir{*src_subdir_it};
+    const auto &tgt_subdir{*tgt_subdir_it};
+    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
     if (subdir_diff < 0) {
       // The subdirectory has been delisted and is to be deleted
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
@@ -518,8 +533,8 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       ++tgt_subdir_it;
       continue;
     }
-    const auto next_desc_after_subdir = ctx.next_desc + 1;
-    const auto subdir_flags = count_dir(ctx, src_subdir, tgt_subdir, delta);
+    const auto next_desc_after_subdir{ctx.next_desc + 1};
+    const auto subdir_flags{count_dir(ctx, src_subdir, tgt_subdir, delta)};
     if (subdir_flags) {
       dir_desc.flags |= subdir_flags;
       ++dir_desc.num_subdirs;
@@ -535,24 +550,24 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     ++tgt_subdir_it;
   } // while (intersecting subdirs)
   // Iterate remaining source subdirectories
-  const int num_rem_src_subdirs =
-      std::distance(src_subdir_it, src_subdirs.end());
+  const auto num_rem_src_subdirs{
+      std::distance(src_subdir_it, src_subdirs.end())};
   if (num_rem_src_subdirs) {
     dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
     dir_desc.num_subdirs += num_rem_src_subdirs;
     for (const auto &src_subdir :
-         std::ranges::subrange(src_subdir_it, src_subdirs.end())) {
+         std::ranges::subrange{src_subdir_it, src_subdirs.end()}) {
       count_del_dir(ctx, src_subdir, delta);
     }
   }
   // Iterate remaining target subdirectories
-  const int num_rem_tgt_subdirs =
-      std::distance(tgt_subdir_it, tgt_subdirs.end());
+  const auto num_rem_tgt_subdirs{
+      std::distance(tgt_subdir_it, tgt_subdirs.end())};
   if (num_rem_tgt_subdirs) {
     dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_new;
     dir_desc.num_subdirs += num_rem_tgt_subdirs;
     for (const auto &tgt_subdir :
-         std::ranges::subrange(tgt_subdir_it, tgt_subdirs.end())) {
+         std::ranges::subrange{tgt_subdir_it, tgt_subdirs.end()}) {
       dir_desc.flags |= count_new_dir(ctx, tgt_subdir, delta);
     }
   }
@@ -620,9 +635,9 @@ static void write_del_dir(write_ctx &ctx, const tek_sc_dm_dir &dir,
   dd_dir.num_files = dir.num_files;
   dd_dir.num_subdirs = dir.num_subdirs;
   // Iterate files
-  for (auto &&[file, dd_file] :
-       std::views::zip(std::span(dir.files, dir.num_files),
-                       std::span(dd_dir.files, dir.num_files))) {
+  for (auto &&[file, dd_file] : std::views::zip(
+           std::span{dir.files, static_cast<std::size_t>(dir.num_files)},
+           std::span{dd_dir.files, static_cast<std::size_t>(dir.num_files)})) {
     init_dd_file(file, dd_file);
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
@@ -632,9 +647,10 @@ static void write_del_dir(write_ctx &ctx, const tek_sc_dm_dir &dir,
     dd_file.num_transfer_ops = 0;
   }
   // Iterate subdirectories
-  for (auto &&[subdir, dd_subdir] :
-       std::views::zip(std::span(dir.subdirs, dir.num_subdirs),
-                       std::span(dd_dir.subdirs, dir.num_subdirs))) {
+  for (auto &&[subdir, dd_subdir] : std::views::zip(
+           std::span{dir.subdirs, static_cast<std::size_t>(dir.num_subdirs)},
+           std::span{dd_dir.subdirs,
+                     static_cast<std::size_t>(dir.num_subdirs)})) {
     write_del_dir(ctx, subdir, dd_dir, dd_subdir);
   }
 }
@@ -676,9 +692,9 @@ static tek_sc_dd_dir_flag write_new_dir(write_ctx &ctx,
   dd_dir.num_files = dir.num_files;
   dd_dir.num_subdirs = dir.num_subdirs;
   // Iterate files
-  for (auto &&[file, dd_file] :
-       std::views::zip(std::span(dir.files, dir.num_files),
-                       std::span(dd_dir.files, dir.num_files))) {
+  for (auto &&[file, dd_file] : std::views::zip(
+           std::span{dir.files, static_cast<std::size_t>(dir.num_files)},
+           std::span{dd_dir.files, static_cast<std::size_t>(dir.num_files)})) {
     init_dd_file(file, dd_file);
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_new;
@@ -693,17 +709,18 @@ static tek_sc_dd_dir_flag write_new_dir(write_ctx &ctx,
     dd_file.transfer_ops = nullptr;
     dd_file.num_chunks = file.num_chunks;
     dd_file.num_transfer_ops = 0;
-    std::ranges::transform(std::span(file.chunks, file.num_chunks),
-                           dd_file.chunks, [&dd_file](const auto &chunk) {
-                             return tek_sc_dd_chunk{
-                                 &chunk, dd_file,
+    std::ranges::transform(
+        std::span{file.chunks, static_cast<std::size_t>(file.num_chunks)},
+        dd_file.chunks, [&dd_file](const auto &chunk) {
+          return tek_sc_dd_chunk{&chunk, dd_file,
                                  TEK_SC_JOB_ENTRY_STATUS_pending, -1};
-                           });
+        });
   }
   // Iterate subdirectories
-  for (auto &&[subdir, dd_subdir] :
-       std::views::zip(std::span(dir.subdirs, dir.num_subdirs),
-                       std::span(dd_dir.subdirs, dir.num_subdirs))) {
+  for (auto &&[subdir, dd_subdir] : std::views::zip(
+           std::span{dir.subdirs, static_cast<std::size_t>(dir.num_subdirs)},
+           std::span{dd_dir.subdirs,
+                     static_cast<std::size_t>(dir.num_subdirs)})) {
     dd_dir.flags |= write_new_dir(ctx, subdir, dd_dir, dd_subdir);
   }
   return dd_dir.flags & TEK_SC_DD_DIR_FLAG_children_download;
@@ -726,9 +743,10 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
                       const tek_sc_dm_dir &tgt_dir,
                       tek_sc_dd_dir *_Nullable parent,
                       tek_sc_dd_dir &dd_dir) noexcept {
-  const std::span pchunks(ctx.patch ? ctx.patch->chunks : nullptr,
-                          ctx.patch ? ctx.patch->num_chunks : 0);
-  const auto &dir_desc = ctx.next_desc++->dir;
+  const std::span pchunks{
+      ctx.patch ? ctx.patch->chunks : nullptr,
+      ctx.patch ? static_cast<std::size_t>(ctx.patch->num_chunks) : 0};
+  const auto &dir_desc{ctx.next_desc++->dir};
   init_dd_dir(tgt_dir, dd_dir);
   dd_dir.parent = parent;
   dd_dir.flags = dir_desc.flags;
@@ -741,18 +759,20 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
   }
   dd_dir.num_files = dir_desc.num_files;
   dd_dir.num_subdirs = dir_desc.num_subdirs;
-  const std::span src_files(src_dir.files, src_dir.num_files);
-  const std::span tgt_files(tgt_dir.files, tgt_dir.num_files);
+  const std::span src_files{src_dir.files,
+                            static_cast<std::size_t>(src_dir.num_files)};
+  const std::span tgt_files{tgt_dir.files,
+                            static_cast<std::size_t>(tgt_dir.num_files)};
   // Iterate the intersecting range, that may contain matching files
-  auto src_file_it = src_files.begin();
-  auto tgt_file_it = tgt_files.begin();
+  auto src_file_it{src_files.begin()};
+  auto tgt_file_it{tgt_files.begin()};
   while (src_file_it < src_files.end() && tgt_file_it < tgt_files.end()) {
-    const auto &src_file = *src_file_it;
-    const auto &tgt_file = *tgt_file_it;
-    const int file_diff = tsci_os_pstrcmp(src_file.name, tgt_file.name);
+    const auto &src_file{*src_file_it};
+    const auto &tgt_file{*tgt_file_it};
+    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
     if (file_diff < 0) {
       // The file has been delisted and is to be deleted
-      auto &dd_file = *ctx.next_file++;
+      auto &dd_file{*ctx.next_file++};
       init_dd_file(src_file, dd_file);
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
@@ -763,10 +783,11 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       ++src_file_it;
       continue;
     }
-    const std::span tgt_chunks(tgt_file.chunks, tgt_file.num_chunks);
+    const std::span tgt_chunks{tgt_file.chunks,
+                               static_cast<std::size_t>(tgt_file.num_chunks)};
     if (file_diff > 0) {
       // The file has been added to the directory
-      auto &dd_file = *ctx.next_file++;
+      auto &dd_file{*ctx.next_file++};
       init_dd_file(tgt_file, dd_file);
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_new;
@@ -793,7 +814,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       // Shortcut for special case of empty target file (including symlinks)
       if (src_file.num_chunks) {
         // The file is to be truncated to zero bytes
-        auto &dd_file = *ctx.next_file++;
+        auto &dd_file{*ctx.next_file++};
         init_dd_file(src_file, dd_file);
         dd_file.parent = &dd_dir;
         dd_file.flags = TEK_SC_DD_FILE_FLAG_truncate;
@@ -810,7 +831,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       // Shortcut for another special case of empty source file. The target file
       //    is guaranteed to be non-empty at this point, so it can be treated
       //    as new
-      auto &dd_file = *ctx.next_file++;
+      auto &dd_file{*ctx.next_file++};
       init_dd_file(tgt_file, dd_file);
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_new | TEK_SC_DD_FILE_FLAG_download;
@@ -830,14 +851,14 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       ++tgt_file_it;
       continue;
     }
-    const auto &file_desc = ctx.next_desc++->file;
+    const auto &file_desc{ctx.next_desc++->file};
     if (!file_desc.flags) {
       // Nothing interesting about this file
       ++src_file_it;
       ++tgt_file_it;
       continue;
     }
-    auto &dd_file = *ctx.next_file++;
+    auto &dd_file{*ctx.next_file++};
     init_dd_file(tgt_file, dd_file);
     dd_file.parent = &dd_dir;
     dd_file.flags = file_desc.flags;
@@ -861,26 +882,29 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       ++tgt_file_it;
       continue;
     }
-    const auto size_diff = tgt_file.size - src_file.size;
+    const auto size_diff{tgt_file.size - src_file.size};
     if (size_diff > 0) {
       ctx.delta.total_file_growth += size_diff;
     }
     // Populate chunk pointer buffers and sort them by sha/offset
-    const std::span src_chunk_ptrs(ctx.src_chunk_ptrs, src_file.num_chunks);
-    std::ranges::transform(std::span(src_file.chunks, src_file.num_chunks),
+    const std::span src_chunk_ptrs{
+        ctx.src_chunk_ptrs, static_cast<std::size_t>(src_file.num_chunks)};
+    std::ranges::transform(std::span{src_file.chunks, static_cast<std::size_t>(
+                                                          src_file.num_chunks)},
                            src_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(src_chunk_ptrs, cmp_dm_chunk_sha_and_off);
-    const std::span tgt_chunk_ptrs(ctx.tgt_chunk_ptrs, tgt_file.num_chunks);
+    const std::span tgt_chunk_ptrs{
+        ctx.tgt_chunk_ptrs, static_cast<std::size_t>(tgt_file.num_chunks)};
     std::ranges::transform(tgt_chunks, tgt_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(tgt_chunk_ptrs, cmp_dm_chunk_sha_and_off);
     // Iterate the intersecting range of chunks
-    auto tgt_chunk_it = tgt_chunk_ptrs.begin();
-    for (auto src_chunk_it = src_chunk_ptrs.begin();
+    auto tgt_chunk_it{tgt_chunk_ptrs.begin()};
+    for (auto src_chunk_it{src_chunk_ptrs.begin()};
          src_chunk_it < src_chunk_ptrs.end() &&
          tgt_chunk_it < tgt_chunk_ptrs.end();) {
-      const auto &src_chunk = **src_chunk_it;
-      const auto &tgt_chunk = **tgt_chunk_it;
-      const auto chunk_diff = src_chunk <=> tgt_chunk;
+      const auto &src_chunk{**src_chunk_it};
+      const auto &tgt_chunk{**tgt_chunk_it};
+      const auto chunk_diff{src_chunk <=> tgt_chunk};
       if (chunk_diff == std::strong_ordering::less) {
         // The chunk has been removed from the file, might result in file
         //    truncation, which will be checked for later
@@ -892,23 +916,23 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         if (src_chunk_it > src_chunk_ptrs.begin() &&
             src_chunk_it[-1]->sha == tgt_chunk.sha) {
           // The chunk is a duplicate of the previous one
-          const auto &prev_chunk = *src_chunk_it[-1];
+          const auto &prev_chunk{*src_chunk_it[-1]};
           ctx.transfer_ops.emplace_back(
               prev_chunk.offset, prev_chunk.offset + prev_chunk.size,
               tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, 0,
               false);
         } else {
-          const auto pchunk = std::ranges::lower_bound(
-              pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk);
+          const auto pchunk{std::ranges::lower_bound(
+              pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
           if (pchunk == pchunks.end() || pchunk->target_chunk != &tgt_chunk) {
             // The chunk is to be downloaded
-            auto &dd_chunk = *ctx.next_chunk++;
+            auto &dd_chunk{*ctx.next_chunk++};
             dd_chunk.chunk = &tgt_chunk;
             dd_chunk.parent = &dd_file;
             dd_chunk.status = TEK_SC_JOB_ENTRY_STATUS_pending;
           } else {
             // The chunk has been produced by patching
-            const auto &psrc_chunk = *pchunk->source_chunk;
+            const auto &psrc_chunk{*pchunk->source_chunk};
             ctx.delta.transfer_buf_size = std::max(
                 ctx.delta.transfer_buf_size, psrc_chunk.size + tgt_chunk.size);
             ctx.transfer_ops.emplace_back(
@@ -936,10 +960,10 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
     } // for (intersecting chunks)
     // There is no reason for iterating remaining source chunks, so use the
     //    last one to compare remaining target chunks against
-    const auto &last_src_chunk = *src_chunk_ptrs.back();
+    const auto &last_src_chunk{*src_chunk_ptrs.back()};
     // Iterate remaining target chunks
     for (; tgt_chunk_it < tgt_chunk_ptrs.end(); ++tgt_chunk_it) {
-      const auto &tgt_chunk = **tgt_chunk_it;
+      const auto &tgt_chunk{**tgt_chunk_it};
       if (last_src_chunk.sha == tgt_chunk.sha) {
         if (last_src_chunk.offset == tgt_chunk.offset) {
           continue;
@@ -950,17 +974,17 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
             tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, 0,
             false);
       } else {
-        const auto pchunk = std::ranges::lower_bound(
-            pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk);
+        const auto pchunk{std::ranges::lower_bound(
+            pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
         if (pchunk == pchunks.end() || pchunk->target_chunk != &tgt_chunk) {
           // The chunk is to be downloaded
-          auto &dd_chunk = *ctx.next_chunk++;
+          auto &dd_chunk{*ctx.next_chunk++};
           dd_chunk.chunk = &tgt_chunk;
           dd_chunk.parent = &dd_file;
           dd_chunk.status = TEK_SC_JOB_ENTRY_STATUS_pending;
         } else {
           // The chunk has been produced by patching
-          const auto &psrc_chunk = *pchunk->source_chunk;
+          const auto &psrc_chunk{*pchunk->source_chunk};
           ctx.delta.transfer_buf_size = std::max(
               ctx.delta.transfer_buf_size, psrc_chunk.size + tgt_chunk.size);
           ctx.transfer_ops.emplace_back(
@@ -970,7 +994,8 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         }
       }
     } // for (remaining target chunks)
-    const std::span dd_chunks(dd_file.chunks, dd_file.num_chunks);
+    const std::span dd_chunks{dd_file.chunks,
+                              static_cast<std::size_t>(dd_file.num_chunks)};
     // Sort delta chunk entries by offset
     std::ranges::sort(dd_chunks, {},
                       [](const auto &chunk) { return chunk.chunk->offset; });
@@ -987,16 +1012,16 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       //    out after batching
       std::ranges::sort(
           ctx.transfer_ops, [](const auto &left, const auto &right) {
-            const bool left_is_patch = left.pchunk == nullptr;
-            const bool right_is_patch = right.pchunk == nullptr;
+            const bool left_is_patch{left.pchunk == nullptr};
+            const bool right_is_patch{right.pchunk == nullptr};
             return std::tie(left_is_patch, left.src_off, left.tgt_off) <
                    std::tie(right_is_patch, right.src_off, right.tgt_off);
           });
-      auto batched_it = std::ranges::find(ctx.transfer_ops, nullptr,
-                                          &transfer_op_desc::pchunk);
+      auto batched_it{std::ranges::find(ctx.transfer_ops, nullptr,
+                                        &transfer_op_desc::pchunk)};
       if (batched_it != ctx.transfer_ops.end()) {
         // Batch adjacent relocations together
-        for (auto it = batched_it + 1; it < ctx.transfer_ops.end(); ++it) {
+        for (auto it{batched_it + 1}; it < ctx.transfer_ops.end(); ++it) {
           if (batched_it->src_end == it->src_off &&
               batched_it->tgt_end == it->tgt_off) {
             batched_it->src_end = it->src_end;
@@ -1019,7 +1044,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       //    the buffer, and then comparing results
       ctx.weighted_transfer_ops = ctx.transfer_ops;
       // Assign weights to the entries, O(n^2)
-      for (auto i = ctx.weighted_transfer_ops.begin();
+      for (auto i{ctx.weighted_transfer_ops.begin()};
            i < ctx.weighted_transfer_ops.end(); ++i) {
         i->weight = std::ranges::count_if(
             ctx.weighted_transfer_ops, [&src_op = *i](const auto &tgt_op) {
@@ -1035,14 +1060,14 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
           });
       // Make eligible transfer operations direct in both buffers, O(n^2) (in
       //    reality n*(n-1)/2)
-      for (auto i = ctx.transfer_ops.begin(); i < ctx.transfer_ops.end(); ++i) {
+      for (auto i{ctx.transfer_ops.begin()}; i < ctx.transfer_ops.end(); ++i) {
         i->direct = std::ranges::none_of(
             i + 1, ctx.transfer_ops.end(), [&src_op = *i](const auto &tgt_op) {
               return src_op.tgt_off < tgt_op.src_end &&
                      tgt_op.src_off < src_op.tgt_end;
             });
       }
-      for (auto i = ctx.weighted_transfer_ops.begin();
+      for (auto i{ctx.weighted_transfer_ops.begin()};
            i < ctx.weighted_transfer_ops.end(); ++i) {
         i->direct =
             std::ranges::none_of(i + 1, ctx.weighted_transfer_ops.end(),
@@ -1052,19 +1077,18 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
                                  });
       }
       // Pick the buffer with more direct operations
-      const auto &transfer_ops =
+      const auto &transfer_ops{
           std::ranges::count_if(ctx.weighted_transfer_ops, std::identity{},
                                 &transfer_op_desc::direct) >
                   std::ranges::count_if(ctx.transfer_ops, std::identity{},
                                         &transfer_op_desc::direct)
               ? ctx.weighted_transfer_ops
-              : ctx.transfer_ops;
+              : ctx.transfer_ops};
       // Write delta transfer operation entries
-      for (int64_t transfer_buf_off = 0;
-           const auto &transfer_op : transfer_ops) {
+      for (int64_t transfer_buf_off{}; const auto &transfer_op : transfer_ops) {
         if (transfer_op.pchunk) {
           // Patch chunk
-          auto &dd_transfer_op = *ctx.next_transfer_op++;
+          auto &dd_transfer_op{*ctx.next_transfer_op++};
           dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
           dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_patch;
           dd_transfer_op.data.patch_chunk = transfer_op.pchunk;
@@ -1081,22 +1105,22 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         } else {
           // Relocation
           // Write an entry for every 0.5 GiB of data
-          const bool forward = transfer_op.tgt_off > transfer_op.src_off;
+          const bool forward{transfer_op.tgt_off > transfer_op.src_off};
           // The order of 0.5 GiB sub-entries depends on the direction of
           //    relocation, this is done in order to avoid them overlapping
           //    each other
-          for (auto src = forward ? transfer_op.src_end : transfer_op.src_off,
-                    tgt = forward ? transfer_op.tgt_end : transfer_op.tgt_off;
+          for (auto src{forward ? transfer_op.src_end : transfer_op.src_off},
+               tgt{forward ? transfer_op.tgt_end : transfer_op.tgt_off};
                forward ? (src > transfer_op.src_off)
                        : (src < transfer_op.src_end);) {
-            const int size = std::min(forward ? (src - transfer_op.src_off)
-                                              : (transfer_op.src_end - src),
-                                      max_reloc_size);
+            const auto size{std::min(forward ? (src - transfer_op.src_off)
+                                             : (transfer_op.src_end - src),
+                                     max_reloc_size)};
             if (forward) {
               src -= size;
               tgt -= size;
             }
-            auto &dd_transfer_op = *ctx.next_transfer_op++;
+            auto &dd_transfer_op{*ctx.next_transfer_op++};
             dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
             dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_reloc;
             dd_transfer_op.data.relocation.source_offset = src;
@@ -1124,8 +1148,8 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
   } // while (intersecting files)
   // Iterate remaining source files
   for (const auto &src_file :
-       std::ranges::subrange(src_file_it, src_files.end())) {
-    auto &dd_file = *ctx.next_file++;
+       std::ranges::subrange{src_file_it, src_files.end()}) {
+    auto &dd_file{*ctx.next_file++};
     init_dd_file(src_file, dd_file);
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
@@ -1136,7 +1160,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
   }
   // Iterate remaining target files
   for (const auto &tgt_file :
-       std::ranges::subrange(tgt_file_it, tgt_files.end())) {
+       std::ranges::subrange{tgt_file_it, tgt_files.end()}) {
     auto &dd_file = *ctx.next_file++;
     init_dd_file(tgt_file, dd_file);
     dd_file.parent = &dd_dir;
@@ -1149,7 +1173,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       dd_file.flags |= TEK_SC_DD_FILE_FLAG_download;
       ctx.next_chunk =
           std::ranges::transform(
-              std::span(tgt_file.chunks, tgt_file.num_chunks), ctx.next_chunk,
+              std::span{tgt_file.chunks,
+                        static_cast<std::size_t>(tgt_file.num_chunks)},
+              ctx.next_chunk,
               [&dd_file](const auto &chunk) {
                 return tek_sc_dd_chunk{&chunk, dd_file,
                                        TEK_SC_JOB_ENTRY_STATUS_pending, -1};
@@ -1157,17 +1183,19 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
               .out;
     }
   }
-  const std::span src_subdirs(src_dir.subdirs, src_dir.num_subdirs);
-  const std::span tgt_subdirs(tgt_dir.subdirs, tgt_dir.num_subdirs);
+  const std::span src_subdirs{src_dir.subdirs,
+                              static_cast<std::size_t>(src_dir.num_subdirs)};
+  const std::span tgt_subdirs{tgt_dir.subdirs,
+                              static_cast<std::size_t>(tgt_dir.num_subdirs)};
   // Iterate the intersecting range, that may contain matching subdirectories
-  auto next_dd_subdir = dd_dir.subdirs;
-  auto src_subdir_it = src_subdirs.begin();
-  auto tgt_subdir_it = tgt_subdirs.begin();
+  auto next_dd_subdir{dd_dir.subdirs};
+  auto src_subdir_it{src_subdirs.begin()};
+  auto tgt_subdir_it{tgt_subdirs.begin()};
   while (src_subdir_it < src_subdirs.end() &&
          tgt_subdir_it < tgt_subdirs.end()) {
-    const auto &src_subdir = *src_subdir_it;
-    const auto &tgt_subdir = *tgt_subdir_it;
-    const int subdir_diff = tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name);
+    const auto &src_subdir{*src_subdir_it};
+    const auto &tgt_subdir{*tgt_subdir_it};
+    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
     if (subdir_diff < 0) {
       // The subdirectory has been delisted and is to be deleted
       write_del_dir(ctx, src_subdir, dd_dir, *next_dd_subdir++);
@@ -1191,13 +1219,13 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
   } // while (intersecting subdirs)
   // Iterate remaining source subdirectories
   for (const auto &src_subdir :
-       std::ranges::subrange(src_subdir_it, src_subdirs.end())) {
+       std::ranges::subrange{src_subdir_it, src_subdirs.end()}) {
     write_del_dir(ctx, src_subdir, dd_dir, *next_dd_subdir);
     ++next_dd_subdir;
   }
   // Iterate remaining target subdirectories
   for (const auto &tgt_subdir :
-       std::ranges::subrange(tgt_subdir_it, tgt_subdirs.end())) {
+       std::ranges::subrange{tgt_subdir_it, tgt_subdirs.end()}) {
     write_new_dir(ctx, tgt_subdir, dd_dir, *next_dd_subdir);
     ++next_dd_subdir;
   }
@@ -1211,42 +1239,45 @@ extern "C" tek_sc_depot_delta
 tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
                   const tek_sc_depot_manifest *target_manifest,
                   const tek_sc_depot_patch *patch) {
-  tek_sc_depot_delta res = {.source_manifest = source_manifest,
-                            .target_manifest = target_manifest,
-                            .patch = patch,
-                            .chunks = nullptr,
-                            .transfer_ops = nullptr,
-                            .files = nullptr,
-                            .dirs = nullptr,
-                            .num_chunks = 0,
-                            .num_transfer_ops = 0,
-                            .num_files = 0,
-                            .num_dirs = 1,
-                            .stage = TEK_SC_DD_STAGE_downloading,
-                            .num_deletions = 0,
-                            .num_io_ops = 0,
-                            .transfer_buf_size = 0,
-                            .total_file_growth = 0,
-                            .download_size = 0};
+  tek_sc_depot_delta res{.source_manifest = source_manifest,
+                         .target_manifest = target_manifest,
+                         .patch = patch,
+                         .chunks = nullptr,
+                         .transfer_ops = nullptr,
+                         .files = nullptr,
+                         .dirs = nullptr,
+                         .num_chunks = 0,
+                         .num_transfer_ops = 0,
+                         .num_files = 0,
+                         .num_dirs = 1,
+                         .stage = TEK_SC_DD_STAGE_downloading,
+                         .num_deletions = 0,
+                         .num_io_ops = 0,
+                         .transfer_buf_size = 0,
+                         .total_file_growth = 0,
+                         .download_size = 0};
   // Allocate staging entry buffer
-  const auto descs = std::make_unique<entry_desc[]>(
+  const auto descs{std::make_unique<entry_desc[]>(
       std::min(source_manifest->num_files, target_manifest->num_files) +
-      std::min(source_manifest->num_dirs, target_manifest->num_dirs));
+      std::min(source_manifest->num_dirs, target_manifest->num_dirs))};
   // Allocate chunk pointer buffers
-  const auto src_chunk_ptrs =
+  const auto src_chunk_ptrs{
       std::make_unique_for_overwrite<const tek_sc_dm_chunk *_Nonnull[]>(
           std::ranges::max_element(
-              std::span(source_manifest->files, source_manifest->num_files), {},
-              &tek_sc_dm_file::num_chunks)
-              ->num_chunks);
-  const auto tgt_chunk_ptrs =
+              std::span{source_manifest->files,
+                        static_cast<std::size_t>(source_manifest->num_files)},
+              {}, &tek_sc_dm_file::num_chunks)
+              ->num_chunks)};
+  const auto tgt_chunk_ptrs{
       std::make_unique_for_overwrite<const tek_sc_dm_chunk *_Nonnull[]>(
           target_manifest->num_files
-              ? std::ranges::max_element(std::span(target_manifest->files,
-                                                   target_manifest->num_files),
-                                         {}, &tek_sc_dm_file::num_chunks)
+              ? std::ranges::max_element(
+                    std::span{
+                        target_manifest->files,
+                        static_cast<std::size_t>(target_manifest->num_files)},
+                    {}, &tek_sc_dm_file::num_chunks)
                     ->num_chunks
-              : 0);
+              : 0)};
   // Run count pass
   count_ctx count_ctx{.next_desc = descs.get(),
                       .patch = patch,
