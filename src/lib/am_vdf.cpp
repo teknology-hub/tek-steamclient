@@ -17,6 +17,7 @@
 #include "tek-steamclient/am.h"
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <pthread.h>
@@ -32,14 +33,14 @@ operator|=(tek_sc_am_item_status &left, tek_sc_am_item_status right) noexcept {
 }
 
 extern "C" bool tsci_am_parse_app_info(tek_sc_am *am, const char *buf,
-                                       int len) {
-  std::string_view view(buf, len);
+                                       std::size_t len) {
+  std::string_view view{buf, len};
   std::error_code ec;
-  const auto vdf = tyti::vdf::read(view.begin(), view.end(), ec);
+  const auto vdf{tyti::vdf::read(view.begin(), view.end(), ec)};
   if (ec != std::error_code{}) {
     return false;
   }
-  const auto appid = vdf.attribs.find("appid");
+  const auto appid{vdf.attribs.find("appid")};
   if (appid == vdf.attribs.cend()) {
     return false;
   }
@@ -48,14 +49,14 @@ extern "C" bool tsci_am_parse_app_info(tek_sc_am *am, const char *buf,
   if (std::from_chars(view.begin(), view.end(), app_id).ec != std::errc{}) {
     return false;
   }
-  const auto depots = vdf.childs.find("depots");
+  const auto depots{vdf.childs.find("depots")};
   if (depots == vdf.childs.cend()) {
     return true;
   }
   pthread_mutex_lock(&am->item_descs_mtx);
   // Find the range of item state descriptors belonging to the app, assuming
   //    that they are sorted by app_id in the linked list
-  auto descs_begin = reinterpret_cast<tek_sc_am_item_desc *>(am->item_descs);
+  auto descs_begin{reinterpret_cast<tek_sc_am_item_desc *>(am->item_descs)};
   while (descs_begin && descs_begin->id.app_id != app_id) {
     descs_begin = descs_begin->next;
   }
@@ -63,20 +64,21 @@ extern "C" bool tsci_am_parse_app_info(tek_sc_am *am, const char *buf,
     pthread_mutex_unlock(&am->item_descs_mtx);
     return false;
   }
-  auto descs_end = descs_begin->next;
+  auto descs_end{descs_begin->next};
   while (descs_end && descs_end->id.app_id == app_id) {
     descs_end = descs_end->next;
   }
   sqlite3_exec(am->db, "BEGIN", nullptr, nullptr, nullptr);
-  constexpr char query[] = "UPDATE items SET status = ?, latest_manifest_id = "
-                           "? WHERE app_id = ? AND depot_id = ?";
+  constexpr std::string_view query{
+      "UPDATE items SET status = ?, latest_manifest_id = ? WHERE app_id = ? "
+      "AND depot_id = ?"};
   sqlite3_stmt *stmt_ptr;
-  if (sqlite3_prepare_v2(am->db, query, sizeof query, &stmt_ptr, nullptr) !=
-      SQLITE_OK) {
+  if (sqlite3_prepare_v2(am->db, query.data(), query.length() + 1, &stmt_ptr,
+                         nullptr) != SQLITE_OK) {
     stmt_ptr = nullptr;
   }
-  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(
-      stmt_ptr, sqlite3_finalize);
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      stmt_ptr, sqlite3_finalize};
   // Parse the depots
   for (const auto &[id, depot] : depots->second->childs) {
     view = id;
@@ -84,18 +86,18 @@ extern "C" bool tsci_am_parse_app_info(tek_sc_am *am, const char *buf,
     if (std::from_chars(view.begin(), view.end(), depot_id).ec != std::errc{}) {
       continue;
     }
-    const auto &depot_children = depot->childs;
-    const auto manifests = depot_children.find("manifests");
+    const auto &depot_children{depot->childs};
+    const auto manifests{depot_children.find("manifests")};
     if (manifests == depot_children.cend()) {
       continue;
     }
-    const auto &manifests_children = manifests->second->childs;
-    const auto public_man = manifests_children.find("public");
+    const auto &manifests_children{manifests->second->childs};
+    const auto public_man{manifests_children.find("public")};
     if (public_man == manifests_children.cend()) {
       continue;
     }
-    const auto &public_attrs = public_man->second->attribs;
-    const auto gid = public_attrs.find("gid");
+    const auto &public_attrs{public_man->second->attribs};
+    const auto gid{public_attrs.find("gid")};
     if (gid == public_attrs.cend()) {
       continue;
     }
@@ -105,7 +107,7 @@ extern "C" bool tsci_am_parse_app_info(tek_sc_am *am, const char *buf,
         std::errc{}) {
       continue;
     }
-    for (auto desc = descs_begin; desc != descs_end; desc = desc->next) {
+    for (auto desc{descs_begin}; desc != descs_end; desc = desc->next) {
       if (desc->id.depot_id != depot_id) {
         continue;
       }

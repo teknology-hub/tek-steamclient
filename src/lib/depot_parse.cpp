@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <compare>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <google/protobuf/arena.h>
@@ -56,9 +57,9 @@ namespace {
 
 //===-- SteamPipe magic numbers -------------------------------------------===//
 
-static constexpr std::uint32_t manifest_metadata_magic = 0x1F4812BE;
-static constexpr std::uint32_t manifest_payload_magic = 0x71F617D0;
-static constexpr std::uint32_t patch_payload_magic = 0x502F15E5;
+static constexpr std::uint32_t manifest_metadata_magic{0x1F4812BE};
+static constexpr std::uint32_t manifest_payload_magic{0x71F617D0};
+static constexpr std::uint32_t patch_payload_magic{0x502F15E5};
 
 //===-- Private types -----------------------------------------------------===//
 
@@ -100,8 +101,8 @@ struct [[gnu::visibility("internal")]] dp_parse_ctx {
   tek_sc_dp_chunk *_Nonnull next_chunk;
 
   dp_parse_ctx(int max_num_src_chunks, int max_num_tgt_chunks)
-      : src_chunk_ptrs(new const tek_sc_dm_chunk *[max_num_src_chunks]),
-        tgt_chunk_ptrs(new const tek_sc_dm_chunk *[max_num_tgt_chunks]) {}
+      : src_chunk_ptrs{new const tek_sc_dm_chunk *[max_num_src_chunks]},
+        tgt_chunk_ptrs{new const tek_sc_dm_chunk *[max_num_tgt_chunks]} {}
 };
 
 //===-- Private functions -------------------------------------------------===//
@@ -125,8 +126,8 @@ operator|=(tek_sc_dm_file_flag &left, tek_sc_dm_file_flag right) noexcept {
 ///    Directory entry that receives the parsed data.
 static void dm_process_dir(dm_parse_ctx &ctx, const dm_dir_node &node,
                            tek_sc_dm_dir &dm_dir) noexcept {
-  auto cur_file = ctx.next_file;
-  auto cur_subdir = ctx.next_dir;
+  auto cur_file{ctx.next_file};
+  auto cur_subdir{ctx.next_dir};
   // Initialize directory fields
   if (node.files.empty()) {
     dm_dir.files = nullptr;
@@ -144,7 +145,7 @@ static void dm_process_dir(dm_parse_ctx &ctx, const dm_dir_node &node,
   dm_dir.num_subdirs = node.subdirs.size();
   // Process files
   for (const auto &[name, file] : node.files) {
-    auto &dm_file = *cur_file++;
+    auto &dm_file{*cur_file++};
     dm_file.name = ctx.next_name;
     ctx.next_name +=
         tsci_os_str_to_pstr(name.data(), name.length(), ctx.next_name);
@@ -181,12 +182,13 @@ static void dm_process_dir(dm_parse_ctx &ctx, const dm_dir_node &node,
         continue;
       }
       dm_file.chunks = ctx.next_chunk;
-      const std::span dm_chunks(ctx.next_chunk, file.chunks_size());
+      const std::span dm_chunks{ctx.next_chunk,
+                                static_cast<std::size_t>(file.chunks_size())};
       ctx.next_chunk += file.chunks_size();
       for (auto &&[chunk, dm_chunk] :
            std::views::zip(file.chunks(), dm_chunks)) {
-        std::ranges::move(
-            std::span(chunk.sha().data(), sizeof dm_chunk.sha.bytes),
+        std::ranges::copy(
+            std::span{chunk.sha().data(), sizeof dm_chunk.sha.bytes},
             dm_chunk.sha.bytes);
         dm_chunk.parent = &dm_file;
         dm_chunk.offset = chunk.offset();
@@ -199,7 +201,7 @@ static void dm_process_dir(dm_parse_ctx &ctx, const dm_dir_node &node,
   } // for (const auto &[name, file] : node.files)
   // Process subdirectories
   for (const auto &[name, subnode] : node.subdirs) {
-    auto &dm_subdir = *cur_subdir++;
+    auto &dm_subdir{*cur_subdir++};
     dm_subdir.name = ctx.next_name;
     ctx.next_name +=
         tsci_os_str_to_pstr(name.data(), name.length(), ctx.next_name);
@@ -280,15 +282,17 @@ static int dp_count_dir(dp_parse_ctx &ctx,
                         const RepeatedPtrField<PatchChunk> &chunks,
                         const tek_sc_dm_dir &src_dir,
                         const tek_sc_dm_dir &tgt_dir) noexcept {
-  int res = 0;
-  const std::span src_files(src_dir.files, src_dir.num_files);
-  const std::span tgt_files(tgt_dir.files, tgt_dir.num_files);
+  int res{};
+  const std::span src_files{src_dir.files,
+                            static_cast<std::size_t>(src_dir.num_files)};
+  const std::span tgt_files{tgt_dir.files,
+                            static_cast<std::size_t>(tgt_dir.num_files)};
   // Iterate only the intersecting range that may contain matching files
-  for (auto src_file_it = src_files.begin(), tgt_file_it = tgt_files.begin();
+  for (auto src_file_it{src_files.begin()}, tgt_file_it{tgt_files.begin()};
        src_file_it < src_files.end() && tgt_file_it < tgt_files.end();) {
-    const auto &src_file = *src_file_it;
-    const auto &tgt_file = *tgt_file_it;
-    const int file_diff = tsci_os_pstrcmp(src_file.name, tgt_file.name);
+    const auto &src_file{*src_file_it};
+    const auto &tgt_file{*tgt_file_it};
+    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
     // Ignore mismatching files
     if (file_diff < 0) {
       ++src_file_it;
@@ -307,23 +311,27 @@ static int dp_count_dir(dp_parse_ctx &ctx,
       continue;
     }
     // Populate chunk pointer buffers and sort them by sha/offset
-    const std::span src_chunk_ptrs(ctx.src_chunk_ptrs.get(),
-                                   src_file.num_chunks);
-    std::ranges::transform(std::span(src_file.chunks, src_file.num_chunks),
+    const std::span src_chunk_ptrs{
+        ctx.src_chunk_ptrs.get(),
+        static_cast<std::size_t>(src_file.num_chunks)};
+    std::ranges::transform(std::span{src_file.chunks, static_cast<std::size_t>(
+                                                          src_file.num_chunks)},
                            src_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(src_chunk_ptrs, cmp_dm_chunk_sha_and_off);
-    const std::span tgt_chunk_ptrs(ctx.tgt_chunk_ptrs.get(),
-                                   tgt_file.num_chunks);
-    std::ranges::transform(std::span(tgt_file.chunks, tgt_file.num_chunks),
+    const std::span tgt_chunk_ptrs{
+        ctx.tgt_chunk_ptrs.get(),
+        static_cast<std::size_t>(tgt_file.num_chunks)};
+    std::ranges::transform(std::span{tgt_file.chunks, static_cast<std::size_t>(
+                                                          tgt_file.num_chunks)},
                            tgt_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(tgt_chunk_ptrs, cmp_dm_chunk_sha_and_off);
     // Iterate intersecting and target-only ranges that may contain new chunks
-    auto tgt_chunk_it = tgt_chunk_ptrs.begin();
-    for (auto src_chunk_it = src_chunk_ptrs.begin();
+    auto tgt_chunk_it{tgt_chunk_ptrs.begin()};
+    for (auto src_chunk_it{src_chunk_ptrs.begin()};
          src_chunk_it < src_chunk_ptrs.end() &&
          tgt_chunk_it < tgt_chunk_ptrs.end();) {
-      const auto &tgt_chunk = **tgt_chunk_it;
-      const auto chunk_diff = **src_chunk_it <=> tgt_chunk;
+      const auto &tgt_chunk{**tgt_chunk_it};
+      const auto chunk_diff{**src_chunk_it <=> tgt_chunk};
       // Ignore non-new chunks
       if (chunk_diff == std::strong_ordering::equal) {
         ++src_chunk_it;
@@ -335,8 +343,8 @@ static int dp_count_dir(dp_parse_ctx &ctx,
         continue;
       }
       // Check if target chunk sha is present among patch chunk target shas
-      const auto pchunk = std::ranges::lower_bound(chunks, tgt_chunk.sha,
-                                                   cmp_sha, proj_proto_tgt_sha);
+      const auto pchunk{std::ranges::lower_bound(chunks, tgt_chunk.sha, cmp_sha,
+                                                 proj_proto_tgt_sha)};
       if (pchunk == chunks.cend() ||
           proj_proto_tgt_sha(*pchunk) != tgt_chunk.sha) {
         ++tgt_chunk_it;
@@ -358,10 +366,10 @@ static int dp_count_dir(dp_parse_ctx &ctx,
                (*tgt_chunk_it)->sha == tgt_chunk.sha);
     } // for (intersecting chunks)
     while (tgt_chunk_it < tgt_chunk_ptrs.end()) {
-      const auto &tgt_chunk = **tgt_chunk_it;
+      const auto &tgt_chunk{**tgt_chunk_it};
       // Check if target chunk sha is present among patch chunk target shas
-      const auto pchunk = std::ranges::lower_bound(chunks, tgt_chunk.sha,
-                                                   cmp_sha, proj_proto_tgt_sha);
+      const auto pchunk{std::ranges::lower_bound(chunks, tgt_chunk.sha, cmp_sha,
+                                                 proj_proto_tgt_sha)};
       if (pchunk == chunks.cend() ||
           proj_proto_tgt_sha(*pchunk) != tgt_chunk.sha) {
         ++tgt_chunk_it;
@@ -385,17 +393,19 @@ static int dp_count_dir(dp_parse_ctx &ctx,
     ++src_file_it;
     ++tgt_file_it;
   } // for (intersecting files)
-  const std::span src_subdirs(src_dir.subdirs, src_dir.num_subdirs);
-  const std::span tgt_subdirs(tgt_dir.subdirs, tgt_dir.num_subdirs);
+  const std::span src_subdirs{src_dir.subdirs,
+                              static_cast<std::size_t>(src_dir.num_subdirs)};
+  const std::span tgt_subdirs{tgt_dir.subdirs,
+                              static_cast<std::size_t>(tgt_dir.num_subdirs)};
   // Iterate only the intersecting range that may contain matching
   //    subdirectories
-  for (auto src_subdir_it = src_subdirs.begin(),
-            tgt_subdir_it = tgt_subdirs.begin();
+  for (auto src_subdir_it{src_subdirs.begin()},
+       tgt_subdir_it{tgt_subdirs.begin()};
        src_subdir_it < src_subdirs.end() &&
        tgt_subdir_it < tgt_subdirs.end();) {
-    const auto &src_subdir = *src_subdir_it;
-    const auto &tgt_subdir = *tgt_subdir_it;
-    const int subdir_diff = tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name);
+    const auto &src_subdir{*src_subdir_it};
+    const auto &tgt_subdir{*tgt_subdir_it};
+    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
     // Ignore mismatching subdirectories
     if (subdir_diff < 0) {
       ++src_subdir_it;
@@ -428,14 +438,16 @@ static void dp_write_dir(dp_parse_ctx &ctx,
                          const RepeatedPtrField<PatchChunk> &chunks,
                          const tek_sc_dm_dir &src_dir,
                          const tek_sc_dm_dir &tgt_dir) noexcept {
-  const std::span src_files(src_dir.files, src_dir.num_files);
-  const std::span tgt_files(tgt_dir.files, tgt_dir.num_files);
+  const std::span src_files{src_dir.files,
+                            static_cast<std::size_t>(src_dir.num_files)};
+  const std::span tgt_files{tgt_dir.files,
+                            static_cast<std::size_t>(tgt_dir.num_files)};
   // Iterate only the intersecting range that may contain matching files
-  for (auto src_file_it = src_files.begin(), tgt_file_it = tgt_files.begin();
+  for (auto src_file_it{src_files.begin()}, tgt_file_it{tgt_files.begin()};
        src_file_it < src_files.end() && tgt_file_it < tgt_files.end();) {
-    const auto &src_file = *src_file_it;
-    const auto &tgt_file = *tgt_file_it;
-    const int file_diff = tsci_os_pstrcmp(src_file.name, tgt_file.name);
+    const auto &src_file{*src_file_it};
+    const auto &tgt_file{*tgt_file_it};
+    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
     // Ignore mismatching files
     if (file_diff < 0) {
       ++src_file_it;
@@ -454,23 +466,27 @@ static void dp_write_dir(dp_parse_ctx &ctx,
       continue;
     }
     // Populate chunk pointer buffers and sort them by sha/offset
-    const std::span src_chunk_ptrs(ctx.src_chunk_ptrs.get(),
-                                   src_file.num_chunks);
-    std::ranges::transform(std::span(src_file.chunks, src_file.num_chunks),
+    const std::span src_chunk_ptrs{
+        ctx.src_chunk_ptrs.get(),
+        static_cast<std::size_t>(src_file.num_chunks)};
+    std::ranges::transform(std::span{src_file.chunks, static_cast<std::size_t>(
+                                                          src_file.num_chunks)},
                            src_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(src_chunk_ptrs, cmp_dm_chunk_sha_and_off);
-    const std::span tgt_chunk_ptrs(ctx.tgt_chunk_ptrs.get(),
-                                   tgt_file.num_chunks);
-    std::ranges::transform(std::span(tgt_file.chunks, tgt_file.num_chunks),
+    const std::span tgt_chunk_ptrs{
+        ctx.tgt_chunk_ptrs.get(),
+        static_cast<std::size_t>(tgt_file.num_chunks)};
+    std::ranges::transform(std::span{tgt_file.chunks, static_cast<std::size_t>(
+                                                          tgt_file.num_chunks)},
                            tgt_chunk_ptrs.begin(), dm_chunk_to_ptr);
     std::ranges::sort(tgt_chunk_ptrs, cmp_dm_chunk_sha_and_off);
     // Iterate intersecting and target-only ranges that may contain new chunks
-    auto tgt_chunk_it = tgt_chunk_ptrs.begin();
-    for (auto src_chunk_it = src_chunk_ptrs.begin();
+    auto tgt_chunk_it{tgt_chunk_ptrs.begin()};
+    for (auto src_chunk_it{src_chunk_ptrs.begin()};
          src_chunk_it < src_chunk_ptrs.end() &&
          tgt_chunk_it < tgt_chunk_ptrs.end();) {
-      const auto &tgt_chunk = **tgt_chunk_it;
-      const auto chunk_diff = **src_chunk_it <=> tgt_chunk;
+      const auto &tgt_chunk{**tgt_chunk_it};
+      const auto chunk_diff{**src_chunk_it <=> tgt_chunk};
       // Ignore non-new chunks
       if (chunk_diff == std::strong_ordering::equal) {
         ++src_chunk_it;
@@ -482,17 +498,17 @@ static void dp_write_dir(dp_parse_ctx &ctx,
         continue;
       }
       // Check if target chunk sha is present among patch chunk target shas
-      const auto pchunk = std::ranges::lower_bound(chunks, tgt_chunk.sha,
-                                                   cmp_sha, proj_proto_tgt_sha);
+      const auto pchunk{std::ranges::lower_bound(chunks, tgt_chunk.sha, cmp_sha,
+                                                 proj_proto_tgt_sha)};
       if (pchunk == chunks.cend() ||
           proj_proto_tgt_sha(*pchunk) != tgt_chunk.sha) {
         ++tgt_chunk_it;
         continue;
       }
       // Find the chunk with pchunk's source sha in the source file
-      const auto psrc_chunk_ptr =
+      const auto psrc_chunk_ptr{
           std::ranges::lower_bound(src_chunk_ptrs, proj_proto_src_sha(*pchunk),
-                                   cmp_sha, proj_dm_ptr_sha);
+                                   cmp_sha, proj_dm_ptr_sha)};
       if (psrc_chunk_ptr == src_chunk_ptrs.end() ||
           (*psrc_chunk_ptr)->sha != proj_proto_src_sha(*pchunk)) {
         ++tgt_chunk_it;
@@ -512,19 +528,19 @@ static void dp_write_dir(dp_parse_ctx &ctx,
                (*tgt_chunk_it)->sha == tgt_chunk.sha);
     } // for (intersecting chunks)
     while (tgt_chunk_it < tgt_chunk_ptrs.end()) {
-      const auto &tgt_chunk = **tgt_chunk_it;
+      const auto &tgt_chunk{**tgt_chunk_it};
       // Check if target chunk sha is present among patch chunk target shas
-      const auto pchunk = std::ranges::lower_bound(chunks, tgt_chunk.sha,
-                                                   cmp_sha, proj_proto_tgt_sha);
+      const auto pchunk{std::ranges::lower_bound(chunks, tgt_chunk.sha, cmp_sha,
+                                                 proj_proto_tgt_sha)};
       if (pchunk == chunks.cend() ||
           proj_proto_tgt_sha(*pchunk) != tgt_chunk.sha) {
         ++tgt_chunk_it;
         continue;
       }
       // Find the chunk with pchunk's source sha in the source file
-      const auto psrc_chunk_ptr =
+      const auto psrc_chunk_ptr{
           std::ranges::lower_bound(src_chunk_ptrs, proj_proto_src_sha(*pchunk),
-                                   cmp_sha, proj_dm_ptr_sha);
+                                   cmp_sha, proj_dm_ptr_sha)};
       if (psrc_chunk_ptr == src_chunk_ptrs.end() ||
           (*psrc_chunk_ptr)->sha != proj_proto_src_sha(*pchunk)) {
         ++tgt_chunk_it;
@@ -546,17 +562,19 @@ static void dp_write_dir(dp_parse_ctx &ctx,
     ++src_file_it;
     ++tgt_file_it;
   } // for (intersecting files)
-  const std::span src_subdirs(src_dir.subdirs, src_dir.num_subdirs);
-  const std::span tgt_subdirs(tgt_dir.subdirs, tgt_dir.num_subdirs);
+  const std::span src_subdirs{src_dir.subdirs,
+                              static_cast<std::size_t>(src_dir.num_subdirs)};
+  const std::span tgt_subdirs{tgt_dir.subdirs,
+                              static_cast<std::size_t>(tgt_dir.num_subdirs)};
   // Iterate only the intersecting range that may contain matching
   //    subdirectories
-  for (auto src_subdir_it = src_subdirs.begin(),
-            tgt_subdir_it = tgt_subdirs.begin();
+  for (auto src_subdir_it{src_subdirs.begin()},
+       tgt_subdir_it{tgt_subdirs.begin()};
        src_subdir_it < src_subdirs.end() &&
        tgt_subdir_it < tgt_subdirs.end();) {
-    const auto &src_subdir = *src_subdir_it;
-    const auto &tgt_subdir = *tgt_subdir_it;
-    const int subdir_diff = tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name);
+    const auto &src_subdir{*src_subdir_it};
+    const auto &tgt_subdir{*tgt_subdir_it};
+    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
     // Ignore mismatching subdirectories
     if (subdir_diff < 0) {
       ++src_subdir_it;
@@ -594,14 +612,14 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
   zip_uint64_t unzipped_data_size;
   // Unzip the manifest
   {
-    const std::unique_ptr<zip_source_t, decltype(&zip_source_close)> zip_source(
+    const std::unique_ptr<zip_source_t, decltype(&zip_source_close)> zip_source{
         zip_source_buffer_create(data, data_size, 0, nullptr),
-        zip_source_close);
+        zip_source_close};
     if (!zip_source) {
       return dm_parse_err(TEK_SC_ERRC_zip);
     }
-    const std::unique_ptr<zip_t, decltype(&zip_close)> zip_archive(
-        zip_open_from_source(zip_source.get(), ZIP_RDONLY, nullptr), zip_close);
+    const std::unique_ptr<zip_t, decltype(&zip_close)> zip_archive{
+        zip_open_from_source(zip_source.get(), ZIP_RDONLY, nullptr), zip_close};
     if (!zip_archive) {
       return dm_parse_err(TEK_SC_ERRC_zip);
     }
@@ -614,8 +632,8 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
       return dm_parse_err(TEK_SC_ERRC_zip);
     }
     unzipped_data_size = zip_stat.size;
-    const std::unique_ptr<zip_file_t, decltype(&zip_fclose)> zip_file(
-        zip_fopen_index(zip_archive.get(), 0, 0), zip_fclose);
+    const std::unique_ptr<zip_file_t, decltype(&zip_fclose)> zip_file{
+        zip_fopen_index(zip_archive.get(), 0, 0), zip_fclose};
     if (!zip_file) {
       return dm_parse_err(TEK_SC_ERRC_zip);
     }
@@ -626,8 +644,8 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
     }
   } // Unzip scope
   // Check section headers and sizes
-  const auto &payload_hdr =
-      *reinterpret_cast<const file_section_hdr *>(unzipped_data.get());
+  const auto &payload_hdr{
+      *reinterpret_cast<const file_section_hdr *>(unzipped_data.get())};
   if (payload_hdr.magic != manifest_payload_magic) {
     return dm_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
@@ -660,29 +678,28 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
   }
   {
     google::protobuf::Arena arena;
-    auto &payload = *google::protobuf::Arena::Create<ManifestPayload>(&arena);
+    auto &payload{*google::protobuf::Arena::Create<ManifestPayload>(&arena)};
     if (!payload.ParseFromArray(&unzipped_data[sizeof payload_hdr],
                                 payload_hdr.size)) {
       return dm_parse_err(TEK_SC_ERRC_protobuf_deserialize);
     }
-    auto &files = *payload.mutable_files();
+    auto &files{*payload.mutable_files()};
     // Decrypt paths if necessary
     if (paths_encrypted) {
-      const auto aes_ecb = EVP_aes_256_ecb();
-      const auto aes_cbc = EVP_aes_256_cbc();
-      const std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(
-          EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+      const auto aes_ecb{EVP_aes_256_ecb()};
+      const auto aes_cbc{EVP_aes_256_cbc()};
+      const std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{
+          EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
       if (!ctx) {
         return dm_parse_err(TEK_SC_ERRC_aes_decryption);
       }
       for (auto &file : files) {
         // Both Base64 decoding and AES decryption are performed in-situ
-        // because
-        //    they don't increase data size
-        auto &path = *file.mutable_path();
-        const auto udata = reinterpret_cast<unsigned char *>(path.data());
-        const int bin_size =
-            tsci_u_base64_decode(path.data(), path.length(), udata);
+        //    because they don't increase data size
+        auto &path{*file.mutable_path()};
+        const auto udata{reinterpret_cast<unsigned char *>(path.data())};
+        const int bin_size{
+            tsci_u_base64_decode(path.data(), path.length(), udata)};
         if (!EVP_DecryptInit_ex2(ctx.get(), aes_ecb, depot_key, nullptr,
                                  nullptr)) {
           return dm_parse_err(TEK_SC_ERRC_aes_decryption);
@@ -713,11 +730,11 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
         decrypted_size += last_block_len;
         path.resize(decrypted_size - 1);
         if (file.flags() & ManifestFileFlag::MANIFEST_FILE_FLAG_SYMLINK) {
-          auto &link_target = *file.mutable_link_target();
-          const auto udata =
-              reinterpret_cast<unsigned char *>(link_target.data());
-          const int bin_size = tsci_u_base64_decode(
-              link_target.data(), link_target.length(), udata);
+          auto &link_target{*file.mutable_link_target()};
+          const auto udata{
+              reinterpret_cast<unsigned char *>(link_target.data())};
+          const int bin_size{tsci_u_base64_decode(link_target.data(),
+                                                  link_target.length(), udata)};
           if (!EVP_DecryptInit_ex2(ctx.get(), aes_ecb, depot_key, nullptr,
                                    nullptr)) {
             return dm_parse_err(TEK_SC_ERRC_aes_decryption);
@@ -751,11 +768,11 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
     } // if (paths_encrypted)
     // Replace backslashes with forward slashes in paths
     for (auto &file : files) {
-      auto &path = *file.mutable_path();
+      auto &path{*file.mutable_path()};
       std::ranges::replace(path, '\\', '/');
       if (file.flags() & ManifestFileFlag::MANIFEST_FILE_FLAG_SYMLINK) {
         // Link target paths need OS-defined separators
-        auto &link_target = *file.mutable_link_target();
+        auto &link_target{*file.mutable_link_target()};
 #ifdef _WIN32
         std::ranges::replace(link_target, '/', '\\');
 #else
@@ -766,14 +783,13 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
     // Build the directory tree
     dm_dir_node root;
     for (const auto &file : files) {
-      auto segments = file.path() | std::views::split('/') |
-                      std::views::transform([](auto &&segment) {
-                        return std::string_view(segment);
-                      });
-      auto cur_node = &root;
-      auto it = segments.begin();
-      for (const auto end = segments.end(); std::ranges::next(it) != end;
-           ++it) {
+      auto segments{file.path() | std::views::split('/') |
+                    std::views::transform([](auto &&segment) {
+                      return std::string_view(segment);
+                    })};
+      auto cur_node{&root};
+      auto it{segments.begin()};
+      for (const auto end{segments.end()}; std::ranges::next(it) != end; ++it) {
         cur_node = &cur_node->subdirs.try_emplace(*it).first->second;
       }
       if (file.flags() & ManifestFileFlag::MANIFEST_FILE_FLAG_DIRECTORY) {
@@ -783,12 +799,12 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
       }
     }
     // Count the number of entries
-    int name_buf_len = 0;
-    int num_chunks = 0;
-    int num_files = 0;
-    int num_dirs = 1; // Root dir included here
-    auto count = [&name_buf_len, &num_chunks, &num_files,
-                  &num_dirs](auto &&self, const dm_dir_node &node) -> void {
+    int name_buf_len{};
+    int num_chunks{};
+    int num_files{};
+    int num_dirs{1}; // Root dir included here
+    auto count{[&name_buf_len, &num_chunks, &num_files,
+                &num_dirs](auto &&self, const dm_dir_node &node) -> void {
       num_files += node.files.size();
       for (const auto &[name, file] : node.files) {
         name_buf_len += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
@@ -803,7 +819,7 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
         name_buf_len += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
         self(self, subnode);
       }
-    };
+    }};
     count(count, root);
     manifest->num_chunks = num_chunks;
     manifest->num_files = num_files;
@@ -823,10 +839,10 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
         reinterpret_cast<tek_sc_dm_file *>(manifest->chunks + num_chunks);
     manifest->dirs =
         reinterpret_cast<tek_sc_dm_dir *>(manifest->files + num_files);
-    auto next_name =
-        reinterpret_cast<tek_sc_os_char *>(manifest->dirs + num_dirs);
+    auto next_name{
+        reinterpret_cast<tek_sc_os_char *>(manifest->dirs + num_dirs)};
     // Build the manifest tree
-    const auto root_dir = manifest->dirs;
+    const auto root_dir{manifest->dirs};
     root_dir->name = nullptr;
     root_dir->parent = nullptr;
     dm_parse_ctx ctx{.next_name = next_name,
@@ -846,13 +862,13 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
   if (data_size < static_cast<int>(16 + sizeof(file_section_hdr))) {
     return dp_parse_err(TEK_SC_ERRC_invalid_data);
   }
-  const auto decrypted_data =
-      std::make_unique_for_overwrite<unsigned char[]>(data_size - 16);
+  const auto decrypted_data{
+      std::make_unique_for_overwrite<unsigned char[]>(data_size - 16)};
   int decrypted_data_size;
   // Decrypt the patch
   {
-    const std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(
-        EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+    const std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{
+        EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
     if (!ctx) {
       return dp_parse_err(TEK_SC_ERRC_aes_decryption);
     }
@@ -861,7 +877,7 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
       return dp_parse_err(TEK_SC_ERRC_aes_decryption);
     }
     EVP_CIPHER_CTX_set_padding(ctx.get(), 0);
-    const auto udata = reinterpret_cast<const unsigned char *>(data);
+    const auto udata{reinterpret_cast<const unsigned char *>(data)};
     if (!EVP_DecryptUpdate(ctx.get(), decrypted_data.get(),
                            &decrypted_data_size, udata, 16)) {
       return dp_parse_err(TEK_SC_ERRC_aes_decryption);
@@ -887,19 +903,19 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
     decrypted_data_size += last_block_len;
   } // Decrypt scope
   // Check section headers and sizes
-  const auto &payload_hdr =
-      *reinterpret_cast<const file_section_hdr *>(decrypted_data.get());
+  const auto &payload_hdr{
+      *reinterpret_cast<const file_section_hdr *>(decrypted_data.get())};
   if (payload_hdr.magic != patch_payload_magic) {
     return dp_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
-  const int payload_size = sizeof payload_hdr + payload_hdr.size;
-  if (payload_size > decrypted_data_size) {
+  const auto payload_size{sizeof payload_hdr + payload_hdr.size};
+  if (static_cast<int>(payload_size) > decrypted_data_size) {
     return dp_parse_err(TEK_SC_ERRC_invalid_data);
   }
   // Parse Protobuf data
   {
     google::protobuf::Arena arena;
-    auto &payload = *google::protobuf::Arena::Create<PatchPayload>(&arena);
+    auto &payload{*google::protobuf::Arena::Create<PatchPayload>(&arena)};
     if (!payload.ParseFromArray(&decrypted_data[sizeof payload_hdr],
                                 payload_hdr.size)) {
       return dp_parse_err(TEK_SC_ERRC_protobuf_deserialize);
@@ -910,14 +926,14 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
     }
     patch->source_manifest = source_manifest;
     patch->target_manifest = target_manifest;
-    auto &chunks = *payload.mutable_chunks();
+    auto &chunks{*payload.mutable_chunks()};
     if (payload.delta_chunk_location() ==
         DeltaChunkLocation::DELTA_CHUNK_LOCATION_IN_PROTOBUF) {
       for (auto &chunk : chunks) {
         // Prepend delta chunk with pointer to it, to be consistent with
         //    location-after-protobuf behavior
         chunk.mutable_delta_chunk()->insert(0, sizeof(char *), '\0');
-        const auto data = chunk.mutable_delta_chunk()->data();
+        const auto data{chunk.mutable_delta_chunk()->data()};
         *reinterpret_cast<const char **>(data) = data + sizeof(char *);
       }
     } else { // if (delta_chunk_location in protobuf)
@@ -935,8 +951,8 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
       }
       // Assign delta chunk pointers to chunks so they don't get messed after
       //    sorting
-      auto cur_delta_chunk =
-          decrypted_data.get() + payload_size + sizeof(std::uint32_t);
+      auto cur_delta_chunk{decrypted_data.get() + payload_size +
+                           sizeof(std::uint32_t)};
       for (auto &chunk : chunks) {
         chunk.mutable_delta_chunk()->assign(
             reinterpret_cast<const char *>(&cur_delta_chunk),
@@ -947,18 +963,20 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
     // Sort chunks by target_sha for binary search to work
     std::ranges::sort(chunks, cmp_sha, proj_proto_tgt_sha);
     // Setup parsing context
-    dp_parse_ctx ctx(
+    dp_parse_ctx ctx{
         std::ranges::max_element(
-            std::span(source_manifest->files, source_manifest->num_files), {},
-            &tek_sc_dm_file::num_chunks)
+            std::span{source_manifest->files,
+                      static_cast<std::size_t>(source_manifest->num_files)},
+            {}, &tek_sc_dm_file::num_chunks)
             ->num_chunks,
         std::ranges::max_element(
-            std::span(target_manifest->files, target_manifest->num_files), {},
-            &tek_sc_dm_file::num_chunks)
-            ->num_chunks);
+            std::span{target_manifest->files,
+                      static_cast<std::size_t>(target_manifest->num_files)},
+            {}, &tek_sc_dm_file::num_chunks)
+            ->num_chunks};
     // Count the number of patch chunk entries to create
-    const int num_chunks = dp_count_dir(ctx, chunks, *source_manifest->dirs,
-                                        *target_manifest->dirs);
+    const int num_chunks{dp_count_dir(ctx, chunks, *source_manifest->dirs,
+                                      *target_manifest->dirs)};
     patch->num_chunks = num_chunks;
     if (!num_chunks) {
       // This should be nearly impossible, but handling it just in case
@@ -967,20 +985,21 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
       return tsc_err_ok();
     }
     // Allocate temporary buffer for patch chunk entries and write them
-    auto dp_chunks =
-        std::make_unique_for_overwrite<tek_sc_dp_chunk[]>(num_chunks);
+    auto dp_chunks{
+        std::make_unique_for_overwrite<tek_sc_dp_chunk[]>(num_chunks)};
     ctx.next_chunk = dp_chunks.get();
     dp_write_dir(ctx, chunks, *source_manifest->dirs, *target_manifest->dirs);
     ctx.src_chunk_ptrs.reset();
     ctx.tgt_chunk_ptrs.reset();
     // Sort dp_chunks by delta_chunk to make it easier to determine chunks that
     //    share the same delta chunk
-    std::ranges::sort(std::span(dp_chunks.get(), num_chunks), {},
-                      &tek_sc_dp_chunk::delta_chunk);
+    std::ranges::sort(
+        std::span{dp_chunks.get(), static_cast<std::size_t>(num_chunks)}, {},
+        &tek_sc_dp_chunk::delta_chunk);
     // Compute total size of delta chunks, may be smaller than provided by
     //    SteamPipe due to not all chunks being used
-    int delta_size = dp_chunks[0].delta_chunk_size;
-    for (int i = 1; i < num_chunks; ++i) {
+    int delta_size{dp_chunks[0].delta_chunk_size};
+    for (int i{1}; i < num_chunks; ++i) {
       if (dp_chunks[i].delta_chunk != dp_chunks[i - 1].delta_chunk) {
         delta_size += dp_chunks[i].delta_chunk_size;
       }
@@ -995,13 +1014,13 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
     }
     // Verify delta chunks, copy them over and adjust the pointers in patch
     //    chunk entries
-    auto cur_delta_chunk =
-        reinterpret_cast<unsigned char *>(patch->chunks + num_chunks);
-    for (int i = 0; i < num_chunks;) {
-      auto &chunk = dp_chunks[i];
+    auto cur_delta_chunk{
+        reinterpret_cast<unsigned char *>(patch->chunks + num_chunks)};
+    for (int i{}; i < num_chunks;) {
+      auto &chunk{dp_chunks[i]};
       // Determine chunk format and verify magics
-      const auto magic =
-          *reinterpret_cast<const std::uint32_t *>(chunk.delta_chunk);
+      const auto magic{
+          *reinterpret_cast<const std::uint32_t *>(chunk.delta_chunk)};
       if ((magic & 0x00FFFFFF) == TSCI_VZD_HDR_MAGIC) {
         // "VZd" - VZd (ValveZip delta?)
         chunk.type = TEK_SC_DP_CHUNK_TYPE_vzd;
@@ -1028,7 +1047,7 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
       }
       std::memcpy(cur_delta_chunk, chunk.delta_chunk, chunk.delta_chunk_size);
       for (++i; i < num_chunks; ++i) {
-        auto &next_chunk = dp_chunks[i];
+        auto &next_chunk{dp_chunks[i]};
         if (next_chunk.delta_chunk != chunk.delta_chunk) {
           break;
         }
@@ -1039,11 +1058,14 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
       cur_delta_chunk += chunk.delta_chunk_size;
     }
     // Copy patch chunk entries over as well
-    std::ranges::move(std::span(dp_chunks.get(), num_chunks), patch->chunks);
+    std::ranges::move(
+        std::span{dp_chunks.get(), static_cast<std::size_t>(num_chunks)},
+        patch->chunks);
     dp_chunks.reset();
     // Sort patch chunks by target_chunk for binary search to work
-    std::ranges::sort(std::span(patch->chunks, num_chunks), {},
-                      &tek_sc_dp_chunk::target_chunk);
+    std::ranges::sort(
+        std::span{patch->chunks, static_cast<std::size_t>(num_chunks)}, {},
+        &tek_sc_dp_chunk::target_chunk);
   } // Payload parsing scope
   return tsc_err_ok();
 }

@@ -59,9 +59,8 @@ namespace {
 /// Download context for curl.
 struct tsc_curl_ctx {
   /// curl easy handle that performs the download.
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl =
-      std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(),
-                                                          curl_easy_cleanup);
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
   /// Buffer storing downloaded content.
   std::string buf;
 };
@@ -69,12 +68,12 @@ struct tsc_curl_ctx {
 //===-- Private variable --------------------------------------------------===//
 
 /// Mask for job IDs, pre-generated with process start time.
-static const std::uint64_t job_id_mask =
+static const std::uint64_t job_id_mask{
     0x3FF0000000000 |
     (((static_cast<std::uint64_t>(tsci_os_get_process_start_time()) -
        0x41D5E800) &
       0xFFFFF)
-     << 20);
+     << 20)};
 
 //===-- Private functions -------------------------------------------------===//
 
@@ -111,9 +110,9 @@ static std::size_t tsc_curl_write(const char *_Nonnull buf, std::size_t,
 ///    CM client instance to destroy.
 static void destroy(cm_client &client) {
   client.lib_ctx.cm_clients_mtx.lock();
-  auto &cm_clients = client.lib_ctx.cm_clients;
-  for (auto it = cm_clients.cbefore_begin();;) {
-    const auto prev_it = it++;
+  auto &cm_clients{client.lib_ctx.cm_clients};
+  for (auto it{cm_clients.cbefore_begin()};;) {
+    const auto prev_it{it++};
     if (it == cm_clients.cend()) {
       break;
     }
@@ -146,19 +145,19 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 16000L);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEDATA, &curl_ctx);
-  constexpr char url[] = "https://api.steampowered.com/ISteamDirectory/"
-                         "GetCMListForConnect/v1?cmtype=websockets";
-  curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, url);
+  constexpr std::string_view url{"https://api.steampowered.com/ISteamDirectory/"
+                                 "GetCMListForConnect/v1?cmtype=websockets"};
+  curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, url.data());
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write);
-  if (const auto curl_res = curl_easy_perform(curl_ctx.curl.get());
+  if (const auto curl_res{curl_easy_perform(curl_ctx.curl.get())};
       curl_res != CURLE_OK) {
-    const auto url_buf = reinterpret_cast<char *>(std::malloc(sizeof url));
+    const auto url_buf{reinterpret_cast<char *>(std::malloc(sizeof url))};
     if (url_buf) {
-      std::ranges::move(url, url_buf);
+      std::ranges::copy(url, url_buf);
     }
-    long status = 0;
+    long status{};
     if (curl_res == CURLE_HTTP_RETURNED_ERROR) {
       curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_RESPONSE_CODE, &status);
     }
@@ -175,25 +174,25 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
   if (doc.HasParseError() || !doc.IsObject()) {
     return tsc_err_sub(TEK_SC_ERRC_cm_server_list, TEK_SC_ERRC_json_parse);
   }
-  const auto response = doc.FindMember("response");
+  const auto response{doc.FindMember("response")};
   if (response == doc.MemberEnd() || !response->value.IsObject()) {
     return tsc_err_sub(TEK_SC_ERRC_cm_server_list, TEK_SC_ERRC_json_parse);
   }
-  const auto serverlist = response->value.FindMember("serverlist");
+  const auto serverlist{response->value.FindMember("serverlist")};
   if (serverlist == response->value.MemberEnd() ||
       !serverlist->value.IsArray()) {
     return tsc_err_sub(TEK_SC_ERRC_cm_server_list, TEK_SC_ERRC_json_parse);
   }
-  const auto serverlist_arr = serverlist->value.GetArray();
+  const auto serverlist_arr{serverlist->value.GetArray()};
   cm_servers.reserve(serverlist_arr.Size());
   for (const auto &element : serverlist_arr) {
-    const auto endpoint = element.FindMember("endpoint");
+    const auto endpoint{element.FindMember("endpoint")};
     if (endpoint == element.MemberEnd() || !endpoint->value.IsString()) {
       continue;
     }
-    const std::string_view view(endpoint->value.GetString(),
-                                endpoint->value.GetStringLength());
-    const auto colon_pos = view.find(':');
+    const std::string_view view{endpoint->value.GetString(),
+                                endpoint->value.GetStringLength()};
+    const auto colon_pos{view.find(':')};
     if (colon_pos == std::string_view::npos) {
       continue;
     }
@@ -202,12 +201,18 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
         std::errc{}) {
       continue;
     }
-    cm_servers.emplace_back(std::string(view.data(), colon_pos), port);
+    cm_servers.emplace_back(std::string{view.data(), colon_pos}, port);
   }
   if (cm_servers.empty()) {
     return tsc_err_sub(TEK_SC_ERRC_cm_server_list,
                        TEK_SC_ERRC_cm_server_list_empty);
   }
+  // Some firewalls block TCP/TLS traffic to non-standard ports, so prefer
+  //    endpoints with port 443 by putting them first in the list
+  std::ranges::sort(
+      cm_servers,
+      [](int left, int right) { return left == 443 && right != 443; },
+      &cm_server::port);
   return tsc_err_ok();
 }
 
@@ -227,13 +232,13 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
   if (!hdr.is_proto()) {
     return;
   }
-  auto data_ptr = reinterpret_cast<const unsigned char *>(data) + sizeof hdr;
+  auto data_ptr{reinterpret_cast<const unsigned char *>(data) + sizeof hdr};
   MessageHeader header;
   if (!header.ParseFromArray(data_ptr, hdr.header_size)) {
     return;
   }
   data_ptr += hdr.header_size;
-  const int payload_size = size - sizeof hdr - hdr.header_size;
+  const int payload_size{size - static_cast<int>(sizeof hdr) - hdr.header_size};
   switch (hdr.emsg()) {
   case EMsg::EMSG_MULTI: {
     msg_payloads::Multi payload;
@@ -246,7 +251,7 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
     if (payload.uncompressed_size()) {
       // Inner message buffer is GZip-compressed, inflate it
       msg_buf_allocated = true;
-      const auto uncomp_buf = new unsigned char[payload.uncompressed_size()];
+      const auto uncomp_buf{new unsigned char[payload.uncompressed_size()]};
       msg_buf = uncomp_buf;
       msg_buf_end = msg_buf + payload.uncompressed_size();
       client.zstream.next_in = reinterpret_cast<const unsigned char *>(
@@ -256,8 +261,8 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
       client.zstream.next_out = uncomp_buf;
       client.zstream.avail_out = payload.uncompressed_size();
       client.zstream.total_out = 0;
-      auto res = tsci_z_inflate(&client.zstream, Z_FINISH);
-      if (const auto reset_res = tsci_z_inflateReset2(&client.zstream, 16);
+      auto res{tsci_z_inflate(&client.zstream, Z_FINISH)};
+      if (const auto reset_res{tsci_z_inflateReset2(&client.zstream, 16)};
           res == Z_STREAM_END) {
         res = reset_res;
       }
@@ -273,7 +278,7 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
       msg_buf_end = msg_buf + payload.inner_messages().size();
     }
     // Process inner messages one by one
-    for (auto i = msg_buf; i < msg_buf_end;) {
+    for (auto i{msg_buf}; i < msg_buf_end;) {
       std::uint32_t msg_size;
       std::memcpy(&msg_size, i, sizeof msg_size);
       i += sizeof msg_size;
@@ -302,7 +307,7 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
     // Check if there is an await entry for this message and process it if
     //    there is
     client.a_entries_mtx.lock();
-    const auto a_entry = client.a_entries.find(header.target_job_id());
+    const auto a_entry{client.a_entries.find(header.target_job_id())};
     if (a_entry == client.a_entries.end()) {
       client.a_entries_mtx.unlock();
       break;
@@ -340,7 +345,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
                       std::size_t len) {
   switch (reason) {
   case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-    auto &client = *reinterpret_cast<cm_client *>(user);
+    auto &client{*reinterpret_cast<cm_client *>(user)};
     if (client.conn_state.load(std::memory_order::relaxed) !=
         conn_state::connecting) {
       return 0;
@@ -372,15 +377,14 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     // Otherwise report the error via callback
     client.conn_state.store(conn_state::disconnected,
                             std::memory_order::relaxed);
-    auto res = client.disconnect_reason ? tsc_err_sub(TEK_SC_ERRC_cm_connect,
-                                                      client.disconnect_reason)
-                                        : tsc_err_basic(TEK_SC_ERRC_cm_connect);
+    auto res{client.disconnect_reason
+                 ? tsc_err_sub(TEK_SC_ERRC_cm_connect, client.disconnect_reason)
+                 : tsc_err_basic(TEK_SC_ERRC_cm_connect)};
     client.disconnect_reason = TEK_SC_ERRC_ok;
-    const auto url =
-        std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
-                    client.cur_server->hostname, client.cur_server->port);
-    const auto url_buf =
-        reinterpret_cast<char *>(std::malloc(url.length() + 1));
+    const auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
+                               client.cur_server->hostname,
+                               client.cur_server->port)};
+    const auto url_buf{reinterpret_cast<char *>(std::malloc(url.length() + 1))};
     if (url_buf) {
       std::ranges::move(url.begin(), url.end() + 1, url_buf);
     }
@@ -389,9 +393,9 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     return 0;
   } // case LWS_CALLBACK_CLIENT_CONNECTION_ERROR
   case LWS_CALLBACK_CLIENT_ESTABLISHED: {
-    auto &client = *reinterpret_cast<tek_sc_cm_client *>(user);
+    auto &client{*reinterpret_cast<tek_sc_cm_client *>(user)};
     client.wsi = wsi;
-    if (auto expected = conn_state::connecting;
+    if (auto expected{conn_state::connecting};
         !client.conn_state.compare_exchange_strong(
             expected, conn_state::connected, std::memory_order::release,
             std::memory_order::relaxed)) {
@@ -400,11 +404,11 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     // Send hello message
     msg_payloads::Hello payload;
     payload.set_protocol_version(protocol_ver);
-    const auto payload_size = payload.ByteSizeLong();
-    const auto msg_size = sizeof(serialized_msg_hdr) + payload_size;
-    auto msg_buf =
-        std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size);
-    auto &hdr = *reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE]);
+    const auto payload_size{payload.ByteSizeLong()};
+    const auto msg_size{sizeof(serialized_msg_hdr) + payload_size};
+    auto msg_buf{
+        std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size)};
+    auto &hdr{*reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE])};
     hdr.set_emsg(EMsg::EMSG_CLIENT_HELLO);
     hdr.header_size = 0;
     if (!payload.SerializeToArray(&msg_buf[LWS_PRE + sizeof hdr],
@@ -418,12 +422,12 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     client.pending_msgs_mtx.unlock();
     lws_callback_on_writable(wsi);
     // Call connection callback
-    auto res = tsc_err_ok();
+    auto res{tsc_err_ok()};
     client.connection_cb(&client, &res, client.user_data);
     return 0;
   }
   case LWS_CALLBACK_CLIENT_RECEIVE: {
-    auto &client = *reinterpret_cast<cm_client *>(user);
+    auto &client{*reinterpret_cast<cm_client *>(user)};
     if (client.conn_state.load(std::memory_order::relaxed) <
         conn_state::connected) {
       return 0;
@@ -433,8 +437,8 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       client.pending_recv_buf.clear();
       break;
     }
-    const auto uc_in = reinterpret_cast<const unsigned char *>(in);
-    const auto rem_payload = lws_remaining_packet_payload(wsi);
+    const auto uc_in{reinterpret_cast<const unsigned char *>(in)};
+    const auto rem_payload{lws_remaining_packet_payload(wsi)};
     if (!rem_payload && lws_is_final_fragment(wsi)) {
       if (client.pending_recv_buf.empty()) {
         // Entire message received in one go
@@ -461,7 +465,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     break;
   }
   case LWS_CALLBACK_CLIENT_WRITEABLE: {
-    auto &client = *reinterpret_cast<cm_client *>(user);
+    auto &client{*reinterpret_cast<cm_client *>(user)};
     if (client.conn_state.load(std::memory_order::relaxed) <
         conn_state::connected) {
       return 0;
@@ -471,8 +475,8 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       client.pending_msgs_mtx.unlock();
       break;
     }
-    for (bool remaining = !client.pending_msgs.empty(); remaining;) {
-      const auto msg = std::move(client.pending_msgs.front());
+    for (bool remaining{!client.pending_msgs.empty()}; remaining;) {
+      const auto msg{std::move(client.pending_msgs.front())};
       client.pending_msgs.pop_front();
       if (!msg.buf) {
         break;
@@ -499,19 +503,19 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     if (!wsi) {
       break;
     }
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(
-        lws_context_user(lws_get_context(wsi)));
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(
+        lws_context_user(lws_get_context(wsi)))};
     if (lib_ctx.cleanup_requested.load(std::memory_order::relaxed)) {
       // Destroy libwebsockets context
-      const auto lws_ctx = lib_ctx.lws_ctx;
+      const auto lws_ctx{lib_ctx.lws_ctx};
       lib_ctx.lws_ctx = nullptr;
       lws_context_destroy(lws_ctx);
       return 0;
     }
     // Check for any pending actions in clients
-    for (const std::scoped_lock lock(lib_ctx.cm_clients_mtx);
+    for (const std::scoped_lock lock{lib_ctx.cm_clients_mtx};
          auto client : lib_ctx.cm_clients) {
-      if (bool expected = true; client->conn_requested.compare_exchange_strong(
+      if (bool expected{true}; client->conn_requested.compare_exchange_strong(
               expected, false, std::memory_order::acquire,
               std::memory_order::relaxed)) {
         // Start connecting
@@ -528,12 +532,12 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
         if (!lws_client_connect_via_info(&info) &&
             client->conn_state.load(std::memory_order::relaxed) ==
                 conn_state::connecting) {
-          auto res = tsc_err_basic(TEK_SC_ERRC_cm_connect);
-          const auto url = std::format(
+          auto res{tsc_err_basic(TEK_SC_ERRC_cm_connect)};
+          const auto url{std::format(
               std::locale::classic(), "wss://{}:{}/cmsocket/",
-              client->cur_server->hostname, client->cur_server->port);
-          const auto url_buf =
-              reinterpret_cast<char *>(std::malloc(url.length() + 1));
+              client->cur_server->hostname, client->cur_server->port)};
+          const auto url_buf{
+              reinterpret_cast<char *>(std::malloc(url.length() + 1))};
           if (url_buf) {
             std::ranges::move(url.begin(), url.end() + 1, url_buf);
           }
@@ -544,7 +548,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       }
       // Schedule pending timeouts
       client->pending_msgs_mtx.lock();
-      bool pending_send = client->wsi && !client->pending_msgs.empty();
+      bool pending_send{client->wsi && !client->pending_msgs.empty()};
       // Check if there is a disconnection request, don't schedule timeouts if
       //    there is
       if (pending_send &&
@@ -577,7 +581,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     break;
   } // case LWS_CALLBACK_EVENT_WAIT_CANCELLED
   case LWS_CALLBACK_CLIENT_CLOSED: {
-    auto &client = *reinterpret_cast<cm_client *>(user);
+    auto &client{*reinterpret_cast<cm_client *>(user)};
     if (client.conn_state.exchange(conn_state::disconnected,
                                    std::memory_order::relaxed) ==
         conn_state::disconnected) {
@@ -589,7 +593,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     // Cancel all scheduled suls and run timeout handlers
     client.a_entries_mtx.lock();
     while (!client.a_entries.empty()) {
-      auto &a_entry = client.a_entries.begin()->second;
+      auto &a_entry{client.a_entries.begin()->second};
       lws_sul_cancel(&a_entry.sul);
       a_entry.sul.cb(&a_entry.sul);
     }
@@ -605,7 +609,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     client.num_lics = -1;
     client.lics.reset();
     while (!client.lics_a_entries.empty()) {
-      auto &a_entry = client.lics_a_entries.front();
+      auto &a_entry{client.lics_a_entries.front()};
       lws_sul_cancel(&a_entry.sul);
       a_entry.sul.cb(&a_entry.sul);
     }
@@ -614,9 +618,9 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       lws_sul_cancel(&client.status_req->sul);
       client.status_req.reset();
     }
-    auto res = client.disconnect_reason ? tsc_err_sub(TEK_SC_ERRC_cm_disconnect,
-                                                      client.disconnect_reason)
-                                        : tsc_err_ok();
+    auto res{client.disconnect_reason ? tsc_err_sub(TEK_SC_ERRC_cm_disconnect,
+                                                    client.disconnect_reason)
+                                      : tsc_err_ok()};
     client.disconnect_reason = TEK_SC_ERRC_ok;
     client.disconnection_cb(&client, &res, client.user_data);
     if (client.destroy_requested.load(std::memory_order::relaxed)) {
@@ -657,7 +661,7 @@ extern "C" {
 
 tek_sc_cm_client *tek_sc_cm_client_create(tek_sc_lib_ctx *lib_ctx,
                                           void *user_data) {
-  const auto client = new (std::nothrow) cm_client(lib_ctx, user_data);
+  const auto client{new (std::nothrow) cm_client(lib_ctx, user_data)};
   if (!client) {
     return nullptr;
   }
@@ -665,7 +669,7 @@ tek_sc_cm_client *tek_sc_cm_client_create(tek_sc_lib_ctx *lib_ctx,
     delete client;
     return nullptr;
   }
-  const std::scoped_lock lock(lib_ctx->cm_clients_mtx);
+  const std::scoped_lock lock{lib_ctx->cm_clients_mtx};
   lib_ctx->cm_clients.emplace_front(client);
   return client;
 }
@@ -692,7 +696,7 @@ void tek_sc_cm_connect(tek_sc_cm_client *client,
                        tek_sc_cm_callback_func *connection_cb,
                        long fetch_timeout_ms,
                        tek_sc_cm_callback_func *disconnection_cb) {
-  if (auto expected = conn_state::disconnected;
+  if (auto expected{conn_state::disconnected};
       !client->conn_state.compare_exchange_strong(
           expected, conn_state::connecting, std::memory_order::relaxed,
           std::memory_order::relaxed)) {
@@ -702,7 +706,7 @@ void tek_sc_cm_connect(tek_sc_cm_client *client,
   // Ensure that server list is not empty
   client->lib_ctx.cm_servers_mtx.lock();
   if (client->lib_ctx.cm_servers.empty()) {
-    auto res = fetch_server_list(client->lib_ctx.cm_servers, fetch_timeout_ms);
+    auto res{fetch_server_list(client->lib_ctx.cm_servers, fetch_timeout_ms)};
     client->lib_ctx.cm_servers_mtx.unlock();
     if (tek_sc_err_success(&res)) {
       client->lib_ctx.dirty_flags.fetch_or(
@@ -732,8 +736,8 @@ void tek_sc_cm_disconnect(tek_sc_cm_client *client) {
     /// Send logoff request
     message<msg_payloads::LogoffRequest> msg;
     msg.type = EMsg::EMSG_CLIENT_LOG_OFF;
-    if (const auto res =
-            client->send_message<TEK_SC_ERRC_cm_disconnect>(msg, nullptr);
+    if (const auto res{
+            client->send_message<TEK_SC_ERRC_cm_disconnect>(msg, nullptr)};
         tek_sc_err_success(&res)) {
       break;
     }

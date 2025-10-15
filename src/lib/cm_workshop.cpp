@@ -43,10 +43,10 @@ namespace {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_gd(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
-  const auto data = reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data);
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
+  const auto data{reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data)};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -62,10 +62,10 @@ static void timeout_gd(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_qi(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
-  const auto data = reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data);
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
+  const auto data{reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data)};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -93,7 +93,7 @@ static void timeout_qi(lws_sorted_usec_list_t *_Nonnull sul) {
 static bool handle_gd(cm_client &client, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {
-  auto &data_ws = *reinterpret_cast<tek_sc_cm_data_ws *>(inout_data);
+  auto &data_ws{*reinterpret_cast<tek_sc_cm_data_ws *>(inout_data)};
   msg_payloads::GetDetailsResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_ws.result = tsc_err_sub(TEK_SC_ERRC_cm_ws_details,
@@ -107,15 +107,16 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
       payload.details(), 0, [](int acc, const auto &payload_details) {
         return acc + payload_details.children_size();
       }));
-  for (const std::span span(data_ws.details, data_ws.num_details);
+  for (const std::span span{data_ws.details,
+                            static_cast<std::size_t>(data_ws.num_details)};
        const auto &payload_details : payload.details()) {
-    const auto details = std::ranges::find(span, payload_details.id(),
-                                           &tek_sc_cm_ws_item_details::id);
+    const auto details{std::ranges::find(span, payload_details.id(),
+                                         &tek_sc_cm_ws_item_details::id)};
     if (details == span.end()) {
       continue;
     }
-    if (const auto eresult =
-            static_cast<tek_sc_cm_eresult>(payload_details.eresult());
+    if (const auto eresult{
+            static_cast<tek_sc_cm_eresult>(payload_details.eresult())};
         eresult != TEK_SC_CM_ERESULT_ok) {
       details->result = err(TEK_SC_ERRC_cm_ws_details, eresult);
       continue;
@@ -166,7 +167,7 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
 static bool handle_qf(cm_client &client, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {
-  auto &data_ws = *reinterpret_cast<tek_sc_cm_data_ws *>(inout_data);
+  auto &data_ws{*reinterpret_cast<tek_sc_cm_data_ws *>(inout_data)};
   msg_payloads::QueryFilesResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_ws.result =
@@ -179,7 +180,8 @@ static bool handle_qf(cm_client &client, const MessageHeader &,
   // Process details entries
   for (auto &&[payload_details, details] : std::views::zip(
            payload.details(),
-           std::span(data_ws.details, data_ws.num_returned_details))) {
+           std::span{data_ws.details,
+                     static_cast<std::size_t>(data_ws.num_returned_details)})) {
     if (const auto eresult =
             static_cast<tek_sc_cm_eresult>(payload_details.eresult());
         eresult != TEK_SC_CM_ERESULT_ok) {
@@ -227,38 +229,37 @@ void tek_sc_cm_ws_get_details(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
     cb(client, data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::GetDetailsRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD;
   msg.header.set_source_job_id(job_id);
   msg.header.set_target_job_name("PublishedFile.GetDetails#1");
   std::ranges::for_each(
-      std::span(data->details, data->num_details),
+      std::span{data->details, static_cast<std::size_t>(data->num_details)},
       [&msg](auto id) { msg.payload.add_ids(id); },
       &tek_sc_cm_ws_item_details::id);
   msg.payload.set_include_children(true);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_gd,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_gd,
-                              .cb = cb,
-                              .inout_data = data})
-          .first;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_gd,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_gd,
+                                           .cb = cb,
+                                           .inout_data = data})
+          .first};
   auto &a_entry = a_entry_it->second;
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_ws_details>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_ws_details>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
@@ -282,7 +283,7 @@ void tek_sc_cm_ws_query_items(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
     cb(client, data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::QueryFilesRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD;
@@ -297,25 +298,24 @@ void tek_sc_cm_ws_query_items(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
   msg.payload.set_return_metadata(true);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_qi,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_qf,
-                              .cb = cb,
-                              .inout_data = data})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_qi,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_qf,
+                                           .cb = cb,
+                                           .inout_data = data})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_ws_query>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_ws_query>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();

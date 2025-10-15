@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -37,6 +38,7 @@
 #include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
+#include <string_view>
 
 namespace tek::steamclient {
 
@@ -45,8 +47,9 @@ namespace {
 using cm::msg_payloads::OsType;
 
 /// Path to the library cache file relative to the OS user cache directory.
-static constexpr char cache_file_rel_path[] = TSCI_OS_PATH_SEP_CHAR_STR
-    "tek-steamclient" TSCI_OS_PATH_SEP_CHAR_STR "cache.sqlite3";
+static constexpr std::string_view cache_file_rel_path{
+    TSCI_OS_PATH_SEP_CHAR_STR "tek-steamclient" TSCI_OS_PATH_SEP_CHAR_STR
+                              "cache.sqlite3"};
 
 /// permessage-deflate WebSocket extension object.
 static constexpr lws_extension ws_pm_ext[]{
@@ -61,7 +64,7 @@ static constexpr lws_extension ws_pm_ext[]{
 /// Determine Steam's OS type value based on fetched OS version.
 /// @return An OS type value.
 static OsType get_os_type() noexcept {
-  const auto version = tsci_os_get_version();
+  const auto version{tsci_os_get_version()};
 #ifdef _WIN32
   switch (version.major) {
   case 10:
@@ -148,12 +151,12 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
   if (disable_lws_logs) {
     lws_set_log_level(0, nullptr);
   }
-  const auto ctx = new (std::nothrow) tek_sc_lib_ctx();
+  const auto ctx{new (std::nothrow) tek_sc_lib_ctx()};
   if (!ctx) {
     curl_global_cleanup();
     return nullptr;
   }
-  ctx->lws_thread = std::thread(&tsc_lws_loop, std::ref(*ctx));
+  ctx->lws_thread = std::thread{&tsc_lws_loop, std::ref(*ctx)};
   tsci_os_futex_wait(&ctx->lws_init, 0, 3000);
   if (!ctx->lws_ctx) {
     if (ctx->lws_thread.joinable()) {
@@ -169,17 +172,17 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
     return ctx;
   }
   // Get cache file path
-  const auto cache_dir = tsci_os_get_cache_dir();
+  const auto cache_dir{tsci_os_get_cache_dir()};
   if (!cache_dir) {
     return ctx;
   }
-  const int cache_dir_len = tsci_os_pstr_strlen(cache_dir);
+  const int cache_dir_len{tsci_os_pstr_strlen(cache_dir)};
   std::string cache_file_path;
-  cache_file_path.reserve(cache_dir_len + sizeof cache_file_rel_path - 1);
+  cache_file_path.reserve(cache_dir_len + cache_file_rel_path.length());
   cache_file_path.resize(cache_dir_len);
   tsci_os_pstr_to_str(cache_dir, cache_file_path.data());
   std::free(cache_dir);
-  cache_file_path.append(cache_file_rel_path, sizeof cache_file_rel_path - 1);
+  cache_file_path.append(cache_file_rel_path);
   // Open the database connection
   sqlite3 *db_ptr;
   if (sqlite3_open_v2(cache_file_path.data(), &db_ptr, SQLITE_OPEN_READONLY,
@@ -189,66 +192,66 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
     }
     return ctx;
   }
-  const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> db(
-      db_ptr, sqlite3_close_v2);
+  const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> db{
+      db_ptr, sqlite3_close_v2};
   if (sqlite3_exec(db.get(), "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK) {
     return ctx;
   }
   sqlite3_stmt *stmt_ptr;
   // Get CM server list
-  constexpr char cm_servers_query[] = "SELECT hostname, port FROM cm_servers";
-  if (sqlite3_prepare_v2(db.get(), cm_servers_query, sizeof cm_servers_query,
-                         &stmt_ptr, nullptr) == SQLITE_OK) {
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(
-        stmt_ptr, sqlite3_finalize);
-    for (int res = sqlite3_step(stmt.get()); res == SQLITE_ROW;
+  std::string_view query{"SELECT hostname, port FROM cm_servers"};
+  if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1, &stmt_ptr,
+                         nullptr) == SQLITE_OK) {
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+        stmt_ptr, sqlite3_finalize};
+    for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
       ctx->cm_servers.emplace_back(
-          std::string(reinterpret_cast<const char *>(
-                          sqlite3_column_text(stmt.get(), 0)),
-                      sqlite3_column_bytes(stmt.get(), 0)),
+          std::string{
+              reinterpret_cast<const char *>(
+                  sqlite3_column_text(stmt.get(), 0)),
+              static_cast<std::size_t>(sqlite3_column_bytes(stmt.get(), 0))},
           sqlite3_column_int(stmt.get(), 1));
     }
     ctx->cm_servers.shrink_to_fit();
   }
   // Get depot keys
-  constexpr char depot_keys_query[] = "SELECT depot_id, key FROM depot_keys";
-  if (sqlite3_prepare_v2(db.get(), depot_keys_query, sizeof depot_keys_query,
-                         &stmt_ptr, nullptr) == SQLITE_OK) {
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(
-        stmt_ptr, sqlite3_finalize);
-    for (int res = sqlite3_step(stmt.get()); res == SQLITE_ROW;
+  query = "SELECT depot_id, key FROM depot_keys";
+  if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1, &stmt_ptr,
+                         nullptr) == SQLITE_OK) {
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+        stmt_ptr, sqlite3_finalize};
+    for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
-      auto &key = ctx->depot_keys[static_cast<std::uint32_t>(
-          sqlite3_column_int(stmt.get(), 0))];
+      auto &key{ctx->depot_keys[static_cast<std::uint32_t>(
+          sqlite3_column_int(stmt.get(), 0))]};
       std::memcpy(key, sqlite3_column_blob(stmt.get(), 1), sizeof key);
     }
   }
 #ifdef TEK_SCB_S3C
   // Get tek-s3 servers
-  constexpr char s3_servers_query[] =
-      "SELECT url, timestamp FROM s3_servers ORDER BY rowid";
-  if (sqlite3_prepare_v2(db.get(), s3_servers_query, sizeof s3_servers_query,
-                         &stmt_ptr, nullptr) == SQLITE_OK) {
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(
-        stmt_ptr, sqlite3_finalize);
-    for (int res = sqlite3_step(stmt.get()); res == SQLITE_ROW;
+  query = "SELECT url, timestamp FROM s3_servers ORDER BY rowid";
+  if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1, &stmt_ptr,
+                         nullptr) == SQLITE_OK) {
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+        stmt_ptr, sqlite3_finalize};
+    for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
       ctx->s3_servers.emplace_back(
-          std::string(reinterpret_cast<const char *>(
-                          sqlite3_column_text(stmt.get(), 0)),
-                      sqlite3_column_bytes(stmt.get(), 0)),
+          std::string{
+              reinterpret_cast<const char *>(
+                  sqlite3_column_text(stmt.get(), 0)),
+              static_cast<std::size_t>(sqlite3_column_bytes(stmt.get(), 0))},
           static_cast<std::time_t>(sqlite3_column_int64(stmt.get(), 1)));
     }
   }
   // Get tek-s3 cache
-  constexpr char s3_cache_query[] =
-      "SELECT app_id, depot_id, srv_index FROM s3_cache";
-  if (sqlite3_prepare_v2(db.get(), s3_cache_query, sizeof s3_cache_query,
-                         &stmt_ptr, nullptr) == SQLITE_OK) {
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(
-        stmt_ptr, sqlite3_finalize);
-    for (int res = sqlite3_step(stmt.get()); res == SQLITE_ROW;
+  query = "SELECT app_id, depot_id, srv_index FROM s3_cache";
+  if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1, &stmt_ptr,
+                         nullptr) == SQLITE_OK) {
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+        stmt_ptr, sqlite3_finalize};
+    for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
       ctx->s3_cache[static_cast<std::uint32_t>(sqlite3_column_int(
           stmt.get(),
@@ -273,26 +276,26 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
   if (ctx->lws_thread.joinable()) {
     ctx->lws_thread.join();
   }
-  const auto dirty_flags = static_cast<dirty_flag>(
-      ctx->dirty_flags.load(std::memory_order::relaxed));
+  const auto dirty_flags{static_cast<dirty_flag>(
+      ctx->dirty_flags.load(std::memory_order::relaxed))};
   if (ctx->use_file_cache && dirty_flags != dirty_flag::none) {
     // Get cache file path
-    std::unique_ptr<tek_sc_os_char, decltype(&std::free)> cache_dir(
-        tsci_os_get_cache_dir(), std::free);
+    std::unique_ptr<tek_sc_os_char, decltype(&std::free)> cache_dir{
+        tsci_os_get_cache_dir(), std::free};
     if (!cache_dir) {
       goto skip_file_cache;
     }
-    const int cache_dir_len = tsci_os_pstr_strlen(cache_dir.get());
+    const int cache_dir_len{tsci_os_pstr_strlen(cache_dir.get())};
     std::string cache_file_path;
-    cache_file_path.reserve(cache_dir_len + sizeof cache_file_rel_path - 1);
+    cache_file_path.reserve(cache_dir_len + cache_file_rel_path.length());
     cache_file_path.resize(cache_dir_len);
     tsci_os_pstr_to_str(cache_dir.get(), cache_file_path.data());
-    cache_file_path.append(cache_file_rel_path, sizeof cache_file_rel_path - 1);
+    cache_file_path.append(cache_file_rel_path);
     // Open the database connection
     sqlite3 *db_ptr;
-    int res =
-        sqlite3_open_v2(cache_file_path.data(), &db_ptr,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    int res{sqlite3_open_v2(cache_file_path.data(), &db_ptr,
+                            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                            nullptr)};
     if (res != SQLITE_OK) {
       if (db_ptr) {
         sqlite3_close_v2(db_ptr);
@@ -302,12 +305,12 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
       }
       // Most likely the parent directory doesn't exist yet, create the cache
       //    directory and its tek-steamclient subdirectory if they are missing
-      const auto cache_dir_handle = tsci_os_dir_create(cache_dir.get());
+      const auto cache_dir_handle{tsci_os_dir_create(cache_dir.get())};
       if (cache_dir_handle == TSCI_OS_INVALID_HANDLE) {
         goto skip_file_cache;
       }
-      const auto tsc_subdir_handle = tsci_os_dir_create_at(
-          cache_dir_handle, TEK_SC_OS_STR("tek-steamclient"));
+      const auto tsc_subdir_handle{tsci_os_dir_create_at(
+          cache_dir_handle, TEK_SC_OS_STR("tek-steamclient"))};
       tsci_os_close_handle(cache_dir_handle);
       if (tsc_subdir_handle == TSCI_OS_INVALID_HANDLE) {
         goto skip_file_cache;
@@ -324,8 +327,8 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
       }
     }
     cache_dir.reset();
-    const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> db(
-        db_ptr, sqlite3_close_v2);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> db{
+        db_ptr, sqlite3_close_v2};
     if (sqlite3_exec(db.get(), "BEGIN", nullptr, nullptr, nullptr) !=
         SQLITE_OK) {
       goto skip_file_cache;
@@ -337,12 +340,12 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
                      "NULL, port INTEGER, UNIQUE(hostname, port))",
                      nullptr, nullptr, nullptr) == SQLITE_OK) {
       // Write CM server list
-      constexpr char query[] =
-          "INSERT INTO cm_servers (hostname, port) VALUES (?, ?)";
-      if (sqlite3_prepare_v2(db.get(), query, sizeof query, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
+      constexpr std::string_view query{
+          "INSERT INTO cm_servers (hostname, port) VALUES (?, ?)"};
+      if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1,
+                             &stmt_ptr, nullptr) == SQLITE_OK) {
         for (const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
-                 stmt(stmt_ptr, sqlite3_finalize);
+                 stmt{stmt_ptr, sqlite3_finalize};
              const auto &server : ctx->cm_servers) {
           if (sqlite3_bind_text(stmt.get(), 1, server.hostname.data(),
                                 server.hostname.length(),
@@ -367,12 +370,12 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
                      "PRIMARY KEY UNIQUE, key BLOB)",
                      nullptr, nullptr, nullptr) == SQLITE_OK) {
       // Write depot keys
-      constexpr char query[] =
-          "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)";
-      if (sqlite3_prepare_v2(db.get(), query, sizeof query, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
+      constexpr std::string_view query{
+          "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
+      if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1,
+                             &stmt_ptr, nullptr) == SQLITE_OK) {
         for (const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
-                 stmt(stmt_ptr, sqlite3_finalize);
+                 stmt{stmt_ptr, sqlite3_finalize};
              const auto &[depot_id, key] : ctx->depot_keys) {
           if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id)) !=
               SQLITE_OK) {
@@ -406,12 +409,12 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
                    nullptr);
       sqlite3_exec(db.get(), "DELETE FROM s3_cache", nullptr, nullptr, nullptr);
       // Write tek-s3 servers and cache
-      constexpr char srv_query[] =
-          "INSERT INTO s3_servers (url, timestamp) VALUES (?, ?)";
-      if (sqlite3_prepare_v2(db.get(), srv_query, sizeof srv_query, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
+      std::string_view query{
+          "INSERT INTO s3_servers (url, timestamp) VALUES (?, ?)"};
+      if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1,
+                             &stmt_ptr, nullptr) == SQLITE_OK) {
         for (const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
-                 srv_stmt(stmt_ptr, sqlite3_finalize);
+                 srv_stmt{stmt_ptr, sqlite3_finalize};
              const auto &server : ctx->s3_servers) {
           if (sqlite3_bind_text(srv_stmt.get(), 1, server.url.data(),
                                 server.url.length(),
@@ -428,15 +431,14 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
             break;
           }
           if (res == SQLITE_DONE) {
-            const auto row_index = sqlite3_last_insert_rowid(db.get()) - 1;
-            constexpr char cache_query[] =
-                "INSERT INTO s3_cache (app_id, depot_id, srv_index) VALUES (?, "
-                "?, ?)";
-            if (sqlite3_prepare_v2(db.get(), cache_query, sizeof cache_query,
+            const auto row_index{sqlite3_last_insert_rowid(db.get()) - 1};
+            query = "INSERT INTO s3_cache (app_id, depot_id, srv_index) VALUES "
+                    "(?, ?, ?)";
+            if (sqlite3_prepare_v2(db.get(), query.data(), query.length() + 1,
                                    &stmt_ptr, nullptr) == SQLITE_OK) {
               for (const std::unique_ptr<sqlite3_stmt,
                                          decltype(&sqlite3_finalize)>
-                       cache_stmt(stmt_ptr, sqlite3_finalize);
+                       cache_stmt{stmt_ptr, sqlite3_finalize};
                    const auto &[app_id, depots] : ctx->s3_cache) {
                 for (const auto &[depot_id, srvs] : depots) {
                   if (!std::ranges::contains(srvs.servers, &server)) {
@@ -482,8 +484,8 @@ const char *tek_sc_version(void) { return TEK_SC_VERSION; }
 
 bool tek_sc_lib_get_depot_key(tek_sc_lib_ctx *lib_ctx, uint32_t depot_id,
                               tek_sc_aes256_key key) {
-  const std::shared_lock lock(lib_ctx->depot_keys_mtx);
-  const auto it = lib_ctx->depot_keys.find(depot_id);
+  const std::shared_lock lock{lib_ctx->depot_keys_mtx};
+  const auto it{lib_ctx->depot_keys.find(depot_id)};
   if (it == lib_ctx->depot_keys.cend()) {
     return false;
   }

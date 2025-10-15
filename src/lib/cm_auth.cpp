@@ -32,6 +32,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <cstdint>
@@ -113,9 +114,9 @@ renew_data_errc(tek_sc_errc errc) noexcept {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_auth(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -128,7 +129,7 @@ static void timeout_auth(lws_sorted_usec_list_t *_Nonnull sul) {
   client.auth_steam_id = 0;
   client.cred_auth_ctx.reset();
   // Report timeout via callback
-  auto data = auth_data_errc(TEK_SC_ERRC_cm_timeout);
+  auto data{auth_data_errc(TEK_SC_ERRC_cm_timeout)};
   cb(&client, &data, client.user_data);
 }
 
@@ -138,15 +139,15 @@ static void timeout_auth(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_renew(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
   client.a_entries_mtx.unlock();
   // Report timeout via callback
-  auto data = renew_data_errc(TEK_SC_ERRC_cm_timeout);
+  auto data{renew_data_errc(TEK_SC_ERRC_cm_timeout)};
   cb(&client, &data, client.user_data);
 }
 
@@ -156,11 +157,11 @@ static void timeout_renew(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_eat(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
-  const auto data =
-      reinterpret_cast<tek_sc_cm_data_enc_app_ticket *>(a_entry.inout_data);
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
+  const auto data{
+      reinterpret_cast<tek_sc_cm_data_enc_app_ticket *>(a_entry.inout_data)};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -196,17 +197,17 @@ static void send_status_req(lws_sorted_usec_list_t *_Nonnull sul);
 static bool handle_basvc(cm_client &client, const MessageHeader &header,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
-  if (const auto eresult = static_cast<tek_sc_cm_eresult>(header.eresult());
+  if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     client.auth_client_id.store(0, std::memory_order::relaxed);
-    auto data_ap = auth_data_err(err(TEK_SC_ERRC_cm_auth, eresult));
+    auto data_ap{auth_data_err(err(TEK_SC_ERRC_cm_auth, eresult))};
     cb(&client, &data_ap, client.user_data);
     return true;
   }
   msg_payloads::BeginAuthSessionViaCredentialsResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     client.auth_client_id.store(0, std::memory_order::relaxed);
-    auto data_ap = auth_data_errc(TEK_SC_ERRC_protobuf_deserialize);
+    auto data_ap{auth_data_errc(TEK_SC_ERRC_protobuf_deserialize)};
     cb(&client, &data_ap, client.user_data);
     return true;
   }
@@ -271,7 +272,7 @@ static bool handle_basvq(cm_client &client, const MessageHeader &,
                          cb_func *_Nonnull cb, void *) {
   msg_payloads::BeginAuthSessionViaQrResponse payload;
   if (!payload.ParseFromArray(data, size)) {
-    auto data_ap = auth_data_errc(TEK_SC_ERRC_protobuf_deserialize);
+    auto data_ap{auth_data_errc(TEK_SC_ERRC_protobuf_deserialize)};
     cb(&client, &data_ap, client.user_data);
     return true;
   }
@@ -316,7 +317,7 @@ static bool handle_gatfa(cm_client &client, const MessageHeader &,
                          cb_func *_Nonnull cb, void *) {
   msg_payloads::GenerateAccessTokenForAppResponse payload;
   if (!payload.ParseFromArray(data, size)) {
-    auto data_renew = renew_data_errc(TEK_SC_ERRC_protobuf_deserialize);
+    auto data_renew{renew_data_errc(TEK_SC_ERRC_protobuf_deserialize)};
     cb(&client, &data_renew, client.user_data);
     return true;
   }
@@ -345,25 +346,25 @@ static bool handle_gprpk(cm_client &client, const MessageHeader &,
                          cb_func *_Nonnull cb, void *) {
   msg_payloads::GetPasswordRsaPublicKeyResponse payload;
   if (!payload.ParseFromArray(data, size)) {
-    auto data_ap = auth_data_errc(TEK_SC_ERRC_protobuf_deserialize);
+    auto data_ap{auth_data_errc(TEK_SC_ERRC_protobuf_deserialize)};
     cb(&client, &data_ap, client.user_data);
     return true;
   }
   // For 512-byte input (maximum possible RSA block size)
-  char b64_buf[684];
+  std::array<char, 684> b64_buf;
   int b64_len;
   {
     // Build the RSA public key via received parameters
-    std::unique_ptr<OSSL_PARAM_BLD, decltype(&OSSL_PARAM_BLD_free)> param_build(
-        OSSL_PARAM_BLD_new(), OSSL_PARAM_BLD_free);
+    std::unique_ptr<OSSL_PARAM_BLD, decltype(&OSSL_PARAM_BLD_free)> param_build{
+        OSSL_PARAM_BLD_new(), OSSL_PARAM_BLD_free};
     if (!param_build) {
       goto encrypt_err;
     }
-    BIGNUM *bn_ptr = nullptr;
+    BIGNUM *bn_ptr{};
     if (!BN_hex2bn(&bn_ptr, payload.modulus().data())) {
       goto encrypt_err;
     }
-    std::unique_ptr<BIGNUM, decltype(&BN_free)> n(bn_ptr, BN_free);
+    std::unique_ptr<BIGNUM, decltype(&BN_free)> n{bn_ptr, BN_free};
     if (!OSSL_PARAM_BLD_push_BN(param_build.get(), OSSL_PKEY_PARAM_RSA_N,
                                 n.get())) {
       goto encrypt_err;
@@ -371,34 +372,34 @@ static bool handle_gprpk(cm_client &client, const MessageHeader &,
     if (bn_ptr = nullptr; !BN_hex2bn(&bn_ptr, payload.exponent().data())) {
       goto encrypt_err;
     }
-    std::unique_ptr<BIGNUM, decltype(&BN_free)> e(bn_ptr, BN_free);
+    std::unique_ptr<BIGNUM, decltype(&BN_free)> e{bn_ptr, BN_free};
     if (!OSSL_PARAM_BLD_push_BN(param_build.get(), OSSL_PKEY_PARAM_RSA_E,
                                 e.get())) {
       goto encrypt_err;
     }
-    std::unique_ptr<OSSL_PARAM, decltype(&OSSL_PARAM_free)> param(
-        OSSL_PARAM_BLD_to_param(param_build.get()), OSSL_PARAM_free);
+    std::unique_ptr<OSSL_PARAM, decltype(&OSSL_PARAM_free)> param{
+        OSSL_PARAM_BLD_to_param(param_build.get()), OSSL_PARAM_free};
     if (!param) {
       goto encrypt_err;
     }
     n.reset();
     e.reset();
     param_build.reset();
-    std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> ctx(
-        EVP_PKEY_CTX_new_from_name(nullptr, "RSA", nullptr), EVP_PKEY_CTX_free);
+    std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> ctx{
+        EVP_PKEY_CTX_new_from_name(nullptr, "RSA", nullptr), EVP_PKEY_CTX_free};
     if (!ctx) {
       goto encrypt_err;
     }
     if (EVP_PKEY_fromdata_init(ctx.get()) != 1) {
       goto encrypt_err;
     }
-    EVP_PKEY *pkey_ptr = nullptr;
+    EVP_PKEY *pkey_ptr{};
     if (EVP_PKEY_fromdata(ctx.get(), &pkey_ptr, EVP_PKEY_PUBLIC_KEY,
                           param.get()) != 1) {
       goto encrypt_err;
     }
-    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> pkey(pkey_ptr,
-                                                             EVP_PKEY_free);
+    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> pkey{pkey_ptr,
+                                                             EVP_PKEY_free};
     param.reset();
     ctx.reset(EVP_PKEY_CTX_new_from_pkey(nullptr, pkey.get(), nullptr));
     if (!ctx) {
@@ -408,9 +409,9 @@ static bool handle_gprpk(cm_client &client, const MessageHeader &,
       goto encrypt_err;
     }
     // Encrypt the password with the public key
-    unsigned char enc_pass[512]; // Maximum possible block size
-    auto enc_pass_len = sizeof enc_pass;
-    if (EVP_PKEY_encrypt(ctx.get(), enc_pass, &enc_pass_len,
+    std::array<unsigned char, 512> enc_pass; // Maximum possible block size
+    auto enc_pass_len{enc_pass.size()};
+    if (EVP_PKEY_encrypt(ctx.get(), enc_pass.data(), &enc_pass_len,
                          reinterpret_cast<const unsigned char *>(
                              client.cred_auth_ctx->password.data()),
                          client.cred_auth_ctx->password.length()) != 1) {
@@ -419,7 +420,8 @@ static bool handle_gprpk(cm_client &client, const MessageHeader &,
     pkey.reset();
     ctx.reset();
     // Encode encrypted password into a base64 string
-    b64_len = tsci_u_base64_encode(enc_pass, enc_pass_len, b64_buf);
+    b64_len =
+        tsci_u_base64_encode(enc_pass.data(), enc_pass_len, b64_buf.data());
     goto encrypt_success;
   } // Password encryption scope
 encrypt_err:;
@@ -429,7 +431,7 @@ encrypt_err:;
     return true;
   }
 encrypt_success:;
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the begin auth session request message
   message<msg_payloads::BeginAuthSessionViaCredentialsRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD_CALL_FROM_CLIENT_NON_AUTHED;
@@ -437,7 +439,7 @@ encrypt_success:;
   msg.header.set_target_job_name(
       "Authentication.BeginAuthSessionViaCredentials#1");
   msg.payload.set_account_name(client.cred_auth_ctx->account_name);
-  msg.payload.set_encrypted_password(b64_buf, b64_len);
+  msg.payload.set_encrypted_password(b64_buf.data(), b64_len);
   msg.payload.set_encryption_timestamp(payload.timestamp());
   msg.payload.set_persistence(
       msg_payloads::SessionPersistence::SESSION_PERSISTENCE_PERSISTENT);
@@ -447,29 +449,28 @@ encrypt_success:;
   device_details.set_platform_type(
       msg_payloads::PlatformType::PLATFORM_TYPE_STEAM_CLIENT);
   device_details.set_os_type(client.lib_ctx.os_type);
-  const auto timeout_ms = client.cred_auth_ctx->timeout_ms;
+  const auto timeout_ms{client.cred_auth_ctx->timeout_ms};
   client.cred_auth_ctx.reset();
   // Setup the await entry
   client.a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client.a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_auth,
-                                      .latency_us = 0},
-                              .client = client,
-                              .job_id = job_id,
-                              .proc = handle_basvc,
-                              .cb = cb,
-                              .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_auth,
+                                                   .latency_us = 0},
+                                           .client = client,
+                                           .job_id = job_id,
+                                           .proc = handle_basvc,
+                                           .cb = cb,
+                                           .inout_data = nullptr})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client.a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client.send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul);
+  if (const auto res{
+          client.send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client.a_entries_mtx.lock();
@@ -478,7 +479,7 @@ encrypt_success:;
     // Reset auth_client_id to allow restarting the auth session
     client.auth_client_id.store(0, std::memory_order::relaxed);
     // Report error via callback
-    auto data_ap = auth_data_err(std::move(res));
+    auto data_ap{auth_data_err(std::move(res))};
     cb(&client, &data_ap, client.user_data);
   }
   return true;
@@ -506,7 +507,7 @@ static bool handle_pass(cm_client &client, const MessageHeader &,
   }
   msg_payloads::PollAuthSessionStatusResponse payload;
   if (!payload.ParseFromArray(data, size)) {
-    auto data_ap = auth_data_errc(TEK_SC_ERRC_protobuf_deserialize);
+    auto data_ap{auth_data_errc(TEK_SC_ERRC_protobuf_deserialize)};
     cb(&client, &data_ap, client.user_data);
     return true;
   }
@@ -570,8 +571,8 @@ static bool handle_pass(cm_client &client, const MessageHeader &,
 static bool handle_reat(cm_client &client, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
-  const auto data_eat =
-      reinterpret_cast<tek_sc_cm_data_enc_app_ticket *>(inout_data);
+  const auto data_eat{
+      reinterpret_cast<tek_sc_cm_data_enc_app_ticket *>(inout_data)};
   msg_payloads::RequestEncryptedAppTicketResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_eat->result = tsc_err_sub(TEK_SC_ERRC_cm_enc_app_ticket,
@@ -579,7 +580,7 @@ static bool handle_reat(cm_client &client, const MessageHeader &,
     cb(&client, data_eat, client.user_data);
     return true;
   }
-  if (const auto eresult = static_cast<tek_sc_cm_eresult>(payload.eresult());
+  if (const auto eresult{static_cast<tek_sc_cm_eresult>(payload.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_eat->result = err(TEK_SC_ERRC_cm_enc_app_ticket, eresult);
     cb(&client, data_eat, client.user_data);
@@ -588,7 +589,7 @@ static bool handle_reat(cm_client &client, const MessageHeader &,
   std::unique_ptr<unsigned char[]> data_buf;
   data_eat->data_size = 0;
   if (payload.has_ticket()) {
-    const auto &ticket = payload.ticket();
+    const auto &ticket{payload.ticket()};
     data_eat->data_size = ticket.ByteSizeLong();
     data_buf.reset(new unsigned char[data_eat->data_size]);
     if (!ticket.SerializeToArray(data_buf.get(), data_eat->data_size)) {
@@ -609,11 +610,11 @@ static bool handle_reat(cm_client &client, const MessageHeader &,
 }
 
 static void send_status_req(lws_sorted_usec_list_t *sul) {
-  auto &status_req = *reinterpret_cast<status_request *>(sul);
-  auto &client = status_req.client;
-  const auto cb = status_req.cb;
+  auto &status_req{*reinterpret_cast<status_request *>(sul)};
+  auto &client{status_req.client};
+  const auto cb{status_req.cb};
   client.status_req.reset();
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::PollAuthSessionStatusRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD_CALL_FROM_CLIENT_NON_AUTHED;
@@ -623,7 +624,7 @@ static void send_status_req(lws_sorted_usec_list_t *sul) {
   msg.payload.set_request_id(client.auth_request_id);
   // Setup the await entry
   client.a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client.a_entries
           .emplace(job_id,
                    msg_await_entry{.sul = {.list = {},
@@ -636,19 +637,19 @@ static void send_status_req(lws_sorted_usec_list_t *sul) {
                                    .proc = handle_pass,
                                    .cb = cb,
                                    .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .first};
+  auto &a_entry{a_entry_it->second};
   client.a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client.send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul);
+  if (const auto res{
+          client.send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client.a_entries_mtx.lock();
     client.a_entries.erase(a_entry_it);
     client.a_entries_mtx.unlock();
     // Report error via callback
-    auto data = auth_data_err(std::move(res));
+    auto data{auth_data_err(std::move(res))};
     cb(&client, &data, client.user_data);
   }
 }
@@ -662,34 +663,34 @@ extern "C" {
 tek_sc_cm_auth_token_info tek_sc_cm_parse_auth_token(const char *token) {
   // This string copy also provides a mutable buffer for in-situ Base64
   //    decoding and JSON parsing
-  std::string token_str(token);
+  std::string token_str{token};
   // The token should contain 3 Base64 strings separated by a dot, we need the
   //    second one
   if (std::ranges::count(token_str, '.') != 2) {
     return {};
   }
-  const auto start_pos = token_str.find('.') + 1;
-  const int json_len = tsci_u_base64_decode(
+  const auto start_pos{token_str.find('.') + 1};
+  const int json_len{tsci_u_base64_decode(
       &token_str[start_pos], token_str.rfind('.') - start_pos,
-      reinterpret_cast<unsigned char *>(token_str.data()));
+      reinterpret_cast<unsigned char *>(token_str.data()))};
   token_str[json_len] = '\0'; // Null terminator required for in-situ parsing
   rapidjson::Document doc;
   doc.ParseInsitu<rapidjson::kParseStopWhenDoneFlag>(token_str.data());
   if (doc.HasParseError() || !doc.IsObject()) {
     return {};
   }
-  const auto sub = doc.FindMember("sub");
+  const auto sub{doc.FindMember("sub")};
   if (sub == doc.MemberEnd() || !sub->value.IsString()) {
     return {};
   }
   tek_sc_cm_auth_token_info res;
-  if (const std::string_view view(sub->value.GetString(),
-                                  sub->value.GetStringLength());
+  if (const std::string_view view{sub->value.GetString(),
+                                  sub->value.GetStringLength()};
       std::from_chars(view.begin(), view.end(), res.steam_id).ec !=
       std::errc{}) {
     return {};
   }
-  const auto exp = doc.FindMember("exp");
+  const auto exp{doc.FindMember("exp")};
   if (exp == doc.MemberEnd() || !exp->value.IsUint64()) {
     return {};
   }
@@ -709,20 +710,19 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *client,
   // Ensure that the client is connected
   if (client->conn_state.load(std::memory_order::relaxed) <
       conn_state::connected) {
-    auto data = auth_data_errc(TEK_SC_ERRC_cm_not_connected);
+    auto data{auth_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(client, &data, client->user_data);
     return;
   }
   // Report an error if there is already another incomplete auth session
-  if (std::uint64_t expected = 0;
-      !client->auth_client_id.compare_exchange_strong(
+  if (std::uint64_t expected{}; !client->auth_client_id.compare_exchange_strong(
           expected, 1, std::memory_order::relaxed,
           std::memory_order::relaxed)) {
-    auto data = auth_data_errc(TEK_SC_ERRC_cm_another_auth);
+    auto data{auth_data_errc(TEK_SC_ERRC_cm_another_auth)};
     cb(client, &data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the RSA public key request message
   message<msg_payloads::GetPasswordRsaPublicKeyRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD_CALL_FROM_CLIENT_NON_AUTHED;
@@ -734,25 +734,24 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *client,
       device_name, account_name, password, timeout_ms);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_auth,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_gprpk,
-                              .cb = cb,
-                              .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_auth,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_gprpk,
+                                           .cb = cb,
+                                           .inout_data = nullptr})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
@@ -763,7 +762,7 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *client,
     // Reset auth_client_id to allow restarting the auth session
     client->auth_client_id.store(0, std::memory_order::relaxed);
     // Report error via callback
-    auto data = auth_data_err(std::move(res));
+    auto data{auth_data_err(std::move(res))};
     cb(client, &data, client->user_data);
   }
 }
@@ -773,26 +772,25 @@ void tek_sc_cm_auth_qr(tek_sc_cm_client *client, const char *device_name,
   // Ensure that the client is connected
   if (client->conn_state.load(std::memory_order::relaxed) <
       conn_state::connected) {
-    auto data = auth_data_errc(TEK_SC_ERRC_cm_not_connected);
+    auto data{auth_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(client, &data, client->user_data);
     return;
   }
   // Report an error if there is already another incomplete auth session
-  if (std::uint64_t expected = 0;
-      !client->auth_client_id.compare_exchange_strong(
+  if (std::uint64_t expected{}; !client->auth_client_id.compare_exchange_strong(
           expected, 1, std::memory_order::relaxed,
           std::memory_order::relaxed)) {
-    auto data = auth_data_errc(TEK_SC_ERRC_cm_another_auth);
+    auto data{auth_data_errc(TEK_SC_ERRC_cm_another_auth)};
     cb(client, &data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::BeginAuthSessionViaQrRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD_CALL_FROM_CLIENT_NON_AUTHED;
   msg.header.set_source_job_id(job_id);
   msg.header.set_target_job_name("Authentication.BeginAuthSessionViaQR#1");
-  auto &device_details = *msg.payload.mutable_device_details();
+  auto &device_details{*msg.payload.mutable_device_details()};
   device_details.set_device_friendly_name(device_name);
   device_details.set_platform_type(
       msg_payloads::PlatformType::PLATFORM_TYPE_STEAM_CLIENT);
@@ -800,25 +798,24 @@ void tek_sc_cm_auth_qr(tek_sc_cm_client *client, const char *device_name,
   msg.payload.set_website_id("Client");
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_auth,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_basvq,
-                              .cb = cb,
-                              .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_auth,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_basvq,
+                                           .cb = cb,
+                                           .inout_data = nullptr})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_auth>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
@@ -827,7 +824,7 @@ void tek_sc_cm_auth_qr(tek_sc_cm_client *client, const char *device_name,
     // Reset auth_client_id to allow restarting the auth session
     client->auth_client_id.store(0, std::memory_order::relaxed);
     // Report error via callback
-    auto data = auth_data_err(std::move(res));
+    auto data{auth_data_err(std::move(res))};
     cb(client, &data, client->user_data);
   }
 }
@@ -871,29 +868,29 @@ void tek_sc_cm_auth_renew_token(tek_sc_cm_client *client, const char *token,
   // Ensure that the client is connected
   if (client->conn_state.load(std::memory_order::relaxed) <
       conn_state::connected) {
-    auto data = renew_data_errc(TEK_SC_ERRC_cm_not_connected);
+    auto data{renew_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(client, &data, client->user_data);
     return;
   }
   // Check if the token is valid
-  const auto token_info = tek_sc_cm_parse_auth_token(token);
+  const auto token_info{tek_sc_cm_parse_auth_token(token)};
   if (!token_info.steam_id) {
-    auto data = renew_data_errc(TEK_SC_ERRC_cm_token_invalid);
+    auto data{renew_data_errc(TEK_SC_ERRC_cm_token_invalid)};
     cb(client, &data, client->user_data);
     return;
   }
   if (token_info.expires <
       std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())) {
-    auto data = renew_data_errc(TEK_SC_ERRC_cm_token_expired);
+    auto data{renew_data_errc(TEK_SC_ERRC_cm_token_expired)};
     cb(client, &data, client->user_data);
     return;
   }
   if (!token_info.renewable) {
-    auto data = renew_data_errc(TEK_SC_ERRC_cm_token_not_renewable);
+    auto data{renew_data_errc(TEK_SC_ERRC_cm_token_not_renewable)};
     cb(client, &data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::GenerateAccessTokenForAppRequest> msg;
   msg.type = EMsg::EMSG_SERVICE_METHOD_CALL_FROM_CLIENT_NON_AUTHED;
@@ -905,32 +902,31 @@ void tek_sc_cm_auth_renew_token(tek_sc_cm_client *client, const char *token,
       msg_payloads::TokenRenewalType::TOKEN_RENEWAL_TYPE_ALLOW);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_renew,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_gatfa,
-                              .cb = cb,
-                              .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_renew,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_gatfa,
+                                           .cb = cb,
+                                           .inout_data = nullptr})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_token_renew>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_token_renew>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
     client->a_entries.erase(a_entry_it);
     client->a_entries_mtx.unlock();
     // Report error via callback
-    auto data = renew_data_err(std::move(res));
+    auto data{renew_data_err(std::move(res))};
     cb(client, &data, client->user_data);
   }
 }
@@ -947,7 +943,7 @@ void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *client,
     cb(client, data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::RequestEncryptedAppTicketRequest> msg;
   msg.type = EMsg::EMSG_CLIENT_REQUEST_ENCRYPTED_APP_TICKET;
@@ -958,25 +954,24 @@ void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *client,
   }
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_eat,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_reat,
-                              .cb = cb,
-                              .inout_data = data})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_eat,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_reat,
+                                           .cb = cb,
+                                           .inout_data = data})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res = client->send_message<TEK_SC_ERRC_cm_enc_app_ticket>(
-          msg, &a_entry.sul);
+  if (const auto res{client->send_message<TEK_SC_ERRC_cm_enc_app_ticket>(
+          msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();

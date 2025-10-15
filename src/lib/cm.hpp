@@ -40,7 +40,7 @@
 namespace tek::steamclient::cm {
 
 /// Current Steam CM protocol version.
-constexpr std::uint32_t protocol_ver = 65580;
+constexpr std::uint32_t protocol_ver{65580};
 
 //===-- Types -------------------------------------------------------------===//
 
@@ -149,11 +149,11 @@ struct [[gnu::visibility("internal")]] pending_msg_entry {
   /// Pointer to the scheduling element, if the message is subject to a timeout.
   lws_sorted_usec_list_t *_Nullable sul;
 
-  constexpr pending_msg_entry() noexcept : buf(), size(0), sul(nullptr) {}
+  constexpr pending_msg_entry() noexcept : buf{}, size{}, sul{} {}
 
   constexpr pending_msg_entry(std::unique_ptr<unsigned char[]> &buf, int size,
                               lws_sorted_usec_list_t *_Nullable sul) noexcept
-      : buf(buf.release()), size(size), sul(sul) {}
+      : buf{buf.release()}, size{size}, sul{sul} {}
 };
 
 /// Steam CM serialized message header.
@@ -265,11 +265,11 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
 
   [[using gnu: nonnull(2), access(none, 2), access(none, 3)]]
   tek_sc_cm_client(tek_sc_lib_ctx *_Nonnull lib_ctx, void *_Nullable user_data)
-      : wsi(nullptr), conn_requested(false), destroy_requested(false),
-        lib_ctx(*lib_ctx), steam_id(0), session_id(0),
-        disconnect_reason(TEK_SC_ERRC_ok), user_data(user_data), zstream({}),
-        sign_in_entry({.sul = {}, .client = *this, .cb = nullptr}),
-        auth_client_id(0), num_conn_retries(0), num_lics(-1) {}
+      : wsi{}, conn_requested{}, destroy_requested{}, lib_ctx{*lib_ctx},
+        steam_id{}, session_id{}, disconnect_reason(TEK_SC_ERRC_ok),
+        user_data(user_data), zstream{},
+        sign_in_entry{.sul = {}, .client = *this, .cb = nullptr},
+        auth_client_id{}, num_conn_retries{}, num_lics{} {}
 
   /// Handle a `EMSG_CLIENT_LOG_ON_RESPONSE` message.
   ///
@@ -317,16 +317,16 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
       msg.header.set_session_id(session_id);
     }
     // Serialize the message
-    const auto header_size = msg.header.ByteSizeLong();
-    const auto payload_size = msg.payload.ByteSizeLong();
-    const auto msg_size =
-        sizeof(serialized_msg_hdr) + header_size + payload_size;
-    auto msg_buf =
-        std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size);
-    auto &hdr = *reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE]);
+    const auto header_size{msg.header.ByteSizeLong()};
+    const auto payload_size{msg.payload.ByteSizeLong()};
+    const auto msg_size{sizeof(serialized_msg_hdr) + header_size +
+                        payload_size};
+    auto msg_buf{
+        std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size)};
+    auto &hdr{*reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE])};
     hdr.set_emsg(msg.type);
     hdr.header_size = header_size;
-    auto data_ptr = &msg_buf[LWS_PRE + sizeof hdr];
+    auto data_ptr{&msg_buf[LWS_PRE + sizeof hdr]};
     if (!msg.header.SerializeToArray(data_ptr, header_size)) {
       return tsc_err_sub(errc, TEK_SC_ERRC_protobuf_serialize);
     }

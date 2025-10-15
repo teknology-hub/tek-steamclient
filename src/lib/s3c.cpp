@@ -22,6 +22,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <cstddef>
@@ -55,9 +56,8 @@ namespace {
 /// Download context for curl.
 struct tsc_curl_ctx {
   /// curl easy handle that performs the download.
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl =
-      std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(),
-                                                          curl_easy_cleanup);
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
   /// Buffer storing downloaded content.
   std::string buf;
 };
@@ -91,7 +91,7 @@ static void auth_err(ws_ctx &ctx, const tek_sc_err &&err) noexcept {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_write, 1)]]
 static void timeout(lws_sorted_usec_list_t *_Nonnull sul) noexcept {
-  auto &ctx = *reinterpret_cast<ws_ctx *>(sul);
+  auto &ctx{*reinterpret_cast<ws_ctx *>(sul)};
   ctx.sul_scheduled = false;
   ctx.result = tsc_err_basic(TEK_SC_ERRC_s3c_ws_timeout);
   lws_set_timeout(ctx.wsi, static_cast<pending_timeout>(1), LWS_TO_KILL_ASYNC);
@@ -133,16 +133,16 @@ static std::size_t tsc_curl_write_manifest(const char *_Nonnull buf,
 /// @param size
 ///    Size of the content in bytes.
 /// @param [out] out_buf
-///    Pointer to the stack buffer that should receive the content.
+///    Stack buffer that should receive the content.
 /// @return @p size, or `CURL_WRITEFUNC_ERROR` on error.
 [[using gnu: nonnull(1, 4), access(read_only, 1, 3), access(write_only, 4, 3)]]
 static std::size_t tsc_curl_write_mrc(const char *_Nonnull buf, std::size_t,
                                       std::size_t size,
-                                      char out_buf[_Nonnull 20]) {
+                                      std::array<char, 20> &out_buf) {
   if (size > 20) {
     return CURL_WRITEFUNC_ERROR;
   }
-  std::ranges::copy_n(buf, size, out_buf);
+  std::ranges::copy_n(buf, size, out_buf.data());
   return size;
 }
 
@@ -165,25 +165,24 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
                       std::size_t len) {
   switch (reason) {
   case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(user);
-    auto res = tsc_err_basic(TEK_SC_ERRC_s3c_ws_connect);
-    const auto url = std::format(
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(user)};
+    auto res{tsc_err_basic(TEK_SC_ERRC_s3c_ws_connect)};
+    const auto url{std::format(
         std::locale::classic(), "{}://{}:{}{}",
         lib_ctx.s3_auth_ctx.use_tls ? "wss" : "ws", lib_ctx.s3_auth_ctx.host,
-        lib_ctx.s3_auth_ctx.port, lib_ctx.s3_auth_ctx.path);
+        lib_ctx.s3_auth_ctx.port, lib_ctx.s3_auth_ctx.path)};
     curl_free(lib_ctx.s3_auth_ctx.host);
     curl_free(lib_ctx.s3_auth_ctx.path);
-    const auto url_buf =
-        reinterpret_cast<char *>(std::malloc(url.length() + 1));
+    const auto url_buf{reinterpret_cast<char *>(std::malloc(url.length() + 1))};
     if (url_buf) {
-      std::ranges::move(url.begin(), url.end() + 1, url_buf);
+      std::ranges::copy(url.begin(), url.end() + 1, url_buf);
     }
     res.uri = url_buf;
     auth_err(lib_ctx.s3_auth_ctx, std::move(res));
     return 0;
   }
   case LWS_CALLBACK_CLIENT_ESTABLISHED: {
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(user);
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(user)};
     curl_free(lib_ctx.s3_auth_ctx.host);
     curl_free(lib_ctx.s3_auth_ctx.path);
     lib_ctx.s3_auth_ctx.pending.store(pending_msg_type::init,
@@ -201,32 +200,32 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       //    with the server
       return 1;
     }
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(user);
-    const auto msg = reinterpret_cast<char *>(in);
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(user)};
+    const auto msg{reinterpret_cast<char *>(in)};
     msg[len] = '\0';
     rapidjson::Document doc;
     doc.ParseInsitu<rapidjson::kParseStopWhenDoneFlag>(msg);
     if (doc.HasParseError() || !doc.IsObject()) {
       return 1;
     }
-    const auto error = doc.FindMember("error");
+    const auto error{doc.FindMember("error")};
     if (error != doc.MemberEnd() && error->value.IsObject()) {
       lib_ctx.s3_auth_ctx.result = {};
-      const auto &error_obj = error->value.GetObject();
-      const auto type = error_obj.FindMember("type");
+      const auto &error_obj{error->value.GetObject()};
+      const auto type{error_obj.FindMember("type")};
       if (type == error_obj.MemberEnd() || !type->value.IsInt()) {
         return 1;
       }
       lib_ctx.s3_auth_ctx.result.type =
           static_cast<tek_sc_err_type>(type->value.GetInt());
-      const auto primary = error_obj.FindMember("primary");
+      const auto primary{error_obj.FindMember("primary")};
       if (primary == error_obj.MemberEnd() || !primary->value.IsInt()) {
         return 1;
       }
       lib_ctx.s3_auth_ctx.result.primary =
           static_cast<tek_sc_errc>(primary->value.GetInt());
       if (lib_ctx.s3_auth_ctx.result.type != TEK_SC_ERR_TYPE_basic) {
-        const auto auxiliary = error_obj.FindMember("auxiliary");
+        const auto auxiliary{error_obj.FindMember("auxiliary")};
         if (auxiliary == error_obj.MemberEnd() || !auxiliary->value.IsInt()) {
           return 1;
         }
@@ -234,15 +233,15 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       }
       return 1;
     }
-    const auto renewable = doc.FindMember("renewable");
+    const auto renewable{doc.FindMember("renewable")};
     if (renewable != doc.MemberEnd() && renewable->value.IsBool()) {
       lib_ctx.s3_auth_ctx.result = tsc_err_ok();
       if (!renewable->value.GetBool()) {
-        const auto expires = doc.FindMember("expires");
+        const auto expires{doc.FindMember("expires")};
         if (expires == doc.MemberEnd() || !expires->value.IsUint64()) {
           return 1;
         }
-        const auto exp_time = expires->value.GetUint64();
+        const auto exp_time{expires->value.GetUint64()};
         lib_ctx.s3_auth_ctx.result.auxiliary =
             static_cast<int>(exp_time & std::numeric_limits<unsigned>::max());
         lib_ctx.s3_auth_ctx.result.extra = static_cast<int>(
@@ -250,7 +249,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       }
       return 1;
     }
-    const auto url = doc.FindMember("url");
+    const auto url{doc.FindMember("url")};
     if (url != doc.MemberEnd() && url->value.IsString()) {
       tek_sc_cm_data_auth_polling data;
       data.status = TEK_SC_CM_AUTH_STATUS_new_url;
@@ -258,7 +257,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
       lib_ctx.s3_auth_ctx.cb(nullptr, &data, lib_ctx.s3_auth_ctx.user_data);
       break;
     }
-    const auto confirmations = doc.FindMember("confirmations");
+    const auto confirmations{doc.FindMember("confirmations")};
     if (confirmations != doc.MemberEnd() && confirmations->value.IsArray()) {
       tek_sc_cm_data_auth_polling data;
       data.status = TEK_SC_CM_AUTH_STATUS_awaiting_confirmation;
@@ -267,8 +266,8 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
         if (!type.IsString()) {
           continue;
         }
-        if (const std::string_view view(type.GetString(),
-                                        type.GetStringLength());
+        if (const std::string_view view{type.GetString(),
+                                        type.GetStringLength()};
             view == "device") {
           data.confirmation_types |= TEK_SC_CM_AUTH_CONFIRMATION_TYPE_device;
         } else if (view == "guard_code") {
@@ -284,15 +283,15 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     break;
   }
   case LWS_CALLBACK_CLIENT_WRITEABLE: {
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(user);
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(user)};
     switch (lib_ctx.s3_auth_ctx.pending.exchange(pending_msg_type::none,
                                                  std::memory_order::acquire)) {
     case pending_msg_type::init: {
       rapidjson::StringBuffer buf;
       buf.Push(LWS_PRE);
-      rapidjson::Writer writer(buf);
+      rapidjson::Writer writer{buf};
       writer.StartObject();
-      std::string_view str = "type";
+      std::string_view str{"type"};
       writer.Key(str.data(), str.length());
       switch (lib_ctx.s3_auth_ctx.type) {
       case auth_type::credentials:
@@ -314,7 +313,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
         writer.String(str.data(), str.length());
       }
       writer.EndObject();
-      if (const int len = buf.GetSize() - LWS_PRE;
+      if (const int len{static_cast<int>(buf.GetSize() - LWS_PRE)};
           lws_write(wsi,
                     reinterpret_cast<unsigned char *>(
                         const_cast<char *>(buf.GetString() + LWS_PRE)),
@@ -332,9 +331,9 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     case pending_msg_type::code: {
       rapidjson::StringBuffer buf;
       buf.Push(LWS_PRE);
-      rapidjson::Writer writer(buf);
+      rapidjson::Writer writer{buf};
       writer.StartObject();
-      std::string_view str = "type";
+      std::string_view str{"type"};
       writer.Key(str.data(), str.length());
       switch (lib_ctx.s3_auth_ctx.code_type) {
       case TEK_SC_CM_AUTH_CONFIRMATION_TYPE_guard_code:
@@ -355,7 +354,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
                     lib_ctx.s3_auth_ctx.code.length());
       lib_ctx.s3_auth_ctx.code = {};
       writer.EndObject();
-      if (const int len = buf.GetSize() - LWS_PRE;
+      if (const int len{static_cast<int>(buf.GetSize() - LWS_PRE)};
           lws_write(wsi,
                     reinterpret_cast<unsigned char *>(
                         const_cast<char *>(buf.GetString() + LWS_PRE)),
@@ -373,8 +372,8 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     if (!wsi) {
       break;
     }
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(
-        lws_context_user(lws_get_context(wsi)));
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(
+        lws_context_user(lws_get_context(wsi)))};
     if (!lib_ctx.s3_auth_ctx.busy.load(std::memory_order::relaxed)) {
       break;
     }
@@ -390,8 +389,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     default:
       break;
     }
-    if (bool expected = true;
-        !lib_ctx.s3_auth_ctx.ready.compare_exchange_strong(
+    if (bool expected{true}; !lib_ctx.s3_auth_ctx.ready.compare_exchange_strong(
             expected, false, std::memory_order::acquire,
             std::memory_order::relaxed)) {
       break;
@@ -409,17 +407,17 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     info.userdata = &lib_ctx;
     if (!lws_client_connect_via_info(&info) &&
         lib_ctx.s3_auth_ctx.busy.load(std::memory_order::relaxed)) {
-      auto res = tsc_err_basic(TEK_SC_ERRC_s3c_ws_connect);
-      const auto url = std::format(
+      auto res{tsc_err_basic(TEK_SC_ERRC_s3c_ws_connect)};
+      const auto url{std::format(
           std::locale::classic(), "{}://{}:{}{}",
           lib_ctx.s3_auth_ctx.use_tls ? "wss" : "ws", lib_ctx.s3_auth_ctx.host,
-          lib_ctx.s3_auth_ctx.port, lib_ctx.s3_auth_ctx.path);
+          lib_ctx.s3_auth_ctx.port, lib_ctx.s3_auth_ctx.path)};
       curl_free(lib_ctx.s3_auth_ctx.host);
       curl_free(lib_ctx.s3_auth_ctx.path);
-      const auto url_buf =
-          reinterpret_cast<char *>(std::malloc(url.length() + 1));
+      const auto url_buf{
+          reinterpret_cast<char *>(std::malloc(url.length() + 1))};
       if (url_buf) {
-        std::ranges::move(url.begin(), url.end() + 1, url_buf);
+        std::ranges::copy(url.begin(), url.end() + 1, url_buf);
       }
       res.uri = url_buf;
       auth_err(lib_ctx.s3_auth_ctx, std::move(res));
@@ -427,7 +425,7 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     break;
   } // case LWS_CALLBACK_EVENT_WAIT_CANCELLED
   case LWS_CALLBACK_CLIENT_CLOSED: {
-    auto &lib_ctx = *reinterpret_cast<tek_sc_lib_ctx *>(user);
+    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(user)};
     if (lib_ctx.s3_auth_ctx.sul_scheduled) {
       lib_ctx.s3_auth_ctx.sul_scheduled = false;
       lws_sul_cancel(&lib_ctx.s3_auth_ctx.sul);
@@ -458,31 +456,31 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
 [[using gnu: nonnull(2), access(read_only, 2), null_terminated_string_arg(2)]]
 static void begin_auth(tek_sc_lib_ctx &lib_ctx, const char *_Nonnull url,
                        long timeout_ms) {
-  auto &auth_ctx = lib_ctx.s3_auth_ctx;
-  const std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> curlu(
-      curl_url(), curl_url_cleanup);
+  auto &auth_ctx{lib_ctx.s3_auth_ctx};
+  const std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> curlu{
+      curl_url(), curl_url_cleanup};
   if (!curlu) {
     auth_err(auth_ctx, tsc_err_basic(TEK_SC_ERRC_curl_url));
     return;
   }
   curl_url_set(curlu.get(), CURLUPART_URL,
-               (std::string(url).append("/signin")).data(), 0);
+               (std::string{url}.append("/signin")).data(), 0);
   char *part;
   if (curl_url_get(curlu.get(), CURLUPART_SCHEME, &part, 0) != CURLUE_OK) {
     auth_err(auth_ctx, tsc_err_basic(TEK_SC_ERRC_invalid_url));
     return;
   }
-  auth_ctx.use_tls = std::string_view(part) == "https";
+  auth_ctx.use_tls = std::string_view{part} == "https";
   curl_free(part);
   if (curl_url_get(curlu.get(), CURLUPART_PORT, &part, CURLU_DEFAULT_PORT) !=
       CURLUE_OK) {
     auth_err(auth_ctx, tsc_err_basic(TEK_SC_ERRC_invalid_url));
     return;
   }
-  const std::string_view part_view(part);
-  const bool success =
+  const std::string_view part_view{part};
+  const bool success{
       std::from_chars(part_view.begin(), part_view.end(), auth_ctx.port).ec ==
-      std::errc{};
+      std::errc{}};
   curl_free(part);
   if (!success) {
     auth_err(auth_ctx, tsc_err_basic(TEK_SC_ERRC_invalid_url));
@@ -538,33 +536,34 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEDATA, &curl_ctx);
-  const std::string_view url_view(url);
-  const auto req_url = std::string(url_view).append("/manifest");
+  const std::string_view url_view{url};
+  const auto req_url = std::string{url_view}.append("/manifest");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, req_url.data());
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEFUNCTION,
                    tsc_curl_write_manifest);
   lib_ctx->s3_mtx.lock_shared();
-  const auto srv =
-      std::ranges::find(lib_ctx->s3_servers, url_view, &server::url);
-  const curl_off_t timestamp = srv == lib_ctx->s3_servers.end()
-                                   ? 0
-                                   : static_cast<curl_off_t>(srv->timestamp);
+  const auto srv{
+      std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
+  const auto timestamp{srv == lib_ctx->s3_servers.end()
+                           ? 0
+                           : static_cast<curl_off_t>(srv->timestamp)};
   lib_ctx->s3_mtx.unlock_shared();
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEVALUE_LARGE, timestamp);
-  auto res = curl_easy_perform(curl_ctx.curl.get());
+  auto res{curl_easy_perform(curl_ctx.curl.get())};
   if (res == CURLE_COULDNT_RESOLVE_HOST) {
-    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_DNS_SERVERS,
+                     "1.1.1.1,1.0.0.1");
     res = curl_easy_perform(curl_ctx.curl.get());
   }
   if (res != CURLE_OK) {
-    const auto url_buf =
-        reinterpret_cast<char *>(std::malloc(req_url.length() + 1));
+    const auto url_buf{
+        reinterpret_cast<char *>(std::malloc(req_url.length() + 1))};
     if (url_buf) {
-      std::ranges::move(req_url.begin(), req_url.end() + 1, url_buf);
+      std::ranges::copy(req_url.begin(), req_url.end() + 1, url_buf);
     }
-    long status = 0;
+    long status{};
     if (res == CURLE_HTTP_RETURNED_ERROR) {
       curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_RESPONSE_CODE, &status);
     }
@@ -574,7 +573,7 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
             .extra = static_cast<int>(status),
             .uri = url_buf};
   }
-  long cond_unmet = 0;
+  long cond_unmet{};
   curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_CONDITION_UNMET, &cond_unmet);
   if (cond_unmet) {
     return tsc_err_ok();
@@ -591,14 +590,14 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   lib_ctx->dirty_flags.fetch_or(static_cast<int>(dirty_flag::s3),
                                 std::memory_order::relaxed);
   {
-    std::unique_lock lock(lib_ctx->s3_mtx);
-    const auto srv_it =
-        std::ranges::find(lib_ctx->s3_servers, url_view, &server::url);
+    std::unique_lock lock{lib_ctx->s3_mtx};
+    const auto srv_it{
+        std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
     if (srv_it != lib_ctx->s3_servers.end()) {
       srv_it->timestamp = static_cast<std::time_t>(last_mod);
       // Clear all server references, in case some apps/depots have been removed
       //    from the manifest
-      for (auto addr = std::to_address(srv_it);
+      for (auto addr{std::to_address(srv_it)};
            auto &app : lib_ctx->s3_cache | std::views::values) {
         for (auto &depot : app | std::views::values) {
           if (std::erase(depot.servers, addr)) {
@@ -612,16 +611,16 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
       std::erase_if(lib_ctx->s3_cache,
                     [](const auto &app) { return app.second.empty(); });
     }
-    const auto srv =
+    const auto srv{
         srv_it == lib_ctx->s3_servers.end()
             ? &lib_ctx->s3_servers.emplace_back(
-                  std::string(url_view), static_cast<std::time_t>(last_mod))
-            : std::to_address(srv_it);
-    const auto apps = doc.FindMember("apps");
+                  std::string{url_view}, static_cast<std::time_t>(last_mod))
+            : std::to_address(srv_it)};
+    const auto apps{doc.FindMember("apps")};
     if (apps == doc.MemberEnd() || !apps->value.IsObject()) {
       goto json_parse_err;
     }
-    const auto depot_keys = doc.FindMember("depot_keys");
+    const auto depot_keys{doc.FindMember("depot_keys")};
     if (depot_keys == doc.MemberEnd() || !depot_keys->value.IsObject()) {
       goto json_parse_err;
     }
@@ -630,11 +629,11 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
         continue;
       }
       std::uint32_t app_id;
-      if (const std::string_view view(id.GetString(), id.GetStringLength());
+      if (const std::string_view view{id.GetString(), id.GetStringLength()};
           std::from_chars(view.begin(), view.end(), app_id).ec != std::errc{}) {
         continue;
       }
-      const auto depots = value.FindMember("depots");
+      const auto depots{value.FindMember("depots")};
       if (depots == value.MemberEnd() || !depots->value.IsArray()) {
         continue;
       }
@@ -643,14 +642,14 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
         if (!depot.IsUint()) {
           continue;
         }
-        auto &cache_depot =
-            cache_app[static_cast<std::uint32_t>(depot.GetUint())];
+        auto &cache_depot{
+            cache_app[static_cast<std::uint32_t>(depot.GetUint())]};
         cache_depot.servers.emplace_back(srv);
         cache_depot.it = cache_depot.servers.cbegin();
       }
     }
     lock.unlock();
-    for (const std::scoped_lock lock(lib_ctx->depot_keys_mtx);
+    for (const std::scoped_lock lock{lib_ctx->depot_keys_mtx};
          const auto &[id, value] : depot_keys->value.GetObject()) {
       if (!value.IsString()) {
         continue;
@@ -659,12 +658,12 @@ tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
         continue;
       }
       std::uint32_t depot_id;
-      if (const std::string_view view(id.GetString(), id.GetStringLength());
+      if (const std::string_view view{id.GetString(), id.GetStringLength()};
           std::from_chars(view.begin(), view.end(), depot_id).ec !=
           std::errc{}) {
         continue;
       }
-      const auto [it, emplaced] = lib_ctx->depot_keys.try_emplace(depot_id);
+      const auto [it, emplaced]{lib_ctx->depot_keys.try_emplace(depot_id)};
       if (emplaced) {
         lib_ctx->dirty_flags.fetch_or(static_cast<int>(dirty_flag::depot_keys),
                                       std::memory_order::relaxed);
@@ -679,20 +678,20 @@ json_parse_err:
 
 const char *tek_sc_s3c_get_srv_for_mrc(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
                                        uint32_t depot_id) {
-  const std::shared_lock lock(lib_ctx->s3_mtx);
-  const auto app_it = lib_ctx->s3_cache.find(app_id);
+  const std::shared_lock lock{lib_ctx->s3_mtx};
+  const auto app_it{lib_ctx->s3_cache.find(app_id)};
   if (app_it == lib_ctx->s3_cache.end()) {
     return nullptr;
   }
-  const auto depot_it = app_it->second.find(depot_id);
+  const auto depot_it{app_it->second.find(depot_id)};
   if (depot_it == app_it->second.end()) {
     return nullptr;
   }
-  auto &entry = depot_it->second;
+  auto &entry{depot_it->second};
   if (entry.servers.empty()) {
     return nullptr;
   }
-  const auto res = (*entry.it)->url.data();
+  const auto res{(*entry.it)->url.data()};
   if (++entry.it == entry.servers.cend()) {
     entry.it = entry.servers.cbegin();
   }
@@ -701,9 +700,8 @@ const char *tek_sc_s3c_get_srv_for_mrc(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
 
 void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
                         tek_sc_cm_data_mrc *data) {
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl =
-      std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(),
-                                                          curl_easy_cleanup);
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
   if (!curl) {
     data->result = tsc_err_sub(TEK_SC_ERRC_s3c_mrc, TEK_SC_ERRC_curle_init);
     return;
@@ -713,26 +711,26 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
   curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
-  char buf[20];
-  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, buf);
-  const auto req_url = std::format(
+  std::array<char, 20> buf;
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &buf);
+  const auto req_url{std::format(
       std::locale::classic(), "{}/mrc?app_id={}&depot_id={}&manifest_id={}",
-      url, data->app_id, data->depot_id, data->manifest_id);
+      url, data->app_id, data->depot_id, data->manifest_id)};
   curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_mrc);
-  auto res = curl_easy_perform(curl.get());
+  auto res{curl_easy_perform(curl.get())};
   if (res == CURLE_COULDNT_RESOLVE_HOST) {
     curl_easy_setopt(curl.get(), CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
     res = curl_easy_perform(curl.get());
   }
   if (res != CURLE_OK) {
-    const auto url_buf =
-        reinterpret_cast<char *>(std::malloc(req_url.length() + 1));
+    const auto url_buf{
+        reinterpret_cast<char *>(std::malloc(req_url.length() + 1))};
     if (url_buf) {
-      std::ranges::move(req_url.begin(), req_url.end() + 1, url_buf);
+      std::ranges::copy(req_url.begin(), req_url.end() + 1, url_buf);
     }
-    long status = 0;
+    long status{};
     if (res == CURLE_HTTP_RETURNED_ERROR) {
       curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status);
     }
@@ -751,7 +749,8 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
     return;
   };
   curl.reset();
-  if (const std::string_view mrc(buf, content_len);
+  if (const std::string_view mrc{buf.data(),
+                                 static_cast<std::size_t>(content_len)};
       std::from_chars(mrc.begin(), mrc.end(), data->request_code).ec !=
       std::errc{}) {
     data->result = tsc_err_sub(TEK_SC_ERRC_s3c_mrc, TEK_SC_ERRC_invalid_data);
@@ -764,8 +763,8 @@ void tek_sc_s3c_auth_credentials(tek_sc_lib_ctx *lib_ctx, const char *url,
                                  const char *account_name, const char *password,
                                  tek_sc_cm_callback_func *cb, void *user_data,
                                  long timeout_ms) {
-  auto &auth_ctx = lib_ctx->s3_auth_ctx;
-  if (bool expected = false; !auth_ctx.busy.compare_exchange_strong(
+  auto &auth_ctx{lib_ctx->s3_auth_ctx};
+  if (bool expected{}; !auth_ctx.busy.compare_exchange_strong(
           expected, true, std::memory_order::relaxed,
           std::memory_order::relaxed)) {
     tek_sc_cm_data_auth_polling data;
@@ -785,8 +784,8 @@ void tek_sc_s3c_auth_credentials(tek_sc_lib_ctx *lib_ctx, const char *url,
 void tek_sc_s3c_auth_qr(tek_sc_lib_ctx *lib_ctx, const char *url,
                         tek_sc_cm_callback_func *cb, void *user_data,
                         long timeout_ms) {
-  auto &auth_ctx = lib_ctx->s3_auth_ctx;
-  if (bool expected = false; !auth_ctx.busy.compare_exchange_strong(
+  auto &auth_ctx{lib_ctx->s3_auth_ctx};
+  if (bool expected{}; !auth_ctx.busy.compare_exchange_strong(
           expected, true, std::memory_order::relaxed,
           std::memory_order::relaxed)) {
     tek_sc_cm_data_auth_polling data;
@@ -804,7 +803,7 @@ void tek_sc_s3c_auth_qr(tek_sc_lib_ctx *lib_ctx, const char *url,
 void tek_sc_s3c_auth_submit_code(tek_sc_lib_ctx *lib_ctx,
                                  tek_sc_cm_auth_confirmation_type code_type,
                                  const char *code) {
-  auto &auth_ctx = lib_ctx->s3_auth_ctx;
+  auto &auth_ctx{lib_ctx->s3_auth_ctx};
   if (!auth_ctx.busy.load(std::memory_order::relaxed)) {
     return;
   }
@@ -815,7 +814,7 @@ void tek_sc_s3c_auth_submit_code(tek_sc_lib_ctx *lib_ctx,
 }
 
 void tek_sc_s3c_auth_cancel(tek_sc_lib_ctx *lib_ctx) {
-  auto &auth_ctx = lib_ctx->s3_auth_ctx;
+  auto &auth_ctx{lib_ctx->s3_auth_ctx};
   if (!auth_ctx.busy.load(std::memory_order::relaxed)) {
     return;
   }

@@ -30,6 +30,7 @@
 #include "zlib_api.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
@@ -55,9 +56,8 @@ namespace {
 /// Download context for curl.
 struct tsc_curl_ctx {
   /// curl easy handle that performs the download.
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl =
-      std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(),
-                                                          curl_easy_cleanup);
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
   /// URL being downloaded.
   std::string url;
   /// Buffer storing downloaded content.
@@ -126,13 +126,13 @@ static std::size_t tsc_curl_write(const unsigned char *_Nonnull buf,
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_lics(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry_reduced *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry_reduced *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
   // Remove the await entry
   client.lics_mtx.lock();
-  for (auto it = client.lics_a_entries.cbefore_begin();;) {
-    const auto prev_it = it++;
+  for (auto it{client.lics_a_entries.cbefore_begin()};;) {
+    const auto prev_it{it++};
     if (it == client.lics_a_entries.cend()) {
       break;
     }
@@ -143,7 +143,7 @@ static void timeout_lics(lws_sorted_usec_list_t *_Nonnull sul) {
   }
   client.lics_mtx.unlock();
   // Report timeout via callback
-  auto data = lic_data_errc(TEK_SC_ERRC_cm_timeout);
+  auto data{lic_data_errc(TEK_SC_ERRC_cm_timeout)};
   cb(&client, &data, client.user_data);
 }
 
@@ -153,10 +153,10 @@ static void timeout_lics(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_pics_at(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
-  const auto data = reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data);
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
+  const auto data{reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data)};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -173,9 +173,9 @@ static void timeout_pics_at(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_pics_cs(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -192,10 +192,10 @@ static void timeout_pics_cs(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_only, 1)]]
 static void timeout_pics_pi(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry = *reinterpret_cast<const msg_await_entry *>(sul);
-  auto &client = a_entry.client;
-  const auto cb = a_entry.cb;
-  const auto data = reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data);
+  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
+  auto &client{a_entry.client};
+  const auto cb{a_entry.cb};
+  const auto data{reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data)};
   // Remove the await entry
   client.a_entries_mtx.lock();
   client.a_entries.erase(a_entry.job_id);
@@ -224,7 +224,7 @@ static void timeout_pics_pi(lws_sorted_usec_list_t *_Nonnull sul) {
 static bool handle_pat(cm_client &client, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
-  auto &data_pics = *reinterpret_cast<tek_sc_cm_data_pics *>(inout_data);
+  auto &data_pics{*reinterpret_cast<tek_sc_cm_data_pics *>(inout_data)};
   msg_payloads::PicsAccessTokenResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_pics.result = tsc_err_sub(TEK_SC_ERRC_cm_access_token,
@@ -233,10 +233,11 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
     return true;
   }
   // Process application tokens
-  const std::span apps(data_pics.app_entries, data_pics.num_app_entries);
+  const std::span apps{data_pics.app_entries,
+                       static_cast<std::size_t>(data_pics.num_app_entries)};
   for (const auto &app_token : payload.app_tokens()) {
-    const auto app =
-        std::ranges::find(apps, app_token.app_id(), &tek_sc_cm_pics_entry::id);
+    const auto app{
+        std::ranges::find(apps, app_token.app_id(), &tek_sc_cm_pics_entry::id)};
     if (app == apps.end()) {
       continue;
     }
@@ -244,18 +245,19 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
     app->result = tsc_err_ok();
   }
   for (auto app_id : payload.denied_apps()) {
-    const auto app = std::ranges::find(apps, app_id, &tek_sc_cm_pics_entry::id);
+    const auto app{std::ranges::find(apps, app_id, &tek_sc_cm_pics_entry::id)};
     if (app != apps.end()) {
       app->result = tsc_err_sub(TEK_SC_ERRC_cm_access_token,
                                 TEK_SC_ERRC_cm_access_token_denied);
     }
   }
   // Process package tokens
-  const std::span packages(data_pics.package_entries,
-                           data_pics.num_package_entries);
+  const std::span packages{
+      data_pics.package_entries,
+      static_cast<std::size_t>(data_pics.num_package_entries)};
   for (const auto &package_token : payload.package_tokens()) {
-    const auto package = std::ranges::find(packages, package_token.package_id(),
-                                           &tek_sc_cm_pics_entry::id);
+    const auto package{std::ranges::find(packages, package_token.package_id(),
+                                         &tek_sc_cm_pics_entry::id)};
     if (package == packages.end()) {
       continue;
     }
@@ -263,8 +265,8 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
     package->result = tsc_err_ok();
   }
   for (auto package_id : payload.denied_packages()) {
-    const auto package =
-        std::ranges::find(packages, package_id, &tek_sc_cm_pics_entry::id);
+    const auto package{
+        std::ranges::find(packages, package_id, &tek_sc_cm_pics_entry::id)};
     if (package != packages.end()) {
       package->result = tsc_err_sub(TEK_SC_ERRC_cm_access_token,
                                     TEK_SC_ERRC_cm_access_token_denied);
@@ -336,7 +338,7 @@ static bool handle_pcs(cm_client &client, const MessageHeader &,
 static bool handle_ppi(cm_client &client, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
-  auto &data_pics = *reinterpret_cast<tek_sc_cm_data_pics *>(inout_data);
+  auto &data_pics{*reinterpret_cast<tek_sc_cm_data_pics *>(inout_data)};
   msg_payloads::PicsProductInfoResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_pics.result = tsc_err_sub(TEK_SC_ERRC_cm_product_info,
@@ -345,11 +347,12 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
     return true;
   }
   // Process apps
-  const std::span apps(data_pics.app_entries, data_pics.num_app_entries);
+  const std::span apps{data_pics.app_entries,
+                       static_cast<std::size_t>(data_pics.num_app_entries)};
   for (const auto &payload_app : payload.apps()) {
     // Find the corresponding entry in data_pics
-    const auto app = std::ranges::find(apps, payload_app.app_id(),
-                                       &tek_sc_cm_pics_entry::id);
+    const auto app{std::ranges::find(apps, payload_app.app_id(),
+                                     &tek_sc_cm_pics_entry::id)};
     if (app == apps.end()) {
       continue;
     }
@@ -374,19 +377,20 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
     app->result = tsc_err_ok();
   }
   for (auto app_id : payload.unknown_app_ids()) {
-    const auto app = std::ranges::find(apps, app_id, &tek_sc_cm_pics_entry::id);
+    const auto app{std::ranges::find(apps, app_id, &tek_sc_cm_pics_entry::id)};
     if (app != apps.end()) {
       app->result = tsc_err_sub(TEK_SC_ERRC_cm_product_info,
                                 TEK_SC_ERRC_cm_unknown_product);
     }
   }
   // Process packages
-  const std::span packages(data_pics.package_entries,
-                           data_pics.num_package_entries);
+  const std::span packages{
+      data_pics.package_entries,
+      static_cast<std::size_t>(data_pics.num_package_entries)};
   for (const auto &payload_package : payload.packages()) {
     // Find the corresponding entry in data_pics
-    const auto package = std::ranges::find(
-        packages, payload_package.package_id(), &tek_sc_cm_pics_entry::id);
+    const auto package{std::ranges::find(packages, payload_package.package_id(),
+                                         &tek_sc_cm_pics_entry::id)};
     if (package == packages.end()) {
       continue;
     }
@@ -412,8 +416,8 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
     package->result = tsc_err_ok();
   }
   for (auto package_id : payload.unknown_package_ids()) {
-    const auto package_entry =
-        std::ranges::find(packages, package_id, &tek_sc_cm_pics_entry::id);
+    const auto package_entry{
+        std::ranges::find(packages, package_id, &tek_sc_cm_pics_entry::id)};
     if (package_entry != packages.end()) {
       package_entry->result = tsc_err_sub(TEK_SC_ERRC_cm_product_info,
                                           TEK_SC_ERRC_cm_unknown_product);
@@ -422,30 +426,31 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
   if (payload.response_pending()) {
     return false;
   }
-  const int num_http =
+  const auto num_http{
       payload.has_http_min_size()
-          ? std::ranges::count_if(
-                apps,
-                [min_size = static_cast<int>(payload.http_min_size())](
-                    int data_size) { return data_size >= min_size; },
-                &tek_sc_cm_pics_entry::data_size) +
+          ? static_cast<std::size_t>(
+                std::ranges::count_if(
+                    apps,
+                    [min_size = static_cast<int>(payload.http_min_size())](
+                        int data_size) { return data_size >= min_size; },
+                    &tek_sc_cm_pics_entry::data_size) +
                 std::ranges::count_if(
                     packages,
                     [min_size = static_cast<int>(payload.http_min_size())](
                         int data_size) { return data_size >= min_size; },
-                    &tek_sc_cm_pics_entry::data_size)
-          : 0;
+                    &tek_sc_cm_pics_entry::data_size))
+          : 0};
   // Download buffers if any are stored on an HTTP host
   tek_sc_err http_error;
-  if (num_http > 0) {
-    const std::unique_ptr<CURLM, decltype(&curl_multi_cleanup)> curlm(
-        curl_multi_init(), curl_multi_cleanup);
+  if (num_http) {
+    const std::unique_ptr<CURLM, decltype(&curl_multi_cleanup)> curlm{
+        curl_multi_init(), curl_multi_cleanup};
     if (!curlm) {
       http_error =
           tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_curlm_init);
       goto http_err;
     }
-    std::vector<tsc_curl_ctx> ctxs(num_http);
+    std::vector<tsc_curl_ctx> ctxs{num_http};
     if (std::ranges::any_of(ctxs, std::logical_not{}, &tsc_curl_ctx::curl)) {
       http_error =
           tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_curle_init);
@@ -465,36 +470,36 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       curl_easy_setopt(ctx.curl.get(), CURLOPT_PRIVATE, &ctx);
       curl_easy_setopt(ctx.curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write);
     }
-    auto next_ctx = ctxs.begin();
+    auto next_ctx{ctxs.begin()};
     // Setup app info download contexts
     for (const auto &payload_app : payload.apps()) {
       if (payload_app.size() < payload.http_min_size()) {
         continue;
       }
       // Find the corresponding entry in data_pics
-      const auto app = std::ranges::find(apps, payload_app.app_id(),
-                                         &tek_sc_cm_pics_entry::id);
+      const auto app{std::ranges::find(apps, payload_app.app_id(),
+                                       &tek_sc_cm_pics_entry::id)};
       if (app == apps.end()) {
         continue;
       }
-      auto &ctx = *next_ctx++;
+      auto &ctx{*next_ctx++};
       // Set curl options
-      char sha[40];
+      std::array<char, 40> sha;
       tsci_u_sha1_to_str(
           reinterpret_cast<const unsigned char *>(payload_app.sha().data()),
-          sha);
-      ctx.url =
-          std::format(std::locale::classic(),
-                      "http://{}/appinfo/{}/sha/{}.txt.gz", payload.http_host(),
-                      payload_app.app_id(), std::string_view(sha, sizeof sha));
+          sha.data());
+      ctx.url = std::format(std::locale::classic(),
+                            "http://{}/appinfo/{}/sha/{}.txt.gz",
+                            payload.http_host(), payload_app.app_id(),
+                            std::string_view{sha.data(), sha.size()});
       curl_easy_setopt(ctx.curl.get(), CURLOPT_URL, ctx.url.data());
       ctx.entry = std::to_address(app);
       // Submit curl easy handle to curlm
-      if (const auto res = curl_multi_add_handle(curlm.get(), ctx.curl.get());
+      if (const auto res{curl_multi_add_handle(curlm.get(), ctx.curl.get())};
           res != CURLM_OK) {
         std::ranges::for_each(
             ctxs.cbegin(), --next_ctx,
-            [curlm = curlm.get()](auto curl) {
+            [curlm{curlm.get()}](auto curl) {
               curl_multi_remove_handle(curlm, curl);
             },
             [](const auto &ctx) { return ctx.curl.get(); });
@@ -508,29 +513,29 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
         continue;
       }
       // Find the corresponding entry in data_pics
-      const auto package = std::ranges::find(
-          packages, payload_package.package_id(), &tek_sc_cm_pics_entry::id);
+      const auto package{std::ranges::find(
+          packages, payload_package.package_id(), &tek_sc_cm_pics_entry::id)};
       if (package == packages.end()) {
         continue;
       }
-      auto &ctx = *next_ctx++;
+      auto &ctx{*next_ctx++};
       // Set curl options
-      char sha[40];
+      std::array<char, 40> sha;
       tsci_u_sha1_to_str(
           reinterpret_cast<const unsigned char *>(payload_package.sha().data()),
-          sha);
+          sha.data());
       ctx.url = std::format(std::locale::classic(),
                             "http://{}/appinfo/{}/sha/{}.txt.gz",
                             payload.http_host(), payload_package.package_id(),
-                            std::string_view(sha, sizeof sha));
+                            std::string_view{sha.data(), sha.size()});
       curl_easy_setopt(ctx.curl.get(), CURLOPT_URL, ctx.url.data());
       ctx.entry = std::to_address(package);
       // Submit curl easy handle to curlm
-      if (const auto res = curl_multi_add_handle(curlm.get(), ctx.curl.get());
+      if (const auto res{curl_multi_add_handle(curlm.get(), ctx.curl.get())};
           res != CURLM_OK) {
         std::ranges::for_each(
             ctxs.cbegin(), --next_ctx,
-            [curlm = curlm.get()](auto curl) {
+            [curlm{curlm.get()}](auto curl) {
               curl_multi_remove_handle(curlm, curl);
             },
             [](const auto &ctx) { return ctx.curl.get(); });
@@ -541,7 +546,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
     // Process downloads
     int num_remaining;
     do {
-      auto res = curl_multi_perform(curlm.get(), &num_remaining);
+      auto res{curl_multi_perform(curlm.get(), &num_remaining)};
       if (res == CURLM_OK && num_remaining) {
         res = curl_multi_poll(curlm.get(), nullptr, 0, data_pics.timeout_ms,
                               nullptr);
@@ -549,7 +554,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       if (res != CURLM_OK) {
         std::ranges::for_each(
             ctxs,
-            [curlm = curlm.get()](auto curl) {
+            [curlm{curlm.get()}](auto curl) {
               curl_multi_remove_handle(curlm, curl);
             },
             [](const auto &ctx) { return ctx.curl.get(); });
@@ -558,7 +563,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       }
     } while (num_remaining);
     // Process download results
-    for (auto msg = curl_multi_info_read(curlm.get(), &num_remaining); msg;
+    for (auto msg{curl_multi_info_read(curlm.get(), &num_remaining)}; msg;
          msg = curl_multi_info_read(curlm.get(), &num_remaining)) {
       if (msg->msg != CURLMSG_DONE) {
         continue;
@@ -566,7 +571,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       curl_multi_remove_handle(curlm.get(), msg->easy_handle);
       tsc_curl_ctx *ctx;
       curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &ctx);
-      auto &entry = *ctx->entry;
+      auto &entry{*ctx->entry};
       if (msg->data.result == CURLE_OK) {
         entry.data = std::malloc(entry.data_size);
         if (!entry.data) {
@@ -581,9 +586,9 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
         client.zstream.next_out = reinterpret_cast<unsigned char *>(entry.data);
         client.zstream.avail_out = entry.data_size;
         client.zstream.total_out = 0;
-        auto res = tsci_z_inflate(&client.zstream, Z_FINISH);
+        auto res{tsci_z_inflate(&client.zstream, Z_FINISH)};
         ctx->buf.clear();
-        if (const auto reset_res = tsci_z_inflateReset2(&client.zstream, 16);
+        if (const auto reset_res{tsci_z_inflateReset2(&client.zstream, 16)};
             res == Z_STREAM_END) {
           res = reset_res;
         }
@@ -602,8 +607,8 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
         if (msg->data.result == CURLE_HTTP_RETURNED_ERROR) {
           curl_easy_getinfo(ctx->curl.get(), CURLINFO_RESPONSE_CODE, &status);
         }
-        const auto url_buf =
-            reinterpret_cast<char *>(std::malloc(ctx->url.length() + 1));
+        const auto url_buf{
+            reinterpret_cast<char *>(std::malloc(ctx->url.length() + 1))};
         if (url_buf) {
           std::ranges::move(ctx->url.begin(), ctx->url.end() + 1, url_buf);
         }
@@ -615,7 +620,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
       } // if (msg->data.result == CURLE_OK) else
     } // for (curl messages)
     goto http_success;
-  } // if (num_http > 0)
+  } // if (num_http)
   goto http_success;
 http_err:
   for (auto &app : apps) {
@@ -652,7 +657,8 @@ void tek_sc_cm_client::handle_license_list(const void *data, int size) {
   }
   if (payload.licenses_size()) {
     lics.reset(new tek_sc_cm_lic_entry[payload.licenses_size()]);
-    const std::span span(lics.get(), payload.licenses_size());
+    const std::span span{lics.get(),
+                         static_cast<std::size_t>(payload.licenses_size())};
     std::ranges::transform(
         payload.licenses(), span.begin(), [](const auto &lic) {
           return tek_sc_cm_lic_entry{.package_id = lic.package_id(),
@@ -660,7 +666,7 @@ void tek_sc_cm_client::handle_license_list(const void *data, int size) {
         });
     std::ranges::sort(span, {}, &tek_sc_cm_lic_entry::package_id);
   }
-  const std::scoped_lock lock(lics_mtx);
+  const std::scoped_lock lock{lics_mtx};
   num_lics = payload.licenses_size();
   // Report licenses via callbacks if any
   for (tek_sc_cm_data_lics data_lics{.entries = lics.get(),
@@ -684,7 +690,7 @@ void tek_sc_cm_get_licenses(tek_sc_cm_client *client,
   // Ensure that the client is signed in
   if (client->conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
-    auto data = lic_data_errc(TEK_SC_ERRC_cm_not_signed_in);
+    auto data{lic_data_errc(TEK_SC_ERRC_cm_not_signed_in)};
     cb(client, &data, client->user_data);
     return;
   }
@@ -725,40 +731,41 @@ void tek_sc_cm_get_access_token(tek_sc_cm_client *client,
     cb(client, data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::PicsAccessTokenRequest> msg;
   msg.type = EMsg::EMSG_CLIENT_PICS_ACCESS_TOKEN_REQUEST;
   msg.header.set_source_job_id(job_id);
   std::ranges::for_each(
-      std::span(data->app_entries, data->num_app_entries),
-      [&payload = msg.payload](auto id) { payload.add_app_ids(id); },
+      std::span{data->app_entries,
+                static_cast<std::size_t>(data->num_app_entries)},
+      [&payload{msg.payload}](auto id) { payload.add_app_ids(id); },
       &tek_sc_cm_pics_entry::id);
   std::ranges::for_each(
-      std::span(data->package_entries, data->num_package_entries),
-      [&payload = msg.payload](auto id) { payload.add_package_ids(id); },
+      std::span{data->package_entries,
+                static_cast<std::size_t>(data->num_package_entries)},
+      [&payload{msg.payload}](auto id) { payload.add_package_ids(id); },
       &tek_sc_cm_pics_entry::id);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_pics_at,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_pat,
-                              .cb = cb,
-                              .inout_data = data})
-          .first;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_pics_at,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_pat,
+                                           .cb = cb,
+                                           .inout_data = data})
+          .first};
   auto &a_entry = a_entry_it->second;
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_access_token>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_access_token>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
@@ -787,21 +794,24 @@ void tek_sc_cm_get_product_info(tek_sc_cm_client *client,
     cb(client, data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::PicsProductInfoRequest> msg;
   msg.type = EMsg::EMSG_CLIENT_PICS_PRODUCT_INFO_REQUEST;
   msg.header.set_source_job_id(job_id);
-  for (const auto &app : std::span(data->app_entries, data->num_app_entries)) {
-    auto &payload_app = *msg.payload.add_apps();
+  for (const auto &app :
+       std::span{data->app_entries,
+                 static_cast<std::size_t>(data->num_app_entries)}) {
+    auto &payload_app{*msg.payload.add_apps()};
     payload_app.set_app_id(app.id);
     if (app.access_token) {
       payload_app.set_access_token(app.access_token);
     }
   }
   for (const auto &package :
-       std::span(data->package_entries, data->num_package_entries)) {
-    auto &payload_package = *msg.payload.add_packages();
+       std::span{data->package_entries,
+                 static_cast<std::size_t>(data->num_package_entries)}) {
+    auto &payload_package{*msg.payload.add_packages()};
     payload_package.set_package_id(package.id);
     if (package.access_token) {
       payload_package.set_access_token(package.access_token);
@@ -809,25 +819,24 @@ void tek_sc_cm_get_product_info(tek_sc_cm_client *client,
   }
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_pics_pi,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_ppi,
-                              .cb = cb,
-                              .inout_data = data})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_pics_pi,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_ppi,
+                                           .cb = cb,
+                                           .inout_data = data})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_product_info>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_product_info>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();
@@ -850,7 +859,7 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
     cb(client, &data, client->user_data);
     return;
   }
-  const auto job_id = gen_job_id();
+  const auto job_id{gen_job_id()};
   // Prepare the request message
   message<msg_payloads::PicsChangesSinceRequest> msg;
   msg.type = EMsg::EMSG_CLIENT_PICS_CHANGES_SINCE_REQUEST;
@@ -860,25 +869,24 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
   msg.payload.set_send_package_info_changes(false);
   // Setup the await entry
   client->a_entries_mtx.lock();
-  const auto a_entry_it =
+  const auto a_entry_it{
       client->a_entries
-          .emplace(
-              job_id,
-              msg_await_entry{.sul = {.list = {},
-                                      .us = timeout_to_deadline(timeout_ms),
-                                      .cb = timeout_pics_cs,
-                                      .latency_us = 0},
-                              .client = *client,
-                              .job_id = job_id,
-                              .proc = handle_pcs,
-                              .cb = cb,
-                              .inout_data = nullptr})
-          .first;
-  auto &a_entry = a_entry_it->second;
+          .emplace(job_id, msg_await_entry{.sul = {.list = {},
+                                                   .us = timeout_to_deadline(
+                                                       timeout_ms),
+                                                   .cb = timeout_pics_cs,
+                                                   .latency_us = 0},
+                                           .client = *client,
+                                           .job_id = job_id,
+                                           .proc = handle_pcs,
+                                           .cb = cb,
+                                           .inout_data = nullptr})
+          .first};
+  auto &a_entry{a_entry_it->second};
   client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res =
-          client->send_message<TEK_SC_ERRC_cm_changes>(msg, &a_entry.sul);
+  if (const auto res{
+          client->send_message<TEK_SC_ERRC_cm_changes>(msg, &a_entry.sul)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
     client->a_entries_mtx.lock();

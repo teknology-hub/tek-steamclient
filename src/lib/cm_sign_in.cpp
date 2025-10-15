@@ -39,9 +39,9 @@ namespace {
 ///    Pointer to the scheduling element.
 [[using gnu: nonnull(1), access(read_write, 1)]]
 static void timeout(lws_sorted_usec_list_t *_Nonnull sul) {
-  auto &a_entry = *reinterpret_cast<msg_await_entry_reduced *>(sul);
-  auto &client = a_entry.client;
-  auto res = tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_timeout);
+  auto &a_entry{*reinterpret_cast<msg_await_entry_reduced *>(sul)};
+  auto &client{a_entry.client};
+  auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_timeout)};
   a_entry.cb(&client, &res, client.user_data);
   a_entry.cb = nullptr;
 }
@@ -64,13 +64,13 @@ void tek_sc_cm_client::handle_logon(
   // Parse the payload
   tek::steamclient::cm::msg_payloads::LogonResponse payload;
   if (!payload.ParseFromArray(data, size)) {
-    auto res =
-        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_protobuf_deserialize);
+    auto res{
+        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_protobuf_deserialize)};
     sign_in_entry.cb(this, &res, user_data);
     return;
   }
   // Report the result via callback
-  const auto eresult = static_cast<tek_sc_cm_eresult>(payload.eresult());
+  const auto eresult{static_cast<tek_sc_cm_eresult>(payload.eresult())};
   if (eresult == TEK_SC_CM_ERESULT_ok) {
     steam_id = header.steam_id();
     session_id = header.session_id();
@@ -81,9 +81,9 @@ void tek_sc_cm_client::handle_logon(
     conn_state.store(tek::steamclient::cm::conn_state::signed_in,
                      std::memory_order::release);
   }
-  auto res = eresult == TEK_SC_CM_ERESULT_ok
-                 ? tsc_err_ok()
-                 : tek::steamclient::cm::err(TEK_SC_ERRC_cm_sign_in, eresult);
+  auto res{eresult == TEK_SC_CM_ERESULT_ok
+               ? tsc_err_ok()
+               : tek::steamclient::cm::err(TEK_SC_ERRC_cm_sign_in, eresult)};
   sign_in_entry.cb(this, &res, user_data);
   sign_in_entry.cb = nullptr;
 }
@@ -97,30 +97,27 @@ extern "C" {
 void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
   // Ensure that the client is connected
-  const auto cur_conn_state =
-      client->conn_state.load(std::memory_order::relaxed);
+  const auto cur_conn_state{
+      client->conn_state.load(std::memory_order::relaxed)};
   if (cur_conn_state == conn_state::signed_in) {
     // No-op
     return;
   }
   if (cur_conn_state < conn_state::connected) {
-    auto res =
-        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_not_connected);
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_not_connected)};
     cb(client, &res, client->user_data);
     return;
   }
   // Check if the token is valid
-  const auto token_info = tek_sc_cm_parse_auth_token(token);
+  const auto token_info{tek_sc_cm_parse_auth_token(token)};
   if (!token_info.steam_id) {
-    auto res =
-        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_token_invalid);
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_token_invalid)};
     cb(client, &res, client->user_data);
     return;
   }
   if (token_info.expires <
       std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())) {
-    auto res =
-        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_token_expired);
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_token_expired)};
     cb(client, &res, client->user_data);
     return;
   }
@@ -138,8 +135,8 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
   client->sign_in_entry.sul.cb = timeout;
   client->sign_in_entry.cb = cb;
   // Send the request message
-  if (auto res = client->send_message<TEK_SC_ERRC_cm_sign_in>(
-          msg, &client->sign_in_entry.sul);
+  if (auto res{client->send_message<TEK_SC_ERRC_cm_sign_in>(
+          msg, &client->sign_in_entry.sul)};
       !tek_sc_err_success(&res)) {
     client->sign_in_entry.cb = nullptr;
     cb(client, &res, client->user_data);
@@ -149,15 +146,14 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
 void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
                             tek_sc_cm_callback_func *cb, long timeout_ms) {
   // Ensure that the client is connected
-  const auto cur_conn_state =
-      client->conn_state.load(std::memory_order::relaxed);
+  const auto cur_conn_state{
+      client->conn_state.load(std::memory_order::relaxed)};
   if (cur_conn_state == conn_state::signed_in) {
     // No-op
     return;
   }
   if (cur_conn_state < conn_state::connected) {
-    auto res =
-        tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_not_connected);
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_not_connected)};
     cb(client, &res, client->user_data);
     return;
   }
@@ -173,8 +169,8 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
   client->sign_in_entry.sul.cb = timeout;
   client->sign_in_entry.cb = cb;
   // Send the request message
-  if (auto res = client->send_message<TEK_SC_ERRC_cm_sign_in>(
-          msg, &client->sign_in_entry.sul);
+  if (auto res{client->send_message<TEK_SC_ERRC_cm_sign_in>(
+          msg, &client->sign_in_entry.sul)};
       !tek_sc_err_success(&res)) {
     client->sign_in_entry.cb = nullptr;
     cb(client, &res, client->user_data);

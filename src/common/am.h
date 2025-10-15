@@ -26,6 +26,7 @@
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdint.h>
 
 //===-- Types -------------------------------------------------------------===//
@@ -222,7 +223,7 @@ tek_sc_err tsci_am_clean_job_dir(tek_sc_os_handle data_dir_handle,
 [[gnu::visibility("internal"), gnu::nonnull(1, 2), gnu::access(read_write, 1),
   gnu::access(read_only, 2, 3)]]
 bool tsci_am_parse_app_info(tek_sc_am *_Nonnull am, const char *_Nonnull buf,
-                            int len);
+                            size_t len);
 
 //===-- CM request functions ----------------------------------------------===//
 
