@@ -85,7 +85,8 @@ static bool tscp_amjp_process_dir(tscp_amjp_ctx *_Nonnull ctx,
                                              TEK_SC_DD_FILE_FLAG_truncate)) ==
                                      TEK_SC_DD_FILE_FLAG_truncate
                                  ? TSCI_OS_FILE_ACCESS_write
-                                 : TSCI_OS_FILE_ACCESS_rdwr);
+                                 : TSCI_OS_FILE_ACCESS_rdwr,
+                             TSCI_OS_FILE_OPT_sync);
     if (handle == TSCI_OS_INVALID_HANDLE) {
       *err =
           tsci_os_io_err_at(dir_handle, file->file->name, TEK_SC_ERRC_am_io,
@@ -407,9 +408,9 @@ tek_sc_err tsci_am_job_patch(tek_sc_am *am, tsci_am_item_desc *desc,
   for (int i = 0; i < ctx->delta.num_transfer_ops; ++i) {
     if (ctx->delta.transfer_ops[i].transfer_buf_offset >= 0) {
       // Create/open the transfer buffer file right here
-      pctx.tb_handle = tsci_os_file_create_at_notrunc(
+      pctx.tb_handle = tsci_os_file_create_at(
           ctx->dir_handle, TEK_SC_OS_STR("transfer_buf"),
-          TSCI_OS_FILE_ACCESS_rdwr);
+          TSCI_OS_FILE_ACCESS_rdwr, TSCI_OS_FILE_OPT_sync);
       if (pctx.tb_handle == TSCI_OS_INVALID_HANDLE) {
         res = tsci_os_io_err_at(ctx->dir_handle, TEK_SC_OS_STR("transfer_buf"),
                                 TEK_SC_ERRC_am_io, tsci_os_get_last_error(),

@@ -20,8 +20,10 @@
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
 
+#include <ioringapi.h>
 #include <limits.h>
 #include <ntstatus.h>
+#include <pthread.h>
 #include <shlobj.h>
 #include <stdatomic.h>
 #include <stddef.h>
@@ -38,6 +40,16 @@
 #define FileRenameInformationEx 65
 #define ThreadNameInformation 38
 
+#define NtCurrentProcess() ((HANDLE)(LONG_PTR) - 1)
+
+NTSTATUS NTAPI NtAllocateVirtualMemory(HANDLE ProcessHandle, PVOID *BaseAddress,
+                                       ULONG_PTR ZeroBits, PSIZE_T RegionSize,
+                                       ULONG AllocationType,
+                                       ULONG PageProtection);
+
+NTSTATUS NTAPI NtFreeVirtualMemory(HANDLE ProcessHandle, PVOID *BaseAddress,
+                                   PSIZE_T RegionSize, ULONG FreeType);
+
 NTSTATUS NTAPI NtQueryAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes,
                                      PFILE_BASIC_INFORMATION FileInformation);
 
@@ -45,13 +57,11 @@ NTSTATUS NTAPI
 NtQueryFullAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes,
                           PFILE_NETWORK_OPEN_INFORMATION FileInformation);
 
-NTSTATUS NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event,
-                              PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
-                              PIO_STATUS_BLOCK IoStatusBlock,
-                              PVOID FileInformation, ULONG Length,
-                              FILE_INFORMATION_CLASS FileInformationClass,
-                              BOOLEAN ReturnSingleEntry,
-                              PUNICODE_STRING FileName, BOOLEAN RestartScan);
+NTSTATUS NTAPI NtQueryDirectoryFile(
+    HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
+    PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
+    ULONG Length, FILE_INFORMATION_CLASS FileInformationClass,
+    BOOLEAN ReturnSingleEntry, PUNICODE_STRING FileName, BOOLEAN RestartScan);
 
 NTSTATUS NTAPI NtReadFile(HANDLE FileHandle, HANDLE Event,
                           PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
@@ -65,6 +75,35 @@ NTSTATUS NTAPI NtWriteFile(HANDLE FileHandle, HANDLE Event,
 
 VOID NTAPI RtlGetNtVersionNumbers(PULONG NtMajorVersion, PULONG NtMinorVersion,
                                   PULONG NtBuildNumber);
+
+//===-- I/O ring API variables --------------------------------------------===//
+
+/// Values indicating I/O ring API support on current system.
+enum {
+  /// I/O ring API availability hasn't been checked yet.
+  TSCP_IORING_unchecked,
+  /// I/O ring API is not supported on current system.
+  TSCP_IORING_unsupported,
+  /// I/O ring API is supported on current system.
+  TSCP_IORING_supported
+} tscp_ioring_support = TSCP_IORING_unchecked;
+/// Mutex ensuring that only one thread checks (and possibly modifies)
+///    @ref tscp_ioring_support at a time.
+static pthread_mutex_t tscp_ioring_init_mtx = PTHREAD_NORMAL_MUTEX_INITIALIZER;
+
+// Function pointers (as they may not be present in older Windows versions)
+static typeof(&BuildIoRingReadFile) _Nullable pBuildIoRingReadFile;
+static typeof(&BuildIoRingRegisterBuffers) _Nullable pBuildIoRingRegisterBuffers;
+static typeof(&BuildIoRingRegisterFileHandles) _Nullable pBuildIoRingRegisterFileHandles;
+static typeof(&BuildIoRingWriteFile) _Nullable pBuildIoRingWriteFile;
+static typeof(&CloseIoRing) _Nullable pCloseIoRing;
+static typeof(&CreateIoRing) _Nullable pCreateIoRing;
+static typeof(&PopIoRingCompletion) _Nullable pPopIoRingCompletion;
+static typeof(&QueryIoRingCapabilities) _Nullable pQueryIoRingCapabilities;
+static typeof(&SubmitIoRing) _Nullable pSubmitIoRing;
+
+/// Latest I/O ring version supported by current system.
+static IORING_VERSION tscp_ioring_ver;
 
 //===-- Private functions -------------------------------------------------===//
 
@@ -550,29 +589,26 @@ tek_sc_err tsci_os_dir_delete_at_rec(tek_sc_os_handle parent_dir_handle,
 
 tek_sc_os_handle tsci_os_file_create_at(tek_sc_os_handle parent_dir_handle,
                                         const tek_sc_os_char *name,
-                                        tsci_os_file_access access) {
+                                        tsci_os_file_access access,
+                                        tsci_os_file_opt options) {
   return tscp_nt_create_file(
       parent_dir_handle, name, access, FILE_ATTRIBUTE_NORMAL,
-      FILE_SHARE_READ | FILE_SHARE_DELETE, FILE_OVERWRITE_IF,
-      FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE);
-}
-
-tek_sc_os_handle
-tsci_os_file_create_at_notrunc(tek_sc_os_handle parent_dir_handle,
-                               const tek_sc_os_char *name,
-                               tsci_os_file_access access) {
-  return tscp_nt_create_file(
-      parent_dir_handle, name, access, FILE_ATTRIBUTE_NORMAL,
-      FILE_SHARE_READ | FILE_SHARE_DELETE, FILE_OPEN_IF,
-      FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE);
+      FILE_SHARE_READ | FILE_SHARE_DELETE,
+      (options & TSCI_OS_FILE_OPT_trunc) ? FILE_OVERWRITE_IF : FILE_OPEN_IF,
+      ((options & TSCI_OS_FILE_OPT_sync) || !tscp_ioring_ver)
+          ? (FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE)
+          : FILE_NON_DIRECTORY_FILE);
 }
 
 tek_sc_os_handle tsci_os_file_open_at(tek_sc_os_handle parent_dir_handle,
                                       const tek_sc_os_char *name,
-                                      tsci_os_file_access access) {
+                                      tsci_os_file_access access,
+                                      tsci_os_file_opt options) {
   return tscp_nt_open_file(
       parent_dir_handle, name, access, FILE_SHARE_READ | FILE_SHARE_DELETE,
-      FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE);
+      ((options & TSCI_OS_FILE_OPT_sync) || !tscp_ioring_ver)
+          ? (FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE)
+          : FILE_NON_DIRECTORY_FILE);
 }
 
 //===--- File read/write --------------------------------------------------===//
@@ -956,68 +992,288 @@ bool tsci_os_symlink_at(const tek_sc_os_char *, tek_sc_os_handle,
 
 //===-- Asynchronous I/O functions ----------------------------------------===//
 
-tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *, void *, size_t) {
-  return ERROR_SUCCESS;
+tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, int num_reqs,
+                                    void *buffer, size_t buffer_size) {
+  pthread_mutex_lock(&tscp_ioring_init_mtx);
+  if (tscp_ioring_support == TSCP_IORING_unchecked) {
+    auto const module = GetModuleHandleW(L"kernel32.dll");
+    if (!module) {
+      goto unsupported;
+    }
+    pBuildIoRingReadFile = (typeof(pBuildIoRingReadFile))GetProcAddress(
+        module, "BuildIoRingReadFile");
+    if (!pBuildIoRingReadFile) {
+      goto unsupported;
+    }
+    pBuildIoRingRegisterBuffers =
+        (typeof(pBuildIoRingRegisterBuffers))GetProcAddress(
+            module, "BuildIoRingRegisterBuffers");
+    if (!pBuildIoRingRegisterBuffers) {
+      goto unsupported;
+    }
+    pBuildIoRingRegisterFileHandles =
+        (typeof(pBuildIoRingRegisterFileHandles))GetProcAddress(
+            module, "BuildIoRingRegisterFileHandles");
+    if (!pBuildIoRingRegisterFileHandles) {
+      goto unsupported;
+    }
+    pBuildIoRingWriteFile = (typeof(pBuildIoRingWriteFile))GetProcAddress(
+        module, "BuildIoRingWriteFile");
+    if (!pBuildIoRingWriteFile) {
+      goto unsupported;
+    }
+    pCloseIoRing = (typeof(pCloseIoRing))GetProcAddress(module, "CloseIoRing");
+    if (!pCloseIoRing) {
+      goto unsupported;
+    }
+    pCreateIoRing =
+        (typeof(pCreateIoRing))GetProcAddress(module, "CreateIoRing");
+    if (!pCreateIoRing) {
+      goto unsupported;
+    }
+    pPopIoRingCompletion = (typeof(pPopIoRingCompletion))GetProcAddress(
+        module, "PopIoRingCompletion");
+    if (!pPopIoRingCompletion) {
+      goto unsupported;
+    }
+    pQueryIoRingCapabilities = (typeof(pQueryIoRingCapabilities))GetProcAddress(
+        module, "QueryIoRingCapabilities");
+    if (!pQueryIoRingCapabilities) {
+      goto unsupported;
+    }
+    pSubmitIoRing =
+        (typeof(pSubmitIoRing))GetProcAddress(module, "SubmitIoRing");
+    if (!pSubmitIoRing) {
+      goto unsupported;
+    }
+    IORING_CAPABILITIES capabilities;
+    if (FAILED(pQueryIoRingCapabilities(&capabilities)) ||
+        capabilities.MaxVersion < 2) {
+      // Write opcode is supported only since version 2
+      goto unsupported;
+    }
+    tscp_ioring_ver = capabilities.MaxVersion;
+    tscp_ioring_support = TSCP_IORING_supported;
+    goto done;
+  unsupported:
+    tscp_ioring_support = TSCP_IORING_unsupported;
+  } // if (tscp_ioring_support == TSCP_IORING_unchecked)
+done:
+  auto const support = tscp_ioring_support;
+  pthread_mutex_unlock(&tscp_ioring_init_mtx);
+  if (support == TSCP_IORING_supported) {
+    auto res =
+        pCreateIoRing(tscp_ioring_ver,
+                      (IORING_CREATE_FLAGS){
+                          .Required = IORING_CREATE_REQUIRED_FLAGS_NONE,
+                          .Advisory = IORING_CREATE_SKIP_BUILDER_PARAM_CHECKS},
+                      num_reqs, num_reqs, &ctx->ring);
+    if (FAILED(res)) {
+      return res;
+    }
+    res = pBuildIoRingRegisterBuffers(
+        ctx->ring, 1,
+        &(const IORING_BUFFER_INFO){.Address = buffer, .Length = buffer_size},
+        0);
+    if (FAILED(res)) {
+      goto fail;
+    }
+    res = pSubmitIoRing(ctx->ring, 1, INFINITE, nullptr);
+    if (FAILED(res)) {
+      goto fail;
+    }
+    IORING_CQE cqe;
+    res = pPopIoRingCompletion(ctx->ring, &cqe);
+    if (res != S_OK) {
+      goto fail;
+    }
+    res = cqe.ResultCode;
+    if (FAILED(res)) {
+      goto fail;
+    }
+    ctx->num_reqs = -1;
+    ctx->reg_buf = buffer;
+    return ERROR_SUCCESS;
+  fail:
+    pCloseIoRing(ctx->ring);
+    return res;
+  } // if (support == TSCP_IORING_supported)
+  ctx->num_reqs = num_reqs;
+  ctx->num_submitted = 0;
+  ctx->reqs = malloc(sizeof *ctx->reqs * num_reqs);
+  return ctx->reqs ? ERROR_SUCCESS : ERROR_OUTOFMEMORY;
 }
 
-void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *) {}
+void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) {
+  if (ctx->num_reqs < 0) {
+    pCloseIoRing(ctx->ring);
+  } else {
+    free(ctx->reqs);
+  }
+}
 
 tek_sc_os_errc tsci_os_aio_register_file(tsci_os_aio_ctx *ctx,
                                          tek_sc_os_handle handle) {
-  ctx->file_handle = handle;
+  ctx->reg_handle = handle;
+  if (ctx->num_reqs < 0) {
+    auto res = pBuildIoRingRegisterFileHandles(ctx->ring, 1, &handle, 0);
+    if (FAILED(res)) {
+      return res;
+    }
+    res = pSubmitIoRing(ctx->ring, 1, INFINITE, nullptr);
+    if (FAILED(res)) {
+      return res;
+    }
+    IORING_CQE cqe;
+    res = pPopIoRingCompletion(ctx->ring, &cqe);
+    if (res != S_OK) {
+      return res;
+    }
+    return cqe.ResultCode;
+  }
   return ERROR_SUCCESS;
 }
 
-tek_sc_os_errc tsci_os_aio_read(tsci_os_aio_ctx *ctx, void *buf, size_t n,
-                                int64_t offset) {
-  for (IO_STATUS_BLOCK isb;;) {
-    auto const status =
-        NtReadFile(ctx->file_handle, nullptr, nullptr, nullptr, &isb, buf, n,
-                   (PLARGE_INTEGER)&offset, nullptr);
-    if (!NT_SUCCESS(status)) {
-      return RtlNtStatusToDosError(status);
+tek_sc_os_errc tsci_os_aio_submit_read(tsci_os_aio_ctx *ctx,
+                                       tsci_os_aio_req *req, void *buf,
+                                       size_t n, int64_t offset, bool submit) {
+  req->handle = ctx->reg_handle;
+  if (ctx->num_reqs < 0) {
+    auto res = pBuildIoRingReadFile(
+        ctx->ring, (IORING_HANDLE_REF)IoRingHandleRefFromIndex(0),
+        (IORING_BUFFER_REF)IoRingBufferRefFromIndexAndOffset(
+            0, buf - ctx->reg_buf),
+        n, offset, (UINT_PTR)req, IOSQE_FLAGS_NONE);
+    if (FAILED(res)) {
+      return res;
     }
-    n -= isb.Information;
-    if (!n) {
-      return ERROR_SUCCESS;
+    if (submit) {
+      res = pSubmitIoRing(ctx->ring, 0, 0, nullptr);
+      if (FAILED(res)) {
+        return res;
+      }
     }
-    if (!isb.Information) {
-      return ERROR_READ_FAULT;
-    }
-    buf += isb.Information;
-    offset += isb.Information;
+    return ERROR_SUCCESS;
   }
+  if (ctx->num_submitted >= ctx->num_reqs) {
+    return ERROR_BUSY;
+  }
+  ctx->reqs[ctx->num_submitted++] = req;
+  IO_STATUS_BLOCK isb;
+  auto const status =
+      NtReadFile(ctx->reg_handle, nullptr, nullptr, nullptr, &isb, buf, n,
+                 (PLARGE_INTEGER)&offset, nullptr);
+  if (NT_SUCCESS(status)) {
+    req->result = ERROR_SUCCESS;
+    req->bytes_transferred = isb.Information;
+  } else {
+    req->result = RtlNtStatusToDosError(status);
+    req->bytes_transferred = 0;
+  }
+  return ERROR_SUCCESS;
 }
 
-tek_sc_os_errc tsci_os_aio_write(tsci_os_aio_ctx *ctx, const void *buf,
-                                 size_t n, int64_t offset) {
-  for (IO_STATUS_BLOCK isb;;) {
-    auto const status =
-        NtWriteFile(ctx->file_handle, nullptr, nullptr, nullptr, &isb,
-                    (PVOID)buf, n, (PLARGE_INTEGER)&offset, nullptr);
-    if (!NT_SUCCESS(status)) {
-      return RtlNtStatusToDosError(status);
+tek_sc_os_errc tsci_os_aio_submit_write(tsci_os_aio_ctx *ctx,
+                                        tsci_os_aio_req *req, const void *buf,
+                                        size_t n, int64_t offset, bool submit) {
+  req->handle = ctx->reg_handle;
+  if (ctx->num_reqs < 0) {
+    auto res = pBuildIoRingWriteFile(
+        ctx->ring, (IORING_HANDLE_REF)IoRingHandleRefFromIndex(0),
+        (IORING_BUFFER_REF)IoRingBufferRefFromIndexAndOffset(
+            0, buf - ctx->reg_buf),
+        n, offset, FILE_WRITE_FLAGS_NONE, (UINT_PTR)req, IOSQE_FLAGS_NONE);
+    if (FAILED(res)) {
+      return res;
     }
-    n -= isb.Information;
-    if (!n) {
-      return ERROR_SUCCESS;
+    if (submit) {
+      res = pSubmitIoRing(ctx->ring, 0, 0, nullptr);
+      if (FAILED(res)) {
+        return res;
+      }
     }
-    if (!isb.Information) {
-      return ERROR_WRITE_FAULT;
-    }
-    buf += isb.Information;
-    offset += isb.Information;
+    return ERROR_SUCCESS;
   }
+  if (ctx->num_submitted >= ctx->num_reqs) {
+    return ERROR_BUSY;
+  }
+  ctx->reqs[ctx->num_submitted++] = req;
+  IO_STATUS_BLOCK isb;
+  auto const status =
+      NtWriteFile(ctx->reg_handle, nullptr, nullptr, nullptr, &isb, (PVOID)buf,
+                  n, (PLARGE_INTEGER)&offset, nullptr);
+  if (NT_SUCCESS(status)) {
+    req->result = ERROR_SUCCESS;
+    req->bytes_transferred = isb.Information;
+  } else {
+    req->result = RtlNtStatusToDosError(status);
+    req->bytes_transferred = 0;
+  }
+  return ERROR_SUCCESS;
+}
+
+int tsci_os_aio_get_compls(tsci_os_aio_ctx *ctx, tsci_os_aio_req **reqs,
+                           int num_reqs, int num_wait) {
+  if (ctx->num_reqs < 0) {
+    int num_reqs_out = 0;
+    for (int i = 0; i < num_reqs; ++i) {
+      IORING_CQE cqe;
+      auto res = pPopIoRingCompletion(ctx->ring, &cqe);
+      if (FAILED(res)) {
+        SetLastError(res);
+        return -1;
+      }
+      if (res != S_OK) {
+        if (i < num_wait) {
+          res = pSubmitIoRing(ctx->ring, num_wait - i, INFINITE, nullptr);
+          if (FAILED(res)) {
+            SetLastError(res);
+            return -1;
+          }
+          res = pPopIoRingCompletion(ctx->ring, &cqe);
+          if (res != S_OK) {
+            SetLastError(res);
+            return -1;
+          }
+        } else {
+          break;
+        }
+      }
+      auto const req = (tsci_os_aio_req *)cqe.UserData;
+      req->result = cqe.ResultCode;
+      req->bytes_transferred = cqe.Information;
+      reqs[i] = req;
+      ++num_reqs_out;
+    }
+    return num_reqs_out;
+  }
+  int num_reqs_out = num_reqs;
+  if (num_reqs_out > ctx->num_submitted) {
+    num_reqs_out = ctx->num_submitted;
+  }
+  ctx->num_submitted -= num_reqs_out;
+  memcpy(reqs, &ctx->reqs[ctx->num_submitted], sizeof *reqs * num_reqs_out);
+  return num_reqs_out;
 }
 
 //===-- Virtual memory functions ------------------------------------------===//
 
 void *tsci_os_mem_alloc(size_t size) {
-  return VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  PVOID addr = nullptr;
+  auto const status =
+      NtAllocateVirtualMemory(NtCurrentProcess(), &addr, 0, &size,
+                              MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (NT_SUCCESS(status)) {
+    return addr;
+  } else {
+    SetLastError(RtlNtStatusToDosError(status));
+    return nullptr;
+  }
 }
 
 void tsci_os_mem_free(const void *addr, size_t) {
-  VirtualFree((LPVOID)addr, 0, MEM_RELEASE);
+  NtFreeVirtualMemory(NtCurrentProcess(), (PVOID *)&addr, &(SIZE_T){},
+                      MEM_RELEASE);
 }
 
 //===-- Futex functions ---------------------------------------------------===//

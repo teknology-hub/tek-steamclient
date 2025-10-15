@@ -73,13 +73,12 @@ enum tek_sc_am_job_stage {
   /// Total progress: Total size of the patch data, in bytes (becomes available
   ///    after HTTP headers are received).
   TEK_SC_AM_JOB_STAGE_dw_patch,
-  /// Verifying item files. Paralleled, progress handling is not thread-safe.
+  /// Verifying item files.
   ///
   /// Current progress: Amount of verified/skipped data, in bytes.
   /// Total progress: Total size of all files listed in the manifest, in bytes.
   TEK_SC_AM_JOB_STAGE_verifying,
-  /// Downloading new chunks from SteamPipe. Paralleled, progress handling is
-  ///    not thread-safe.
+  /// Downloading new chunks from SteamPipe.
   ///
   /// Current progress: Amount of downloaded data, in bytes.
   /// Total progress: Total compressed size of all chunks in the delta, in
@@ -91,8 +90,7 @@ enum tek_sc_am_job_stage {
   /// Total progress: Total number of I/O operations.
   TEK_SC_AM_JOB_STAGE_patching,
   /// Installing chunks/files downloaded from SteamPipe and creating new files
-  ///    and directories as needed. Paralleled, progress handling is not
-  ///    thread-safe.
+  ///    and directories as needed.
   ///
   /// Current progress: Number of installed chunks.
   /// Total progress: Total number of chunks in the delta.
@@ -141,9 +139,6 @@ enum [[clang::flag_enum]] tek_sc_am_upd_type {
   /// `stage` field value has been changed.
   TEK_SC_AM_UPD_TYPE_stage = 1 << 1,
   /// `progress_current` and/or `progress_total` field values have been changed.
-  ///    On certain stages the handler for this update type may be called from
-  ///    multiple worker threads, making the calls not thread-safe, check @ref
-  ///    tek_sc_am_job_stage member descriptions to know which.
   TEK_SC_AM_UPD_TYPE_progress = 1 << 2,
   /// Fired once right after computing the delta, allowing to inspect `delta`
   ///    field before proceeding.
@@ -160,12 +155,8 @@ struct tek_sc_am_job_desc {
   _Atomic(tek_sc_am_job_state) state;
   /// Current job stage
   tek_sc_am_job_stage stage;
-  union {
-    /// Current stage progress value.
-    int64_t progress_current;
-    /// Atomic access to @ref progress_current.
-    _Atomic(int64_t) progress_current_a;
-  };
+  /// Current stage progress value.
+  int64_t progress_current;
   /// Total stage progress value.
   int64_t progress_total;
   /// For update jobs, ID of the source manifest, `0` otherwise.

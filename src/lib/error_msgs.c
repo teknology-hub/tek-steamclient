@@ -586,6 +586,12 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
       case TEK_SC_ERR_IO_TYPE_aio_reg:
         io_op_type = tsc_gettext("Registering for asynchronous I/O");
         break;
+      case TEK_SC_ERR_IO_TYPE_aio_submit:
+        io_op_type = tsc_gettext("Submitting an asynchronous I/O request");
+        break;
+      case TEK_SC_ERR_IO_TYPE_aio_wait:
+        io_op_type = tsc_gettext("Waiting for asynchronous I/O completions");
+        break;
       default:
         io_op_type = tsc_gettext("Unknown");
       } // switch (err->extra)

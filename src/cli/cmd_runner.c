@@ -119,10 +119,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
   }
   static int64_t start_progress;
   static uint64_t start_ticks;
-  static union {
-    int64_t non_a;
-    _Atomic(int64_t) a;
-  } previous;
+  static int64_t previous;
   static int num_width;
   const bool stage_upd = types & TEK_SC_AM_UPD_TYPE_stage;
   if (stage_upd) {
@@ -162,62 +159,21 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     start_progress =
         (types & TEK_SC_AM_UPD_TYPE_progress) ? desc->job.progress_current : 0;
     start_ticks = tscl_os_get_ticks();
-    previous.non_a = 0;
+    previous = 0;
     num_width = 0;
   }
   if (types & TEK_SC_AM_UPD_TYPE_progress) {
-    int64_t current;
-    uint64_t prev_ticks_val;
-    int64_t previous_val;
     auto const total = desc->job.progress_total;
-    static union {
-      uint64_t non_a;
-      _Atomic(uint64_t) a;
-    } prev_ticks;
+    static uint64_t prev_ticks;
     auto const cur_ticks = stage_upd ? start_ticks + 1 : tscl_os_get_ticks();
-    switch (desc->job.stage) {
-    case TEK_SC_AM_JOB_STAGE_verifying:
-    case TEK_SC_AM_JOB_STAGE_downloading:
-    case TEK_SC_AM_JOB_STAGE_installing:
-      // Multi-threaded stages
-      current = atomic_load_explicit(&desc->job.progress_current_a,
-                                     memory_order_relaxed);
-      prev_ticks_val =
-          atomic_load_explicit(&prev_ticks.a, memory_order_relaxed);
-      if (current && current < total && (cur_ticks - prev_ticks_val) < 1000) {
-        return;
-      }
-      while (cur_ticks > prev_ticks_val) {
-        if (atomic_compare_exchange_weak_explicit(
-                &prev_ticks.a, &prev_ticks_val, cur_ticks, memory_order_relaxed,
-                memory_order_relaxed)) {
-          break;
-        }
-      }
-      previous_val = atomic_load_explicit(&previous.a, memory_order_relaxed);
-      while (current > previous_val) {
-        if (atomic_compare_exchange_weak_explicit(&previous.a, &previous_val,
-                                                  current, memory_order_relaxed,
-                                                  memory_order_relaxed)) {
-          break;
-        }
-      }
-      if (current <= previous_val) {
-        // Another thread is already processing newer progress value
-        return;
-      }
-      break;
-    default:
-      // Single-threaded stages
-      current = desc->job.progress_current;
-      prev_ticks_val = prev_ticks.non_a;
-      if (current && current < total && (cur_ticks - prev_ticks_val) < 1000) {
-        return;
-      }
-      prev_ticks.non_a = cur_ticks;
-      previous_val = previous.non_a;
-      previous.non_a = current;
-    } // switch (desc->job.stage)
+    auto const prev_ticks_val = prev_ticks;
+    auto const current = desc->job.progress_current;
+    if (current && current < total && (cur_ticks - prev_ticks_val) < 1000) {
+      return;
+    }
+    prev_ticks = cur_ticks;
+    auto const previous_val = previous;
+    previous = current;
     // Build progress bar
     const int tenths = (double)(current * 10) / (double)total;
     char bar[11];
@@ -303,15 +259,30 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
                            (double)(cur_ticks - prev_ticks_val);
       char speed_buf[32];
       speed_buf[0] = '\0';
-      if (speed >= 0x40000000) { // 1 GiB/s
-        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f GiB/s"),
-                 speed / 0x40000000);
-      } else if (speed >= 0x100000) { // 1 MiB/s
-        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f MiB/s"),
-                 speed / 0x100000);
+      if (desc->job.stage == TEK_SC_AM_JOB_STAGE_downloading) {
+        // Use bit/s
+        if (speed >= 1000000000) { // 1 Gbit/s
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f Gbit/s"),
+                   speed / 1000000000);
+        } else if (speed >= 1000000) { // 1 Mbit/s
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f Mbit/s"),
+                   speed / 1000000);
+        } else {
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u kbit/s"),
+                   (unsigned)speed / 1000);
+        }
       } else {
-        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u KiB/s"),
-                 (unsigned)speed / 0x400);
+        // Use Byte/s
+        if (speed >= 0x40000000) { // 1 GiB/s
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f GiB/s"),
+                   speed / 0x40000000);
+        } else if (speed >= 0x100000) { // 1 MiB/s
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f MiB/s"),
+                   speed / 0x100000);
+        } else {
+          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u KiB/s"),
+                   (unsigned)speed / 0x400);
+        }
       }
       printf(tsc_gettext("\033[2K\r[%s] %12s/%-12s (%-12s)%s\r"), bar, cur_buf,
              total_buf, speed_buf, eta_buf);
