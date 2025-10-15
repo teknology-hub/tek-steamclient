@@ -1150,7 +1150,7 @@ tek_sc_err tek_sc_sp_multi_dlr_submit_req(const tek_sc_sp_multi_dlr *dlr,
 
 tek_sc_sp_multi_chunk_req *
 tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
-                            tek_sc_err *err) {
+                            bool poll, tek_sc_err *err) {
   auto const thrd_ctx = &dlr->thrd_ctxs[thrd_index];
   if (!thrd_ctx->num_active) {
     *err = tsc_err_ok();
@@ -1169,6 +1169,10 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
     }
     if (num_handles < thrd_ctx->num_active) {
       break;
+    }
+    if (!poll) {
+      *err = tsc_err_ok();
+      return nullptr;
     }
     res = curl_multi_poll(curlm, nullptr, 0, INT_MAX, nullptr);
     if (atomic_load_explicit(&dlr->cancel_flag, memory_order_relaxed)) {
@@ -1189,12 +1193,12 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
     int num_queued;
     auto const msg = curl_multi_info_read(curlm, &num_queued);
     if (!msg) {
-      *err = tsc_err_ok();
       return nullptr;
     }
     curl_multi_remove_handle(curlm, msg->easy_handle);
     tscp_sp_dlr_inst *inst;
     curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &inst);
+    const int progress = inst->next_offset;
     inst->next_offset = 0;
     auto const req_res = msg->data.result;
     auto const req = inst->req;
@@ -1209,6 +1213,10 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
         req->result = decode_res;
         return req;
       }
+    }
+    if (progress) {
+      atomic_fetch_sub_explicit(&inst->desc->progress, progress,
+                                memory_order_relaxed);
     }
     if (thrd_ctx->max_conns > 1 && req_res == CURLE_HTTP_RETURNED_ERROR) {
       long status;
@@ -1274,7 +1282,6 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
       return req;
     }
     if (!num_queued) {
-      *err = tsc_err_ok();
       return nullptr;
     }
   } // for (;;)
