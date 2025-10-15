@@ -963,7 +963,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
 //===-- Internal functions ------------------------------------------------===//
 
 bool tscl_dump_manifest(const tek_sc_item_id *item_id, uint64_t manifest_id) {
-  tek_sc_depot_manifest manifest;
+  tek_sc_depot_manifest manifest = {};
   if (!tscl_load_manifest(item_id, manifest_id, &manifest)) {
     return false;
   }
