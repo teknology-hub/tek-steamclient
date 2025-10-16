@@ -1280,19 +1280,21 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
                       "Total files: %u\n"
                       "Total directories: %u\n"
                       "Current stage: %s\n"
-                      "Total deletions: %u\n"
-                      "Total I/O operations: %u\n"),
+                      "Total deletions: %u\n"),
           delta.num_chunks, delta.num_transfer_ops, delta.num_files,
-          delta.num_dirs, stage_str, delta.num_deletions, delta.num_io_ops);
+          delta.num_dirs, stage_str, delta.num_deletions);
   tscl_bytes_to_unit(&ctx, delta.transfer_buf_size);
   fprintf(file, tsc_gettext("RAM transfer buffer size: %u B%s\n"),
           delta.transfer_buf_size, ctx.unit_buf);
-  tscl_bytes_to_unit(&ctx, delta.total_file_growth);
-  fprintf(file, tsc_gettext("Total file growth: %llu B%s\n"),
-          (unsigned long long)delta.total_file_growth, ctx.unit_buf);
   tscl_bytes_to_unit(&ctx, delta.download_size);
   fprintf(file, tsc_gettext("Total download size: %llu B%s\n"),
           (unsigned long long)delta.download_size, ctx.unit_buf);
+  tscl_bytes_to_unit(&ctx, delta.patching_size);
+  fprintf(file, tsc_gettext("Total patching read/write size: %llu B%s\n"),
+          (unsigned long long)delta.patching_size, ctx.unit_buf);
+  tscl_bytes_to_unit(&ctx, delta.total_file_growth);
+  fprintf(file, tsc_gettext("Total file growth: %llu B%s\n"),
+          (unsigned long long)delta.total_file_growth, ctx.unit_buf);
   tscl_dump_delta_dir(delta.dirs, &ctx, 0);
   fclose(ctx.file);
   tek_sc_dp_free(&patch);

@@ -313,7 +313,6 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
         dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_patch;
         ++dir_desc.num_files;
         ++delta.num_files;
-        ++delta.num_io_ops;
       }
       ++src_file_it;
       ++tgt_file_it;
@@ -431,7 +430,6 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     if (tgt_file.size < src_file.size && num_dw_chunks < tgt_file.num_chunks) {
       file_desc.flags |= TEK_SC_DD_FILE_FLAG_truncate;
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_patch;
-      ++delta.num_io_ops;
     }
     if (num_pchunks || !ctx.relocs.empty()) {
       file_desc.flags |= TEK_SC_DD_FILE_FLAG_patch;
@@ -1092,15 +1090,16 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
           dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
           dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_patch;
           dd_transfer_op.data.patch_chunk = transfer_op.pchunk;
+          const int src_size{transfer_op.pchunk->source_chunk->size};
+          const int tgt_size{transfer_op.pchunk->target_chunk->size};
+          ctx.delta.patching_size += src_size + tgt_size;
           if (transfer_op.direct) {
             dd_transfer_op.transfer_buf_offset = -1;
-            ++ctx.delta.num_io_ops;
           } else {
             dd_transfer_op.transfer_buf_offset = transfer_buf_off;
-            transfer_buf_off +=
-                std::min(transfer_op.pchunk->source_chunk->size,
-                         transfer_op.pchunk->target_chunk->size);
-            ctx.delta.num_io_ops += 2;
+            const int min_size{std::min(src_size, tgt_size)};
+            transfer_buf_off += min_size;
+            ctx.delta.patching_size += min_size * 2;
           }
         } else {
           // Relocation
@@ -1126,13 +1125,13 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
             dd_transfer_op.data.relocation.source_offset = src;
             dd_transfer_op.data.relocation.target_offset = tgt;
             dd_transfer_op.data.relocation.size = size;
+            ctx.delta.patching_size += size * 2;
             if (transfer_op.direct) {
               dd_transfer_op.transfer_buf_offset = -1;
-              ++ctx.delta.num_io_ops;
             } else {
               dd_transfer_op.transfer_buf_offset = transfer_buf_off;
               transfer_buf_off += size;
-              ctx.delta.num_io_ops += 2;
+              ctx.delta.patching_size += size * 2;
             }
             if (!forward) {
               src += size;
@@ -1252,10 +1251,10 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
                          .num_dirs = 1,
                          .stage = TEK_SC_DD_STAGE_downloading,
                          .num_deletions = 0,
-                         .num_io_ops = 0,
                          .transfer_buf_size = 0,
-                         .total_file_growth = 0,
-                         .download_size = 0};
+                         .download_size = 0,
+                         .patching_size = 0,
+                         .total_file_growth = 0};
   // Allocate staging entry buffer
   const auto descs{std::make_unique<entry_desc[]>(
       std::min(source_manifest->num_files, target_manifest->num_files) +
@@ -1319,10 +1318,10 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
             *res.dirs);
   // Set the correct initial stage
   if (!res.num_chunks) {
-    if (res.num_io_ops) {
+    if (res.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch) {
       res.stage = TEK_SC_DD_STAGE_patching;
     } else {
-      res.stage = (res.dirs->flags & TEK_SC_DD_DIR_FLAG_children_new)
+      res.stage = (res.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_new)
                       ? TEK_SC_DD_STAGE_installing
                       : TEK_SC_DD_STAGE_deleting;
     }

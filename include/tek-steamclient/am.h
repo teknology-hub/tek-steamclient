@@ -86,8 +86,8 @@ enum tek_sc_am_job_stage {
   TEK_SC_AM_JOB_STAGE_downloading,
   /// Performing transfer operations and truncating files as needed.
   ///
-  /// Current progress: Number of performed I/O operations.
-  /// Total progress: Total number of I/O operations.
+  /// Current progress: Number of bytes read from/written to disk.
+  /// Total progress: Total number of bytes to be read/written.
   TEK_SC_AM_JOB_STAGE_patching,
   /// Installing chunks/files downloaded from SteamPipe and creating new files
   ///    and directories as needed.
