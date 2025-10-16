@@ -260,30 +260,15 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
                            (double)(cur_ticks - prev_ticks_val);
       char speed_buf[32];
       speed_buf[0] = '\0';
-      if (desc->job.stage == TEK_SC_AM_JOB_STAGE_downloading) {
-        // Use bit/s
-        if (speed >= 1000000000) { // 1 Gbit/s
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f Gbit/s"),
-                   speed / 1000000000);
-        } else if (speed >= 1000000) { // 1 Mbit/s
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f Mbit/s"),
-                   speed / 1000000);
-        } else {
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u kbit/s"),
-                   (unsigned)speed / 1000);
-        }
+      if (speed >= 1000000000) { // 1 Gbit/s
+        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f Gbit/s"),
+                 speed / 1000000000);
+      } else if (speed >= 1000000) { // 1 Mbit/s
+        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f Mbit/s"),
+                 speed / 1000000);
       } else {
-        // Use Byte/s
-        if (speed >= 0x40000000) { // 1 GiB/s
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f GiB/s"),
-                   speed / 0x40000000);
-        } else if (speed >= 0x100000) { // 1 MiB/s
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f MiB/s"),
-                   speed / 0x100000);
-        } else {
-          snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u KiB/s"),
-                   (unsigned)speed / 0x400);
-        }
+        snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u kbit/s"),
+                 (unsigned)speed / 1000);
       }
       printf(tsc_gettext("\033[2K\r[%s] %12s/%-12s (%-12s)%s\r"), bar, cur_buf,
              total_buf, speed_buf, eta_buf);
