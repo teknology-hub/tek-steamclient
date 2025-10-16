@@ -75,16 +75,18 @@ struct tscp_sdd_hdr {
   int32_t stage;
   // Total number of files and directories to be deleted.
   int32_t num_deletions;
-  /// Total number of I/O operations required to perform all truncations and
-  ///    transfer operations.
-  int32_t num_io_ops;
   /// Size of the RAM buffer used when performing transfer operations, in bytes.
   int32_t transfer_buf_size;
-  /// Total growth of existing files in size, in bytes.
-  int64_t total_file_growth;
+  /// Must be set to zero to avoid producing inconsistent CRC on different
+  ///    platforms.
+  uint32_t padding;
   /// Total download size / amount of data to be transferred over network, in
   ///    bytes.
   int64_t download_size;
+  /// Total number of bytes to be read/written during patching stage.
+  int64_t patching_size;
+  /// Total growth of existing files in size, in bytes.
+  int64_t total_file_growth;
 };
 
 /// Serialized delta chunk entry.
@@ -240,9 +242,6 @@ static void tscp_dd_count_dir(const tek_sc_verification_cache *_Nonnull vcache,
         delta->download_size += file->chunks[j].comp_size;
       }
       continue;
-    }
-    if (vc_file->file_status == TEK_SC_VC_FILE_STATUS_truncate) {
-      ++delta->num_io_ops;
     }
     delta->num_chunks += vc_file->num_dirty_chunks;
     // Iterate chunks
@@ -561,8 +560,9 @@ tek_sc_dd_compute_from_vc(const tek_sc_verification_cache *vcache) {
                                          .next_dir = res.dirs + 1},
                     vcache, vcache->manifest->dirs, nullptr, res.dirs);
   if (!res.num_chunks) {
-    res.stage =
-        res.num_io_ops ? TEK_SC_DD_STAGE_patching : TEK_SC_DD_STAGE_installing;
+    res.stage = (res.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch)
+                    ? TEK_SC_DD_STAGE_patching
+                    : TEK_SC_DD_STAGE_installing;
   }
   return res;
 }
@@ -591,10 +591,10 @@ int tek_sc_dd_serialize(const tek_sc_depot_delta *delta, void *buf,
                         .num_dirs = delta->num_dirs,
                         .stage = delta->stage,
                         .num_deletions = delta->num_deletions,
-                        .num_io_ops = delta->num_io_ops,
                         .transfer_buf_size = delta->transfer_buf_size,
-                        .total_file_growth = delta->total_file_growth,
-                        .download_size = delta->download_size};
+                        .download_size = delta->download_size,
+                        .patching_size = delta->patching_size,
+                        .total_file_growth = delta->total_file_growth};
   // Write chunks
   auto const chunks_base = delta->target_manifest->chunks;
   auto const sdd_chunks = (tscp_sdd_chunk *)(hdr + 1);
@@ -721,10 +721,10 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
   delta->num_dirs = hdr->num_dirs;
   delta->stage = hdr->stage;
   delta->num_deletions = hdr->num_deletions;
-  delta->num_io_ops = hdr->num_io_ops;
   delta->transfer_buf_size = hdr->transfer_buf_size;
-  delta->total_file_growth = hdr->total_file_growth;
   delta->download_size = hdr->download_size;
+  delta->patching_size = hdr->patching_size;
+  delta->total_file_growth = hdr->total_file_growth;
   // Get SDD array pointers and verify input buffer size
   auto const sdd_chunks = (const tscp_sdd_chunk *)(hdr + 1);
   auto const sdd_transfer_ops =

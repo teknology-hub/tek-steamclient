@@ -223,6 +223,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     }
     switch (desc->job.stage) {
     case TEK_SC_AM_JOB_STAGE_verifying:
+    case TEK_SC_AM_JOB_STAGE_patching:
       // Percentage display
       printf(tsc_gettext("\033[2K\r[%s] %6.2f%%%s\r"), bar,
              (double)(current * 100) / (double)total, eta_buf);
@@ -288,7 +289,6 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
              total_buf, speed_buf, eta_buf);
       break;
     }
-    case TEK_SC_AM_JOB_STAGE_patching:
     case TEK_SC_AM_JOB_STAGE_installing:
     case TEK_SC_AM_JOB_STAGE_deleting: {
       // Plain numbers display

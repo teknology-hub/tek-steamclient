@@ -646,15 +646,6 @@ struct tek_sc_depot_delta {
   ///    @ref TEK_SC_DD_DIR_FLAG_delete flag. Used as progress total value for
   ///    deletion stage.
   int num_deletions;
-  /// Total number of I/O operations required to perform all truncations and
-  ///    transfer operations.
-  ///
-  /// Equals to total number of file entries with
-  ///    @ref TEK_SC_DD_FILE_FLAG_truncate flag + @ref num_transfer_ops, and
-  ///    + 1 for each transfer operation entry with `transfer_buf_offset`
-  ///    set to a non-negative number. Used as progress total value for
-  ///    patching stage
-  int num_io_ops;
   /// Size of the RAM buffer used when performing transfer operations, in bytes.
   ///
   /// Equals to the largest value among `relocation.size` values for transfer
@@ -665,6 +656,20 @@ struct tek_sc_depot_delta {
   ///    `type` set to @ref TEK_SC_DD_TRANSFER_OP_TYPE_patch. Used during
   ///    patching stage.
   int transfer_buf_size;
+  /// Total download size / amount of data to be transferred over network, in
+  ///    bytes.
+  ///
+  /// Equals to total `chunk->comp_size` of all chunk entries. Used as progress
+  ///    total value for download stage.
+  int64_t download_size;
+  /// Total number of bytes to be read/written during patching stage.
+  ///
+  /// For each relocation, double its size (or quadruple its size if it's
+  ///    intermediate file-buffered) is added. For each patch chunk, the sum of
+  ///    its source and target chunk sizes is added (if it's intermediate
+  ///    file-buffered, x2 of the smaller of these two is added too). Used as
+  ///    progress total value for patching stage.
+  int64_t patching_size;
   /// Total growth of existing files in size, in bytes.
   ///
   /// For every delta file that has neither @ref TEK_SC_DD_FILE_FLAG_new nor
@@ -672,12 +677,6 @@ struct tek_sc_depot_delta {
   ///    source file is taken. Where the target file is bigger, this difference
   ///    is added to the value. Used by @ref tek_sc_dd_estimate_disk_space.
   int64_t total_file_growth;
-  /// Total download size / amount of data to be transferred over network, in
-  ///    bytes.
-  ///
-  /// Equals to total `chunk->comp_size` of all chunk entries. Used as progress
-  ///    total value for download stage.
-  int64_t download_size;
 };
 
 //===-- Functions ---------------------------------------------------------===//

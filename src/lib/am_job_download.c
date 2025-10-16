@@ -856,8 +856,9 @@ tek_sc_err tsci_am_job_download(tek_sc_am *am, tsci_am_item_desc *desc,
       dir->status = TEK_SC_JOB_ENTRY_STATUS_pending;
       dir->num_rem_children = 0;
     }
-    ctx->delta.stage = ctx->delta.num_io_ops ? TEK_SC_DD_STAGE_patching
-                                             : TEK_SC_DD_STAGE_installing;
+    ctx->delta.stage = (ctx->delta.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch)
+                           ? TEK_SC_DD_STAGE_patching
+                           : TEK_SC_DD_STAGE_installing;
   }
   // Cleanup
 free_arrs:
