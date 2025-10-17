@@ -153,6 +153,12 @@ tek_sc_os_errc tsci_os_get_last_error(void) { return errno; }
 
 int tsci_os_get_nproc(void) { return get_nprocs_conf(); }
 
+uint64_t tsci_os_get_ticks(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 tsci_os_version tsci_os_get_version(void) {
   struct utsname utsname;
   uname(&utsname);
