@@ -100,6 +100,7 @@ struct tscp_amjdw_ctx {
 /// @param [in, out] req
 ///    Pointer to the chunk download request to process.
 /// @return Value indicating whether the operation was successful.
+[[gnu::nonnull(1, 2), gnu::access(read_write, 1), gnu::access(read_write, 2)]]
 static bool tscp_amjdw_process_io_req(tscp_amjdw_wt_ctx *_Nonnull wt_ctx,
                                       tscp_amjdw_req *_Nonnull req) {
   if (req->aio_req.result) {
@@ -856,9 +857,10 @@ tek_sc_err tsci_am_job_download(tek_sc_am *am, tsci_am_item_desc *desc,
       dir->status = TEK_SC_JOB_ENTRY_STATUS_pending;
       dir->num_rem_children = 0;
     }
-    ctx->delta.stage = (ctx->delta.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch)
-                           ? TEK_SC_DD_STAGE_patching
-                           : TEK_SC_DD_STAGE_installing;
+    ctx->delta.stage =
+        (ctx->delta.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch)
+            ? TEK_SC_DD_STAGE_patching
+            : TEK_SC_DD_STAGE_installing;
   }
   // Cleanup
 free_arrs:

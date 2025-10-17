@@ -174,6 +174,8 @@ tscp_amjv_finish_file(const tek_sc_vc_file *_Nonnull vc_file,
 /// @param [in, out] req
 ///    Pointer to the chunk verification request to process.
 /// @return Value indicating whether the operation was successful.
+[[gnu::nonnull(1, 2, 3), gnu::access(read_write, 1), gnu::access(read_write, 2),
+  gnu::access(read_write, 3)]]
 static bool tscp_amjv_process_req(tscp_amjv_ctx *_Nonnull ctx,
                                   tscp_amjv_wt_ctx *_Nonnull wt_ctx,
                                   tscp_amjv_req *_Nonnull req) {
