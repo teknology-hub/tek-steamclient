@@ -1295,11 +1295,6 @@ void tsci_os_futex_wake(_Atomic(uint32_t) *addr) { WakeByAddressAll(addr); }
 
 //===-- Pathname string functions -----------------------------------------===//
 
-int tsci_os_pstrcmp(const tek_sc_os_char *restrict left,
-                    const tek_sc_os_char *restrict right) {
-  return wcscmp(left, right);
-}
-
 int tsci_os_pstr_strlen(const tek_sc_os_char *pstr) {
   return WideCharToMultiByte(CP_UTF8, 0, pstr, -1, nullptr, 0, nullptr,
                              nullptr) -

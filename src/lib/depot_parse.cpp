@@ -292,13 +292,13 @@ static int dp_count_dir(dp_parse_ctx &ctx,
        src_file_it < src_files.end() && tgt_file_it < tgt_files.end();) {
     const auto &src_file{*src_file_it};
     const auto &tgt_file{*tgt_file_it};
-    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
+    const auto file_diff{cmp_pstr(src_file.name, tgt_file.name)};
     // Ignore mismatching files
-    if (file_diff < 0) {
+    if (file_diff == std::strong_ordering::less) {
       ++src_file_it;
       continue;
     }
-    if (file_diff > 0) {
+    if (file_diff == std::strong_ordering::greater) {
       ++tgt_file_it;
       continue;
     }
@@ -405,13 +405,13 @@ static int dp_count_dir(dp_parse_ctx &ctx,
        tgt_subdir_it < tgt_subdirs.end();) {
     const auto &src_subdir{*src_subdir_it};
     const auto &tgt_subdir{*tgt_subdir_it};
-    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
+    const auto subdir_diff{cmp_pstr(src_subdir.name, tgt_subdir.name)};
     // Ignore mismatching subdirectories
-    if (subdir_diff < 0) {
+    if (subdir_diff == std::strong_ordering::less) {
       ++src_subdir_it;
       continue;
     }
-    if (subdir_diff > 0) {
+    if (subdir_diff == std::strong_ordering::greater) {
       ++tgt_subdir_it;
       continue;
     }
@@ -447,13 +447,13 @@ static void dp_write_dir(dp_parse_ctx &ctx,
        src_file_it < src_files.end() && tgt_file_it < tgt_files.end();) {
     const auto &src_file{*src_file_it};
     const auto &tgt_file{*tgt_file_it};
-    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
+    const auto file_diff{cmp_pstr(src_file.name, tgt_file.name)};
     // Ignore mismatching files
-    if (file_diff < 0) {
+    if (file_diff == std::strong_ordering::less) {
       ++src_file_it;
       continue;
     }
-    if (file_diff > 0) {
+    if (file_diff == std::strong_ordering::greater) {
       ++tgt_file_it;
       continue;
     }
@@ -574,13 +574,13 @@ static void dp_write_dir(dp_parse_ctx &ctx,
        tgt_subdir_it < tgt_subdirs.end();) {
     const auto &src_subdir{*src_subdir_it};
     const auto &tgt_subdir{*tgt_subdir_it};
-    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
+    const auto subdir_diff{cmp_pstr(src_subdir.name, tgt_subdir.name)};
     // Ignore mismatching subdirectories
-    if (subdir_diff < 0) {
+    if (subdir_diff == std::strong_ordering::less) {
       ++src_subdir_it;
       continue;
     }
-    if (subdir_diff > 0) {
+    if (subdir_diff == std::strong_ordering::greater) {
       ++tgt_subdir_it;
       continue;
     }

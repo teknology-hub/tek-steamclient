@@ -278,8 +278,8 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
   while (src_file_it < src_files.end() && tgt_file_it < tgt_files.end()) {
     const auto &src_file{*src_file_it};
     const auto &tgt_file{*tgt_file_it};
-    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
-    if (file_diff < 0) {
+    const auto file_diff{cmp_pstr(src_file.name, tgt_file.name)};
+    if (file_diff == std::strong_ordering::less) {
       // The file has been delisted and is to be deleted
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
       ++dir_desc.num_files;
@@ -290,7 +290,7 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     }
     const std::span tgt_chunks{tgt_file.chunks,
                                static_cast<std::size_t>(tgt_file.num_chunks)};
-    if (file_diff > 0) {
+    if (file_diff == std::strong_ordering::greater) {
       // The file has been added to the directory
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_new;
       ++dir_desc.num_files;
@@ -514,8 +514,8 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
          tgt_subdir_it < tgt_subdirs.end()) {
     const auto &src_subdir{*src_subdir_it};
     const auto &tgt_subdir{*tgt_subdir_it};
-    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
-    if (subdir_diff < 0) {
+    const auto subdir_diff{cmp_pstr(src_subdir.name, tgt_subdir.name)};
+    if (subdir_diff == std::strong_ordering::less) {
       // The subdirectory has been delisted and is to be deleted
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_delete;
       ++dir_desc.num_subdirs;
@@ -523,7 +523,7 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       ++src_subdir_it;
       continue;
     }
-    if (subdir_diff > 0) {
+    if (subdir_diff == std::strong_ordering::greater) {
       // The subdirectory has been added to the directory
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_new;
       ++dir_desc.num_subdirs;
@@ -767,8 +767,8 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
   while (src_file_it < src_files.end() && tgt_file_it < tgt_files.end()) {
     const auto &src_file{*src_file_it};
     const auto &tgt_file{*tgt_file_it};
-    const int file_diff{tsci_os_pstrcmp(src_file.name, tgt_file.name)};
-    if (file_diff < 0) {
+    const auto file_diff{cmp_pstr(src_file.name, tgt_file.name)};
+    if (file_diff == std::strong_ordering::less) {
       // The file has been delisted and is to be deleted
       auto &dd_file{*ctx.next_file++};
       init_dd_file(src_file, dd_file);
@@ -783,7 +783,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
     }
     const std::span tgt_chunks{tgt_file.chunks,
                                static_cast<std::size_t>(tgt_file.num_chunks)};
-    if (file_diff > 0) {
+    if (file_diff == std::strong_ordering::greater) {
       // The file has been added to the directory
       auto &dd_file{*ctx.next_file++};
       init_dd_file(tgt_file, dd_file);
@@ -1194,14 +1194,14 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
          tgt_subdir_it < tgt_subdirs.end()) {
     const auto &src_subdir{*src_subdir_it};
     const auto &tgt_subdir{*tgt_subdir_it};
-    const int subdir_diff{tsci_os_pstrcmp(src_subdir.name, tgt_subdir.name)};
-    if (subdir_diff < 0) {
+    const auto subdir_diff{cmp_pstr(src_subdir.name, tgt_subdir.name)};
+    if (subdir_diff == std::strong_ordering::less) {
       // The subdirectory has been delisted and is to be deleted
       write_del_dir(ctx, src_subdir, dd_dir, *next_dd_subdir++);
       ++src_subdir_it;
       continue;
     }
-    if (subdir_diff > 0) {
+    if (subdir_diff == std::strong_ordering::greater) {
       // The subdirectory has been added to the directory
       write_new_dir(ctx, tgt_subdir, dd_dir, *next_dd_subdir++);
       ++tgt_subdir_it;
