@@ -281,6 +281,13 @@ char *_Nonnull tsci_os_get_err_msg(tek_sc_os_errc errc);
 /// @return Number of available logical processors.
 [[gnu::visibility("internal")]] int tsci_os_get_nproc(void);
 
+/// Get the number of milliseconds passed since some point in the past, where
+///    the point is guaranteed to be consistent during program runtime.
+///
+/// @return Number of milliseconds passed since some point in the past.
+[[gnu::visibility("internal")]]
+uint64_t tsci_os_get_ticks(void);
+
 /// Get version of the running operating system.
 ///
 /// @return OS version object.

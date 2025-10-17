@@ -409,6 +409,8 @@ int tsci_os_get_nproc(void) {
   return info.dwNumberOfProcessors;
 }
 
+uint64_t tsci_os_get_ticks(void) { return GetTickCount64(); }
+
 tsci_os_version tsci_os_get_version(void) {
   tsci_os_version version;
   RtlGetNtVersionNumbers((PULONG)&version.major, (PULONG)&version.minor,
