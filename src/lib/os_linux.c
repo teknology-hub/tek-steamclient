@@ -942,11 +942,6 @@ void tsci_os_futex_wake(_Atomic(uint32_t) *addr) {
 
 //===-- Pathname string functions -----------------------------------------===//
 
-int tsci_os_pstrcmp(const tek_sc_os_char *restrict left,
-                    const tek_sc_os_char *restrict right) {
-  return strcmp(left, right);
-}
-
 int tsci_os_pstr_strlen(const tek_sc_os_char *pstr) {
   // Modern Linux filesystems already use UTF-8 or implicitly convert to it
   return strlen(pstr);

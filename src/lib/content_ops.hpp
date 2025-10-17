@@ -16,8 +16,10 @@
 #pragma once
 
 #include "tek-steamclient/content.h"
+#include "tek-steamclient/os.h"
 
 #include <compare>
+#include <string_view>
 #include <tuple>
 
 namespace tek::steamclient::content {
@@ -39,6 +41,20 @@ operator<=>(const tek_sc_dm_chunk &left,
             const tek_sc_dm_chunk &right) noexcept {
   return std::tie(left.sha.high32, left.sha.low128) <=>
          std::tie(right.sha.high32, right.sha.low128);
+}
+
+/// Compare two null-terminated OS strings.
+///
+/// @param [in] left
+///    The first string to compare.
+/// @param [in] right
+///    The second string to compare.
+/// @return The result of three-way comparison of the strings.
+constexpr std::strong_ordering
+cmp_pstr(const tek_sc_os_char *_Nonnull left,
+         const tek_sc_os_char *_Nonnull right) noexcept {
+  return std::basic_string_view<tek_sc_os_char>{left} <=>
+         std::basic_string_view<tek_sc_os_char>{right};
 }
 
 /// Compare two depot manifest chunk entry pointers by `sha`, and by `offset`

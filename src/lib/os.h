@@ -878,20 +878,6 @@ void tsci_os_futex_wake(_Atomic(uint32_t) *_Nonnull addr);
 
 //===-- Pathname string functions -----------------------------------------===//
 
-/// Three-way compare two null-terminated pathname strings.
-///
-/// @param [in] left
-///    The first pathname string to compare.
-/// @param [in] right
-///    The second pathname string to compare.
-/// @return `0` if the pathnames are equal, a negative value if @p left is less
-///    than @p right, or a positive value if @p left is greater than @p right.
-[[gnu::visibility("internal"), gnu::nonnull(1, 2), gnu::access(read_only, 1),
-  gnu::access(read_only, 2), gnu::null_terminated_string_arg(1),
-  gnu::null_terminated_string_arg(2)]]
-int tsci_os_pstrcmp(const tek_sc_os_char *_Nonnull left,
-                    const tek_sc_os_char *_Nonnull right);
-
 /// Get the number of bytes required to represent specified null-terminated
 ///    pathname string as a UTF-8 string.
 ///
