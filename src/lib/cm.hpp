@@ -260,8 +260,8 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   std::forward_list<msg_await_entry_reduced> lics_a_entries;
   /// Mutex locking concurrent access to @ref num_lics and @ref lics_a_entries.
   std::recursive_mutex lics_mtx;
-  /// Iterator for the currently used server in `lib_ctx.cm_servers`.
-  std::vector<tek::steamclient::cm_server>::const_iterator cur_server;
+  /// Pointer to currently used CM server.
+  const tek::steamclient::cm_server *_Nullable cur_server;
 
   [[using gnu: nonnull(2), access(none, 2), access(none, 3)]]
   tek_sc_cm_client(tek_sc_lib_ctx *_Nonnull lib_ctx, void *_Nullable user_data)
@@ -269,7 +269,7 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
         steam_id{}, session_id{}, disconnect_reason(TEK_SC_ERRC_ok),
         user_data(user_data), zstream{},
         sign_in_entry{.sul = {}, .client = *this, .cb = nullptr},
-        auth_client_id{}, num_conn_retries{}, num_lics{} {}
+        auth_client_id{}, num_conn_retries{}, num_lics{}, cur_server{} {}
 
   /// Handle a `EMSG_CLIENT_LOG_ON_RESPONSE` message.
   ///

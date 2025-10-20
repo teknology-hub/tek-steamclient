@@ -214,6 +214,7 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
           sqlite3_column_int(stmt.get(), 1));
     }
     ctx->cm_servers.shrink_to_fit();
+    ctx->cm_servers_iter = ctx->cm_servers.cbegin();
   }
   // Get depot keys
   query = "SELECT depot_id, key FROM depot_keys";
