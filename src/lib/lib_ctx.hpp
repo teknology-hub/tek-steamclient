@@ -175,7 +175,10 @@ struct tek_sc_lib_ctx {
   std::mutex cm_clients_mtx;
   /// Cached list of Steam CM servers.
   std::vector<tek::steamclient::cm_server> cm_servers;
-  /// Mutex locking concurrent access to @ref cm_servers.
+  /// Iterator pointing to the next CM server to use for connection
+  decltype(cm_servers)::const_iterator cm_servers_iter;
+  /// Mutex locking concurrent access to @ref cm_servers and
+  ///    @ref cm_servers_iter.
   std::mutex cm_servers_mtx;
   /// Cached depot decryption keys.
   std::map<std::uint32_t, tek_sc_aes256_key> depot_keys;

@@ -41,6 +41,7 @@
 #include <libwebsockets.h>
 #include <locale>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <rapidjson/document.h>
 #include <rapidjson/reader.h>
@@ -356,12 +357,17 @@ static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
     }
     // If there's no error from established callback and retry counter is below
     //    5, retry with another server
+    auto &lib_ctx = client.lib_ctx;
     if (!client.disconnect_reason && ++client.num_conn_retries < 5) {
-      if (++client.cur_server == client.lib_ctx.cm_servers.cend()) {
-        client.cur_server = client.lib_ctx.cm_servers.cbegin();
+      {
+        const std::scoped_lock lock{lib_ctx.cm_servers_mtx};
+        if (++lib_ctx.cm_servers_iter == lib_ctx.cm_servers.cend()) {
+          lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
+        }
+        client.cur_server = std::to_address(lib_ctx.cm_servers_iter);
       }
       lws_client_connect_info info{};
-      info.context = client.lib_ctx.lws_ctx;
+      info.context = lib_ctx.lws_ctx;
       info.address = client.cur_server->hostname.data();
       info.port = client.cur_server->port;
       info.ssl_connection = LCCSCF_USE_SSL;
@@ -703,28 +709,32 @@ void tek_sc_cm_connect(tek_sc_cm_client *client,
     // Don't do anything if there is already another connection
     return;
   }
+  auto &lib_ctx = client->lib_ctx;
   // Ensure that server list is not empty
-  client->lib_ctx.cm_servers_mtx.lock();
-  if (client->lib_ctx.cm_servers.empty()) {
-    auto res{fetch_server_list(client->lib_ctx.cm_servers, fetch_timeout_ms)};
-    client->lib_ctx.cm_servers_mtx.unlock();
-    if (tek_sc_err_success(&res)) {
-      client->lib_ctx.dirty_flags.fetch_or(
-          static_cast<int>(dirty_flag::cm_servers), std::memory_order::relaxed);
-    } else {
+  if (std::unique_lock lock{lib_ctx.cm_servers_mtx};
+      lib_ctx.cm_servers.empty()) {
+    auto res{fetch_server_list(lib_ctx.cm_servers, fetch_timeout_ms)};
+    if (!tek_sc_err_success(&res)) {
+      lock.unlock();
       connection_cb(client, &res, client->user_data);
       return;
     }
+    lib_ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::cm_servers),
+                                 std::memory_order::relaxed);
+    lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
+    client->cur_server = std::to_address(lib_ctx.cm_servers_iter);
   } else {
-    client->lib_ctx.cm_servers_mtx.unlock();
+    if (++lib_ctx.cm_servers_iter == lib_ctx.cm_servers.cend()) {
+      lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
+    }
+    client->cur_server = std::to_address(lib_ctx.cm_servers_iter);
   }
   // Prepare and submit the connection request
-  client->cur_server = client->lib_ctx.cm_servers.cbegin();
   client->num_conn_retries = 0;
   client->connection_cb = connection_cb;
   client->disconnection_cb = disconnection_cb;
   client->conn_requested.store(true, std::memory_order::release);
-  lws_cancel_service(client->lib_ctx.lws_ctx);
+  lws_cancel_service(lib_ctx.lws_ctx);
 }
 
 void tek_sc_cm_disconnect(tek_sc_cm_client *client) {
