@@ -31,7 +31,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <ranges>
@@ -56,7 +55,7 @@ union entry_desc {
     /// Number of chunk delta entries assigned to the file.
     int num_chunks;
     /// Number of transfer operation entries assigned to the file.
-    int num_transfer_ops;
+    int num_trans_op_grps;
   } file;
   /// Directory descriptor.
   struct {
@@ -69,26 +68,8 @@ union entry_desc {
   } dir;
 };
 
-/// Staging relocation descriptor, used to batch and count relocaitons.
-struct [[gnu::visibility("internal")]] reloc_desc {
-  /// File offset to copy the data bulk from, in bytes.
-  std::int64_t src_off;
-  /// File offset to copy the data bulk to, in bytes.
-  std::int64_t tgt_off;
-  /// Size of the data bulk, in bytes.
-  std::int64_t size;
-
-  /// Get offset of the end of the source region.
-  ///
-  /// @return Offset of the end of the source region (exclusive), in bytes.
-  constexpr std::int64_t src_end() const noexcept { return src_off + size; }
-  /// Get offset of the end of the target region.
-  ///
-  /// @return Offset of the end of the target region (exclusive), in bytes.
-  constexpr std::int64_t tgt_end() const noexcept { return tgt_off + size; }
-};
-
-/// Staging transfer operation descriptor, used for sorting.
+/// Staging transfer operation descriptor, used for grouping and order
+///    optimization.
 struct transfer_op_desc {
   /// Offset of the beginning of the source region, in bytes.
   std::int64_t src_off;
@@ -100,13 +81,18 @@ struct transfer_op_desc {
   std::int64_t tgt_end;
   /// Pointer to the corresponding patch chunk, for patch operations.
   const tek_sc_dp_chunk *_Nullable pchunk;
-  /// The number of transfer operations that have their source region
-  ///    overlap the target region of this one. Used for weighted sorting.
-  int weight;
-  /// Value indicating whether the transfer operation is direct, that is
-  ///    doesn't use file buffering to temporarily store data before copying to
-  ///    destination.
-  bool direct;
+  /// Value indicating whether this entry has been visited by graph traversal
+  ///    routines yet. Helps avoiding recursive loops.
+  bool visited;
+  /// Value indicating whether this entry has been written to the delta yet and
+  ///    as such should be ignored for optimizations.
+  bool written;
+  /// Pointers to transfer operations whose source range is intersected by this
+  ///    operation's target range.
+  std::vector<transfer_op_desc *> intersects_with;
+  /// Pointers to transfer operations whose target range intersects this
+  ///    operation's source range.
+  std::vector<transfer_op_desc *> intersected_by;
 };
 
 /// Count pass context, shared across recursion levels of @ref count_dir.
@@ -121,15 +107,8 @@ struct count_ctx {
   /// Pointer to the buffer for storing pointers to target file's chunks sorted
   ///    by `sha`.
   const tek_sc_dm_chunk *_Nonnull *_Nonnull tgt_chunk_ptrs;
-  /// Staging relocation buffer.
-  std::vector<reloc_desc> relocs;
-  /// The maximum number of transfer operations discovered in a single file.
-  ///    Used as size for `transfer_ops` in the write context.
-  int max_num_transfer_ops;
-  /// The maximum number of transfer operations discovered in a single file,
-  ///    after batching relocations. Used as size for `weighted_transfer_ops` in
-  ///    the write context.
-  int max_num_opt_transfer_ops;
+  /// Staging transfer operation buffer.
+  std::vector<transfer_op_desc> &transfer_ops;
 };
 
 /// Write pass context, shared across recursion levels of @ref write_dir.
@@ -141,6 +120,9 @@ struct write_ctx {
   /// Pointer to the next available transfer operation entry in the delta's
   ///    buffer.
   tek_sc_dd_transfer_op *_Nonnull next_transfer_op;
+  /// Pointer to the next available transfer operation group entry in the
+  ///    delta's buffer.
+  tek_sc_dd_trans_op_grp *_Nonnull next_trans_op_grp;
   /// Pointer to the next available file entry in the delta's buffer.
   tek_sc_dd_file *_Nonnull next_file;
   /// Pointer to the next available directory entry in the delta's buffer.
@@ -158,9 +140,10 @@ struct write_ctx {
   ///    by `sha`.
   const tek_sc_dm_chunk *_Nonnull *_Nonnull tgt_chunk_ptrs;
   /// Staging transfer operation buffer.
-  std::vector<transfer_op_desc> transfer_ops;
-  /// Staging buffer for attempting weighted sorting of @ref transfer_ops.
-  std::vector<transfer_op_desc> weighted_transfer_ops;
+  std::vector<transfer_op_desc> &transfer_ops;
+  /// Pointers to transfer operations belonging to the group currently being
+  ///    processed.
+  std::vector<transfer_op_desc *> group;
 };
 
 static constexpr std::int64_t max_reloc_size{0x20000000}; // 512 MiB
@@ -193,6 +176,52 @@ operator|(tek_sc_dd_dir_flag left, tek_sc_dd_dir_flag right) noexcept {
 static constexpr tek_sc_dd_dir_flag &
 operator|=(tek_sc_dd_dir_flag &left, tek_sc_dd_dir_flag right) noexcept {
   return left = left | right;
+}
+
+/// Discover all transfer operations in a group.
+///
+/// @param [in, out] desc
+///    Pointer to the transfer operation descriptor whose group should be
+///    discovered.
+[[using gnu: nonnull(1), access(read_only, 1)]]
+static void discover_group(transfer_op_desc *_Nonnull desc) {
+  for (auto peer : desc->intersects_with) {
+    if (!peer->visited) {
+      peer->visited = true;
+      discover_group(peer);
+    }
+  }
+  for (auto peer : desc->intersected_by) {
+    if (!peer->visited) {
+      peer->visited = true;
+      discover_group(peer);
+    }
+  }
+}
+
+/// Get all transfer operations in a group.
+///
+/// @param [in, out] group
+///    Vector that receives pointers to descriptors that are in the group.
+/// @param [in, out] desc
+///    Pointer to the transfer operation descriptor whose group should be
+///    discovered.
+[[using gnu: nonnull(2), access(read_only, 2)]]
+static void get_group(std::vector<transfer_op_desc *> &group,
+                      transfer_op_desc *_Nonnull desc) {
+  group.emplace_back(desc);
+  for (auto peer : desc->intersects_with) {
+    if (!peer->visited) {
+      peer->visited = true;
+      get_group(group, peer);
+    }
+  }
+  for (auto peer : desc->intersected_by) {
+    if (!peer->visited) {
+      peer->visited = true;
+      get_group(group, peer);
+    }
+  }
 }
 
 /// Count the numbers of delta entries for specified delisted directory.
@@ -336,7 +365,6 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
     }
     auto &file_desc{ctx.next_desc++->file};
     int num_dw_chunks{};
-    int num_pchunks{};
     // Populate chunk pointer buffers and sort them by sha/offset
     const std::span src_chunk_ptrs{
         ctx.src_chunk_ptrs, static_cast<std::size_t>(src_file.num_chunks)};
@@ -367,16 +395,31 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
         if (src_chunk_it > src_chunk_ptrs.begin() &&
             src_chunk_it[-1]->sha == tgt_chunk.sha) {
           // The chunk is a duplicate of the previous one
-          ctx.relocs.emplace_back(src_chunk_it[-1]->offset, tgt_chunk.offset,
-                                  tgt_chunk.size);
-        } else if (std::ranges::binary_search(pchunks, &tgt_chunk, {},
-                                              &tek_sc_dp_chunk::target_chunk)) {
-          // The chunk has been produced by patching
-          ++num_pchunks;
+          const auto &prev_chunk{*src_chunk_it[-1]};
+          ctx.transfer_ops.emplace_back(
+              prev_chunk.offset, prev_chunk.offset + prev_chunk.size,
+              tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr,
+              false, false, std::vector<transfer_op_desc *>{},
+              std::vector<transfer_op_desc *>{});
         } else {
-          // The chunk is to be downloaded
-          ++num_dw_chunks;
-          delta.download_size += tgt_chunk.comp_size;
+          const auto pchunk{std::ranges::lower_bound(
+              pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
+          if (pchunk == pchunks.end() || pchunk->target_chunk != &tgt_chunk) {
+            // The chunk is to be downloaded
+            ++num_dw_chunks;
+            delta.download_size += tgt_chunk.comp_size;
+          } else {
+            // The chunk has been produced by patching
+            const auto &psrc_chunk{*pchunk->source_chunk};
+            delta.transfer_buf_size = std::max(
+                delta.transfer_buf_size, psrc_chunk.size + tgt_chunk.size);
+            ctx.transfer_ops.emplace_back(
+                psrc_chunk.offset, psrc_chunk.offset + psrc_chunk.size,
+                tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size,
+                std::to_address(pchunk), false, false,
+                std::vector<transfer_op_desc *>{},
+                std::vector<transfer_op_desc *>{});
+          }
         }
         ++tgt_chunk_it;
         continue;
@@ -387,8 +430,11 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       if (src_chunk.offset != tgt_chunk.offset &&
           !std::ranges::binary_search(src_chunk_ptrs, &tgt_chunk,
                                       cmp_dm_chunk_sha_and_off)) {
-        ctx.relocs.emplace_back(src_chunk.offset, tgt_chunk.offset,
-                                tgt_chunk.size);
+        ctx.transfer_ops.emplace_back(
+            src_chunk.offset, src_chunk.offset + src_chunk.size,
+            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, false,
+            false, std::vector<transfer_op_desc *>{},
+            std::vector<transfer_op_desc *>{});
       }
       ++src_chunk_it;
       ++tgt_chunk_it;
@@ -404,16 +450,30 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
           continue;
         }
         // The chunk is a duplicate of the last source chunk
-        ctx.relocs.emplace_back(last_src_chunk.offset, tgt_chunk.offset,
-                                tgt_chunk.size);
-      } else if (std::ranges::binary_search(pchunks, &tgt_chunk, {},
-                                            &tek_sc_dp_chunk::target_chunk)) {
-        // The chunk has been produced by patching
-        ++num_pchunks;
+        ctx.transfer_ops.emplace_back(
+            last_src_chunk.offset, last_src_chunk.offset + last_src_chunk.size,
+            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, false,
+            false, std::vector<transfer_op_desc *>{},
+            std::vector<transfer_op_desc *>{});
       } else {
-        // The chunk is to be downloaded
-        ++num_dw_chunks;
-        delta.download_size += tgt_chunk.comp_size;
+        const auto pchunk{std::ranges::lower_bound(
+            pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
+        if (pchunk == pchunks.end() || pchunk->target_chunk != &tgt_chunk) {
+          // The chunk is to be downloaded
+          ++num_dw_chunks;
+          delta.download_size += tgt_chunk.comp_size;
+        } else {
+          // The chunk has been produced by patching
+          const auto &psrc_chunk{*pchunk->source_chunk};
+          delta.transfer_buf_size = std::max(delta.transfer_buf_size,
+                                             psrc_chunk.size + tgt_chunk.size);
+          ctx.transfer_ops.emplace_back(
+              psrc_chunk.offset, psrc_chunk.offset + psrc_chunk.size,
+              tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size,
+              std::to_address(pchunk), false, false,
+              std::vector<transfer_op_desc *>{},
+              std::vector<transfer_op_desc *>{});
+        }
       }
     } // for (remaining target chunks)
     // Summarize the data
@@ -431,44 +491,76 @@ static tek_sc_dd_dir_flag count_dir(count_ctx &ctx,
       file_desc.flags |= TEK_SC_DD_FILE_FLAG_truncate;
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_patch;
     }
-    if (num_pchunks || !ctx.relocs.empty()) {
+    if (!ctx.transfer_ops.empty()) {
       file_desc.flags |= TEK_SC_DD_FILE_FLAG_patch;
-      file_desc.num_transfer_ops = num_pchunks;
       dir_desc.flags |= TEK_SC_DD_DIR_FLAG_children_patch;
-      ctx.max_num_transfer_ops =
-          std::max(ctx.max_num_transfer_ops,
-                   static_cast<int>(num_pchunks + ctx.relocs.size()));
-      if (!ctx.relocs.empty()) {
-        // Optimize relocations by batching adjacent ones together
-        std::ranges::sort(ctx.relocs, {}, [](const auto &desc) {
-          return std::tie(desc.src_off, desc.tgt_off);
-        });
-        auto batched_it{ctx.relocs.begin()};
-        for (auto it{ctx.relocs.cbegin() + 1}; it < ctx.relocs.cend(); ++it) {
-          if (batched_it->src_end() == it->src_off &&
-              batched_it->tgt_end() == it->tgt_off) {
-            batched_it->size += it->size;
+      // Separate relocations (while also sorting them) from patch chunks and
+      //    put patch chunks ahead, so unused relocations can be safely cropped
+      //    out after batching
+      std::ranges::sort(
+          ctx.transfer_ops, [](const auto &left, const auto &right) {
+            const bool left_is_patch{left.pchunk == nullptr};
+            const bool right_is_patch{right.pchunk == nullptr};
+            return std::tie(left_is_patch, left.src_off, left.tgt_off) <
+                   std::tie(right_is_patch, right.src_off, right.tgt_off);
+          });
+      auto batched_it{std::ranges::find(ctx.transfer_ops, nullptr,
+                                        &transfer_op_desc::pchunk)};
+      if (batched_it != ctx.transfer_ops.end()) {
+        // Batch adjacent relocations together
+        for (auto it{batched_it + 1}; it < ctx.transfer_ops.end(); ++it) {
+          if (batched_it->src_end == it->src_off &&
+              batched_it->tgt_end == it->tgt_off) {
+            batched_it->src_end = it->src_end;
+            batched_it->tgt_end = it->tgt_end;
           } else if (++batched_it != it) {
             // Shift entries to fill the gaps created by batching
-            *batched_it = *it;
+            *batched_it = std::move(*it);
           }
         }
         // Crop leftover entries
-        ctx.relocs.resize(std::distance(ctx.relocs.begin(), batched_it) + 1);
-        // Split too large relocations into 0.5 GiB ones and count them
-        for (const auto &reloc : ctx.relocs) {
-          const auto [quot, rem] = std::div(reloc.size, max_reloc_size);
-          file_desc.num_transfer_ops += quot + (rem != 0);
+        ctx.transfer_ops.resize(
+            std::distance(ctx.transfer_ops.begin(), batched_it) + 1);
+      }
+      // Count the actual number of transfer operations, and transfer buffer
+      //    size
+      for (const auto &desc : ctx.transfer_ops) {
+        if (desc.pchunk) {
+          ++delta.num_transfer_ops;
+        } else {
+          const auto size{desc.src_end - desc.src_off};
+          const auto [quot, rem]{std::div(size, max_reloc_size)};
+          delta.num_transfer_ops += quot + (rem != 0);
           delta.transfer_buf_size =
               std::max(delta.transfer_buf_size,
-                       static_cast<int>(std::min(reloc.size, max_reloc_size)));
+                       static_cast<int>(std::min(size, max_reloc_size)));
         }
-        ctx.relocs.clear();
-      } // if (!ctx.relocs.empty())
-      ctx.max_num_opt_transfer_ops =
-          std::max(ctx.max_num_opt_transfer_ops, file_desc.num_transfer_ops);
-      delta.num_transfer_ops += file_desc.num_transfer_ops;
-    } // if (num_patch_chunks || !ctx.relocs.empty())
+      }
+      delta.num_transfer_ops += ctx.transfer_ops.size();
+      // Build the intersection graph
+      for (auto i{ctx.transfer_ops.begin()}; i < ctx.transfer_ops.end(); ++i) {
+        for (auto j{i + 1}; j < ctx.transfer_ops.end(); ++j) {
+          if (i->tgt_off < j->src_end && j->src_off < i->tgt_end) {
+            i->intersects_with.emplace_back(std::to_address(j));
+            j->intersected_by.emplace_back(std::to_address(i));
+          }
+          if (j->tgt_off < i->src_end && i->src_off < j->tgt_end) {
+            j->intersects_with.emplace_back(std::to_address(i));
+            i->intersected_by.emplace_back(std::to_address(j));
+          }
+        }
+      }
+      // Count the number of transfer operation groups
+      for (auto &desc : ctx.transfer_ops) {
+        if (!desc.visited) {
+          ++file_desc.num_trans_op_grps;
+          desc.visited = true;
+          discover_group(&desc);
+        }
+      }
+      delta.num_trans_op_grps += file_desc.num_trans_op_grps;
+      ctx.transfer_ops.clear();
+    } // if (!ctx.transfer_ops.empty())
     if (file_desc.flags) {
       ++dir_desc.num_files;
       ++delta.num_files;
@@ -640,9 +732,9 @@ static void write_del_dir(write_ctx &ctx, const tek_sc_dm_dir &dir,
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
     dd_file.chunks = nullptr;
-    dd_file.transfer_ops = nullptr;
+    dd_file.trans_op_grps = nullptr;
     dd_file.num_chunks = 0;
-    dd_file.num_transfer_ops = 0;
+    dd_file.num_trans_op_grps = 0;
   }
   // Iterate subdirectories
   for (auto &&[subdir, dd_subdir] : std::views::zip(
@@ -704,9 +796,9 @@ static tek_sc_dd_dir_flag write_new_dir(write_ctx &ctx,
     } else {
       dd_file.chunks = nullptr;
     }
-    dd_file.transfer_ops = nullptr;
+    dd_file.trans_op_grps = nullptr;
     dd_file.num_chunks = file.num_chunks;
-    dd_file.num_transfer_ops = 0;
+    dd_file.num_trans_op_grps = 0;
     std::ranges::transform(
         std::span{file.chunks, static_cast<std::size_t>(file.num_chunks)},
         dd_file.chunks, [&dd_file](const auto &chunk) {
@@ -775,9 +867,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
       dd_file.chunks = nullptr;
-      dd_file.transfer_ops = nullptr;
+      dd_file.trans_op_grps = nullptr;
       dd_file.num_chunks = 0;
-      dd_file.num_transfer_ops = 0;
+      dd_file.num_trans_op_grps = 0;
       ++src_file_it;
       continue;
     }
@@ -790,9 +882,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_new;
       dd_file.chunks = tgt_file.num_chunks ? ctx.next_chunk : nullptr;
-      dd_file.transfer_ops = nullptr;
+      dd_file.trans_op_grps = nullptr;
       dd_file.num_chunks = tgt_file.num_chunks;
-      dd_file.num_transfer_ops = 0;
+      dd_file.num_trans_op_grps = 0;
       if (tgt_file.num_chunks) {
         dd_file.flags |= TEK_SC_DD_FILE_FLAG_download;
         ctx.next_chunk =
@@ -817,9 +909,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         dd_file.parent = &dd_dir;
         dd_file.flags = TEK_SC_DD_FILE_FLAG_truncate;
         dd_file.chunks = nullptr;
-        dd_file.transfer_ops = nullptr;
+        dd_file.trans_op_grps = nullptr;
         dd_file.num_chunks = 0;
-        dd_file.num_transfer_ops = 0;
+        dd_file.num_trans_op_grps = 0;
       }
       ++src_file_it;
       ++tgt_file_it;
@@ -834,9 +926,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       dd_file.parent = &dd_dir;
       dd_file.flags = TEK_SC_DD_FILE_FLAG_new | TEK_SC_DD_FILE_FLAG_download;
       dd_file.chunks = ctx.next_chunk;
-      dd_file.transfer_ops = nullptr;
+      dd_file.trans_op_grps = nullptr;
       dd_file.num_chunks = tgt_file.num_chunks;
-      dd_file.num_transfer_ops = 0;
+      dd_file.num_trans_op_grps = 0;
       ctx.next_chunk =
           std::ranges::transform(tgt_chunks, ctx.next_chunk,
                                  [&dd_file](const auto &chunk) {
@@ -861,10 +953,10 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
     dd_file.parent = &dd_dir;
     dd_file.flags = file_desc.flags;
     dd_file.chunks = file_desc.num_chunks ? ctx.next_chunk : nullptr;
-    dd_file.transfer_ops =
-        file_desc.num_transfer_ops ? ctx.next_transfer_op : nullptr;
+    dd_file.trans_op_grps =
+        file_desc.num_trans_op_grps ? ctx.next_trans_op_grp : nullptr;
     dd_file.num_chunks = file_desc.num_chunks;
-    dd_file.num_transfer_ops = file_desc.num_transfer_ops;
+    dd_file.num_trans_op_grps = file_desc.num_trans_op_grps;
     if (file_desc.flags & TEK_SC_DD_FILE_FLAG_new) {
       // No need to do complex computations when all you need is simply
       //    downloading all chunks
@@ -917,8 +1009,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
           const auto &prev_chunk{*src_chunk_it[-1]};
           ctx.transfer_ops.emplace_back(
               prev_chunk.offset, prev_chunk.offset + prev_chunk.size,
-              tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, 0,
-              false);
+              tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr,
+              false, false, std::vector<transfer_op_desc *>{},
+              std::vector<transfer_op_desc *>{});
         } else {
           const auto pchunk{std::ranges::lower_bound(
               pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
@@ -931,12 +1024,12 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
           } else {
             // The chunk has been produced by patching
             const auto &psrc_chunk{*pchunk->source_chunk};
-            ctx.delta.transfer_buf_size = std::max(
-                ctx.delta.transfer_buf_size, psrc_chunk.size + tgt_chunk.size);
             ctx.transfer_ops.emplace_back(
                 psrc_chunk.offset, psrc_chunk.offset + psrc_chunk.size,
                 tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size,
-                std::to_address(pchunk), 0, false);
+                std::to_address(pchunk), false, false,
+                std::vector<transfer_op_desc *>{},
+                std::vector<transfer_op_desc *>{});
           }
         }
         ++tgt_chunk_it;
@@ -950,8 +1043,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
                                       cmp_dm_chunk_sha_and_off)) {
         ctx.transfer_ops.emplace_back(
             src_chunk.offset, src_chunk.offset + src_chunk.size,
-            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, 0,
-            false);
+            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, false,
+            false, std::vector<transfer_op_desc *>{},
+            std::vector<transfer_op_desc *>{});
       }
       ++src_chunk_it;
       ++tgt_chunk_it;
@@ -969,8 +1063,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         // The chunk is a duplicate of the last source chunk
         ctx.transfer_ops.emplace_back(
             last_src_chunk.offset, last_src_chunk.offset + last_src_chunk.size,
-            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, 0,
-            false);
+            tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size, nullptr, false,
+            false, std::vector<transfer_op_desc *>{},
+            std::vector<transfer_op_desc *>{});
       } else {
         const auto pchunk{std::ranges::lower_bound(
             pchunks, &tgt_chunk, {}, &tek_sc_dp_chunk::target_chunk)};
@@ -983,12 +1078,12 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
         } else {
           // The chunk has been produced by patching
           const auto &psrc_chunk{*pchunk->source_chunk};
-          ctx.delta.transfer_buf_size = std::max(
-              ctx.delta.transfer_buf_size, psrc_chunk.size + tgt_chunk.size);
           ctx.transfer_ops.emplace_back(
               psrc_chunk.offset, psrc_chunk.offset + psrc_chunk.size,
               tgt_chunk.offset, tgt_chunk.offset + tgt_chunk.size,
-              std::to_address(pchunk), 0, false);
+              std::to_address(pchunk), false, false,
+              std::vector<transfer_op_desc *>{},
+              std::vector<transfer_op_desc *>{});
         }
       }
     } // for (remaining target chunks)
@@ -1036,110 +1131,144 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       // Attempt to optimize the order of operations so there are as few
       //    overlaps of target regions with source regions of consequent
       //    operations as possible. This is where all the disk space usage
-      //    optimization happens. This problem is NP-hard, so the result of
-      //    weighted sorting may be either better or worse than the current
-      //    state of the transfer operation buffer, hence doing it in a copy of
-      //    the buffer, and then comparing results
-      ctx.weighted_transfer_ops = ctx.transfer_ops;
-      // Assign weights to the entries, O(n^2)
-      for (auto i{ctx.weighted_transfer_ops.begin()};
-           i < ctx.weighted_transfer_ops.end(); ++i) {
-        i->weight = std::ranges::count_if(
-            ctx.weighted_transfer_ops, [&src_op = *i](const auto &tgt_op) {
-              return src_op.tgt_off < tgt_op.src_end &&
-                     tgt_op.src_off < src_op.tgt_end;
-            });
-      }
-      // Sort the entries by weight, O(n*log(n))
-      std::ranges::sort(
-          ctx.weighted_transfer_ops, {}, [](const auto &transfer_op) {
-            return std::tie(transfer_op.weight, transfer_op.src_off,
-                            transfer_op.tgt_off);
-          });
-      // Make eligible transfer operations direct in both buffers, O(n^2) (in
-      //    reality n*(n-1)/2)
+      //    optimization happens.
+      // First, build the intersection graph
       for (auto i{ctx.transfer_ops.begin()}; i < ctx.transfer_ops.end(); ++i) {
-        i->direct = std::ranges::none_of(
-            i + 1, ctx.transfer_ops.end(), [&src_op = *i](const auto &tgt_op) {
-              return src_op.tgt_off < tgt_op.src_end &&
-                     tgt_op.src_off < src_op.tgt_end;
-            });
-      }
-      for (auto i{ctx.weighted_transfer_ops.begin()};
-           i < ctx.weighted_transfer_ops.end(); ++i) {
-        i->direct =
-            std::ranges::none_of(i + 1, ctx.weighted_transfer_ops.end(),
-                                 [&src_op = *i](const auto &tgt_op) {
-                                   return src_op.tgt_off < tgt_op.src_end &&
-                                          tgt_op.src_off < src_op.tgt_end;
-                                 });
-      }
-      // Pick the buffer with more direct operations
-      const auto &transfer_ops{
-          std::ranges::count_if(ctx.weighted_transfer_ops, std::identity{},
-                                &transfer_op_desc::direct) >
-                  std::ranges::count_if(ctx.transfer_ops, std::identity{},
-                                        &transfer_op_desc::direct)
-              ? ctx.weighted_transfer_ops
-              : ctx.transfer_ops};
-      // Write delta transfer operation entries
-      for (int64_t transfer_buf_off{}; const auto &transfer_op : transfer_ops) {
-        if (transfer_op.pchunk) {
-          // Patch chunk
-          auto &dd_transfer_op{*ctx.next_transfer_op++};
-          dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
-          dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_patch;
-          dd_transfer_op.data.patch_chunk = transfer_op.pchunk;
-          const int src_size{transfer_op.pchunk->source_chunk->size};
-          const int tgt_size{transfer_op.pchunk->target_chunk->size};
-          ctx.delta.patching_size += src_size + tgt_size;
-          if (transfer_op.direct) {
-            dd_transfer_op.transfer_buf_offset = -1;
-          } else {
-            dd_transfer_op.transfer_buf_offset = transfer_buf_off;
-            const int min_size{std::min(src_size, tgt_size)};
-            transfer_buf_off += min_size;
-            ctx.delta.patching_size += min_size * 2;
+        for (auto j{i + 1}; j < ctx.transfer_ops.end(); ++j) {
+          if (i->tgt_off < j->src_end && j->src_off < i->tgt_end) {
+            i->intersects_with.emplace_back(std::to_address(j));
+            j->intersected_by.emplace_back(std::to_address(i));
           }
-        } else {
-          // Relocation
-          // Write an entry for every 0.5 GiB of data
-          const bool forward{transfer_op.tgt_off > transfer_op.src_off};
-          // The order of 0.5 GiB sub-entries depends on the direction of
-          //    relocation, this is done in order to avoid them overlapping
-          //    each other
-          for (auto src{forward ? transfer_op.src_end : transfer_op.src_off},
-               tgt{forward ? transfer_op.tgt_end : transfer_op.tgt_off};
-               forward ? (src > transfer_op.src_off)
-                       : (src < transfer_op.src_end);) {
-            const auto size{std::min(forward ? (src - transfer_op.src_off)
-                                             : (transfer_op.src_end - src),
-                                     max_reloc_size)};
-            if (forward) {
-              src -= size;
-              tgt -= size;
-            }
-            auto &dd_transfer_op{*ctx.next_transfer_op++};
-            dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
-            dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_reloc;
-            dd_transfer_op.data.relocation.source_offset = src;
-            dd_transfer_op.data.relocation.target_offset = tgt;
-            dd_transfer_op.data.relocation.size = size;
-            ctx.delta.patching_size += size * 2;
-            if (transfer_op.direct) {
-              dd_transfer_op.transfer_buf_offset = -1;
-            } else {
-              dd_transfer_op.transfer_buf_offset = transfer_buf_off;
-              transfer_buf_off += size;
-              ctx.delta.patching_size += size * 2;
-            }
-            if (!forward) {
-              src += size;
-              tgt += size;
+          if (j->tgt_off < i->src_end && i->src_off < j->tgt_end) {
+            j->intersects_with.emplace_back(std::to_address(i));
+            i->intersected_by.emplace_back(std::to_address(j));
+          }
+        }
+      }
+      // Now, find distinct groups that don't intersect each other, and process
+      //    them. Each iteration of the loop will correspond to its own group.
+      for (auto &desc : ctx.transfer_ops) {
+        if (desc.visited) {
+          continue;
+        }
+        desc.visited = true;
+        get_group(ctx.group, &desc);
+        auto &grp{*ctx.next_trans_op_grp++};
+        grp = {.status = TEK_SC_JOB_ENTRY_STATUS_pending,
+               .num_transfer_ops = 0,
+               .transfer_ops = ctx.next_transfer_op};
+        // Group is discovered, now start reaping entries from it
+        int64_t transfer_buf_off{};
+        auto write_transfer_op{
+            [&ctx, &grp, &transfer_buf_off](auto &&self,
+                                            transfer_op_desc &desc) -> bool {
+              if (desc.pchunk) {
+                // Patch chunk
+                ++grp.num_transfer_ops;
+                auto &dd_transfer_op{*ctx.next_transfer_op++};
+                dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
+                dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_patch;
+                dd_transfer_op.data.patch_chunk = desc.pchunk;
+                const int src_size{desc.pchunk->source_chunk->size};
+                const int tgt_size{desc.pchunk->target_chunk->size};
+                ctx.delta.patching_size += src_size + tgt_size;
+                if (desc.intersects_with.empty()) {
+                  dd_transfer_op.transfer_buf_offset = -1;
+                } else {
+                  dd_transfer_op.transfer_buf_offset = transfer_buf_off;
+                  const int min_size{std::min(src_size, tgt_size)};
+                  transfer_buf_off += min_size;
+                  ctx.delta.patching_size += min_size * 2;
+                }
+              } else {
+                // Relocation
+                // Write an entry for every 0.5 GiB of data
+                const bool forward{desc.tgt_off > desc.src_off};
+                // The order of 0.5 GiB sub-entries depends on the direction of
+                //    relocation, this is done in order to avoid them
+                //    overlapping each other
+                for (auto src{forward ? desc.src_end : desc.src_off},
+                     tgt{forward ? desc.tgt_end : desc.tgt_off};
+                     forward ? (src > desc.src_off) : (src < desc.src_end);) {
+                  ++grp.num_transfer_ops;
+                  const auto size{std::min(forward ? (src - desc.src_off)
+                                                   : (desc.src_end - src),
+                                           max_reloc_size)};
+                  if (forward) {
+                    src -= size;
+                    tgt -= size;
+                  }
+                  auto &dd_transfer_op{*ctx.next_transfer_op++};
+                  dd_transfer_op.status = TEK_SC_JOB_ENTRY_STATUS_pending;
+                  dd_transfer_op.type = TEK_SC_DD_TRANSFER_OP_TYPE_reloc;
+                  dd_transfer_op.data.relocation.source_offset = src;
+                  dd_transfer_op.data.relocation.target_offset = tgt;
+                  dd_transfer_op.data.relocation.size = size;
+                  ctx.delta.patching_size += size * 2;
+                  if (desc.intersects_with.empty()) {
+                    dd_transfer_op.transfer_buf_offset = -1;
+                  } else {
+                    dd_transfer_op.transfer_buf_offset = transfer_buf_off;
+                    transfer_buf_off += size;
+                    ctx.delta.patching_size += size * 2;
+                  }
+                  if (!forward) {
+                    src += size;
+                    tgt += size;
+                  }
+                }
+              } // if (transfer_op.pchunk) else
+              desc.written = true;
+              // Update the graph and write peers that become dead ends
+              for (auto peer : desc.intersects_with) {
+                std::erase(peer->intersected_by, &desc);
+              }
+              desc.intersects_with = {};
+              for (auto peer : desc.intersected_by) {
+                std::erase(peer->intersects_with, &desc);
+              }
+              bool res{};
+              for (auto peer : desc.intersected_by) {
+                if (!peer->written && peer->intersects_with.empty()) {
+                  res = true;
+                  self(self, *peer);
+                }
+              }
+              desc.intersected_by = {};
+              return res;
+            }}; // auto &&write_transfer_op
+        // Start with the dead end nodes that don't intersect anything
+        for (auto desc : ctx.group) {
+          if (desc->written) {
+            continue;
+          }
+          if (desc->intersects_with.empty()) {
+            write_transfer_op(write_transfer_op, *desc);
+          }
+        }
+        // Remove written nodes from the group
+        std::erase_if(ctx.group, [](auto desc) { return desc->written; });
+        while (!ctx.group.empty()) {
+          // Find the node that intersects with the smallest number of other
+          //    nodes, and reap those other nodes
+          for (auto desc :
+               (*std::ranges::min_element(ctx.group, {}, [](auto desc) {
+                 return desc->intersects_with.size();
+               }))->intersects_with) {
+            if (write_transfer_op(write_transfer_op, *desc)) {
+              // If more than one node ended up being reaped, re-evaluation is
+              //    needed because:
+              //  1) loop iterator may become invalid if the min_element node
+              //    was affected
+              //  2) Current min_element node may not intersect the smallest
+              //    number of nodes anymore
+              break;
             }
           }
-        } // if (transfer_op.pchunk) else
-      } // for (transfer ops)
+          // Remove written nodes from the group
+          std::erase_if(ctx.group, [](auto desc) { return desc->written; });
+        }
+      } // for (auto &desc : ctx.transfer_ops)
       ctx.transfer_ops.clear();
     } // if (!ctx.transfer_ops.empty())
     ++src_file_it;
@@ -1153,9 +1282,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_delete;
     dd_file.chunks = nullptr;
-    dd_file.transfer_ops = nullptr;
+    dd_file.trans_op_grps = nullptr;
     dd_file.num_chunks = 0;
-    dd_file.num_transfer_ops = 0;
+    dd_file.num_trans_op_grps = 0;
   }
   // Iterate remaining target files
   for (const auto &tgt_file :
@@ -1165,9 +1294,9 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
     dd_file.parent = &dd_dir;
     dd_file.flags = TEK_SC_DD_FILE_FLAG_new;
     dd_file.chunks = tgt_file.num_chunks ? ctx.next_chunk : nullptr;
-    dd_file.transfer_ops = nullptr;
+    dd_file.trans_op_grps = nullptr;
     dd_file.num_chunks = tgt_file.num_chunks;
-    dd_file.num_transfer_ops = 0;
+    dd_file.num_trans_op_grps = 0;
     if (tgt_file.num_chunks) {
       dd_file.flags |= TEK_SC_DD_FILE_FLAG_download;
       ctx.next_chunk =
@@ -1243,10 +1372,12 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
                          .patch = patch,
                          .chunks = nullptr,
                          .transfer_ops = nullptr,
+                         .trans_op_grps = nullptr,
                          .files = nullptr,
                          .dirs = nullptr,
                          .num_chunks = 0,
                          .num_transfer_ops = 0,
+                         .num_trans_op_grps = 0,
                          .num_files = 0,
                          .num_dirs = 1,
                          .stage = TEK_SC_DD_STAGE_downloading,
@@ -1277,32 +1408,35 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
                     {}, &tek_sc_dm_file::num_chunks)
                     ->num_chunks
               : 0)};
+  std::vector<transfer_op_desc> transfer_ops;
   // Run count pass
   count_ctx count_ctx{.next_desc = descs.get(),
                       .patch = patch,
                       .src_chunk_ptrs = src_chunk_ptrs.get(),
                       .tgt_chunk_ptrs = tgt_chunk_ptrs.get(),
-                      .relocs = {},
-                      .max_num_transfer_ops = 0,
-                      .max_num_opt_transfer_ops = 0};
+                      .transfer_ops = transfer_ops};
   count_dir(count_ctx, *source_manifest->dirs, *target_manifest->dirs, res);
   // Allocate the buffer and set array pointers
   res.chunks = reinterpret_cast<tek_sc_dd_chunk *>(tsci_os_mem_alloc(
       sizeof *res.chunks * res.num_chunks +
       sizeof *res.transfer_ops * res.num_transfer_ops +
+      sizeof *res.trans_op_grps * res.num_trans_op_grps +
       sizeof *res.files * res.num_files + sizeof *res.dirs * res.num_dirs));
   if (!res.chunks) {
     throw std::bad_alloc{};
   }
   res.transfer_ops =
       reinterpret_cast<tek_sc_dd_transfer_op *>(res.chunks + res.num_chunks);
-  res.files = reinterpret_cast<tek_sc_dd_file *>(res.transfer_ops +
-                                                 res.num_transfer_ops);
+  res.trans_op_grps = reinterpret_cast<tek_sc_dd_trans_op_grp *>(
+      res.transfer_ops + res.num_transfer_ops);
+  res.files = reinterpret_cast<tek_sc_dd_file *>(res.trans_op_grps +
+                                                 res.num_trans_op_grps);
   res.dirs = reinterpret_cast<tek_sc_dd_dir *>(res.files + res.num_files);
   // Run write pass
   write_ctx write_ctx{.next_desc = descs.get(),
                       .next_chunk = res.chunks,
                       .next_transfer_op = res.transfer_ops,
+                      .next_trans_op_grp = res.trans_op_grps,
                       .next_file = res.files,
                       .next_dir = &res.dirs[1],
                       .delta = res,
@@ -1310,10 +1444,8 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
                       .patch = patch,
                       .src_chunk_ptrs = src_chunk_ptrs.get(),
                       .tgt_chunk_ptrs = tgt_chunk_ptrs.get(),
-                      .transfer_ops = {},
-                      .weighted_transfer_ops = {}};
-  write_ctx.transfer_ops.reserve(count_ctx.max_num_transfer_ops);
-  write_ctx.weighted_transfer_ops.reserve(count_ctx.max_num_opt_transfer_ops);
+                      .transfer_ops = transfer_ops,
+                      .group = {}};
   write_dir(write_ctx, *source_manifest->dirs, *target_manifest->dirs, nullptr,
             *res.dirs);
   // Set the correct initial stage

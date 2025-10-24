@@ -851,12 +851,13 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       }
       tscl_os_strlcat_utf8(flags_str, tsc_gettext("Delete"), sizeof flags_str);
     }
-    fprintf(ctx->file,
-            tsc_gettext("(%s; [%s]; %u chunks; %u transfer operations)\n"),
-            tscl_get_dd_status_str(file->status), flags_str, file->num_chunks,
-            file->num_transfer_ops);
+    fprintf(
+        ctx->file,
+        tsc_gettext("(%s; [%s]; %u chunks; %u transfer operation groups)\n"),
+        tscl_get_dd_status_str(file->status), flags_str, file->num_chunks,
+        file->num_trans_op_grps);
     for (int j = 0; j < file->num_chunks; ++j) {
-      if ((j + 1) < file->num_chunks || file->num_transfer_ops) {
+      if ((j + 1) < file->num_chunks || file->num_trans_op_grps) {
         memcpy(&ctx->indent_buf[file_indent], tscl_dump_conn_str,
                sizeof tscl_dump_conn_str);
       } else {
@@ -882,62 +883,82 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
               (unsigned long long)dm_chunk->offset, dm_chunk->size,
               dm_chunk->comp_size, cb_str);
     }
-    for (int j = 0; j < file->num_transfer_ops; ++j) {
-      if ((j + 1) < file->num_transfer_ops) {
+    for (int j = 0; j < file->num_trans_op_grps; ++j) {
+      int grp_indent;
+      if ((j + 1) < file->num_trans_op_grps) {
         memcpy(&ctx->indent_buf[file_indent], tscl_dump_conn_str,
                sizeof tscl_dump_conn_str);
+        fputs(ctx->indent_buf, ctx->file);
+        memcpy(&ctx->indent_buf[file_indent], tscl_dump_indent,
+               sizeof tscl_dump_indent - 1);
+        grp_indent = file_indent + sizeof tscl_dump_indent - 1;
       } else {
         memcpy(&ctx->indent_buf[file_indent], tscl_dump_last_conn_str,
                sizeof tscl_dump_last_conn_str);
+        fputs(ctx->indent_buf, ctx->file);
+        memcpy(&ctx->indent_buf[file_indent], "  ", 2);
+        grp_indent = file_indent + 2;
       }
-      auto const transfer_op = &file->transfer_ops[j];
-      char tb_str[128];
-      if (transfer_op->transfer_buf_offset < 0) {
-        tb_str[0] = '\0';
-      } else {
-        snprintf(tb_str, sizeof tb_str,
-                 tsc_gettext("; Transfer buffer file offset: %llu"),
-                 (unsigned long long)transfer_op->transfer_buf_offset);
-      }
-      switch (transfer_op->type) {
-      case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
-        tscl_bytes_to_unit(ctx, transfer_op->data.relocation.size);
-        fprintf(ctx->file,
-                tsc_gettext("%sRelocation (%s; Source offset: %llu; Target "
-                            "offset: %llu; Size: %u B%s%s)\n"),
-                ctx->indent_buf, tscl_get_dd_status_str(transfer_op->status),
-                (unsigned long long)transfer_op->data.relocation.source_offset,
-                (unsigned long long)transfer_op->data.relocation.target_offset,
-                transfer_op->data.relocation.size, ctx->unit_buf, tb_str);
-        break;
-      case TEK_SC_DD_TRANSFER_OP_TYPE_patch: {
-        char src_sha[41];
-        tscl_sha1_to_str(transfer_op->data.patch_chunk->source_chunk->sha.bytes,
-                         src_sha);
-        char tgt_sha[41];
-        tscl_sha1_to_str(transfer_op->data.patch_chunk->target_chunk->sha.bytes,
-                         tgt_sha);
-        const char *type;
-        switch (transfer_op->data.patch_chunk->type) {
-        case TEK_SC_DP_CHUNK_TYPE_vzd:
-          type = "VZd";
-          break;
-        case TEK_SC_DP_CHUNK_TYPE_vszd:
-          type = "VSZd";
-          break;
-        default:
-          type = "Unknown";
+      auto const grp = &file->trans_op_grps[j];
+      fprintf(ctx->file, tsc_gettext("Transfer operation group %u\n"), j + 1);
+      for (int k = 0; k < grp->num_transfer_ops; ++k) {
+        if ((k + 1) < grp->num_transfer_ops) {
+          memcpy(&ctx->indent_buf[grp_indent], tscl_dump_conn_str,
+                 sizeof tscl_dump_conn_str);
+        } else {
+          memcpy(&ctx->indent_buf[grp_indent], tscl_dump_last_conn_str,
+                 sizeof tscl_dump_last_conn_str);
         }
-        fprintf(
-            ctx->file,
-            tsc_gettext(
-                "%sPatch %s->%s (%s; Type: %s; Delta chunk size: %u B%s)\n"),
-            ctx->indent_buf, src_sha, tgt_sha,
-            tscl_get_dd_status_str(transfer_op->status), type,
-            transfer_op->data.patch_chunk->delta_chunk_size, tb_str);
-      }
-      } // switch (transfer_op->type)
-    } // for (int j = 0; j < file->num_transfer_ops; ++j)
+        auto const transfer_op = &grp->transfer_ops[k];
+        char tb_str[128];
+        if (transfer_op->transfer_buf_offset < 0) {
+          tb_str[0] = '\0';
+        } else {
+          snprintf(tb_str, sizeof tb_str,
+                   tsc_gettext("; Transfer buffer file offset: %llu"),
+                   (unsigned long long)transfer_op->transfer_buf_offset);
+        }
+        switch (transfer_op->type) {
+        case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
+          tscl_bytes_to_unit(ctx, transfer_op->data.relocation.size);
+          fprintf(
+              ctx->file,
+              tsc_gettext("%sRelocation (%s; Source offset: %llu; Target "
+                          "offset: %llu; Size: %u B%s%s)\n"),
+              ctx->indent_buf, tscl_get_dd_status_str(transfer_op->status),
+              (unsigned long long)transfer_op->data.relocation.source_offset,
+              (unsigned long long)transfer_op->data.relocation.target_offset,
+              transfer_op->data.relocation.size, ctx->unit_buf, tb_str);
+          break;
+        case TEK_SC_DD_TRANSFER_OP_TYPE_patch: {
+          char src_sha[41];
+          tscl_sha1_to_str(
+              transfer_op->data.patch_chunk->source_chunk->sha.bytes, src_sha);
+          char tgt_sha[41];
+          tscl_sha1_to_str(
+              transfer_op->data.patch_chunk->target_chunk->sha.bytes, tgt_sha);
+          const char *type;
+          switch (transfer_op->data.patch_chunk->type) {
+          case TEK_SC_DP_CHUNK_TYPE_vzd:
+            type = "VZd";
+            break;
+          case TEK_SC_DP_CHUNK_TYPE_vszd:
+            type = "VSZd";
+            break;
+          default:
+            type = "Unknown";
+          }
+          fprintf(
+              ctx->file,
+              tsc_gettext(
+                  "%sPatch %s->%s (%s; Type: %s; Delta chunk size: %u B%s)\n"),
+              ctx->indent_buf, src_sha, tgt_sha,
+              tscl_get_dd_status_str(transfer_op->status), type,
+              transfer_op->data.patch_chunk->delta_chunk_size, tb_str);
+        }
+        } // switch (transfer_op->type)
+      } // for (int k = 0; k < grp->num_transfer_ops; ++k)
+    } // for (int j = 0; j < file->num_trans_op_grps; ++j)
   } // for (int i = 0; i < dir->num_files; ++i)
   for (int i = 0; i < dir->num_subdirs; ++i) {
     int subdit_indent;
@@ -1147,7 +1168,7 @@ bool tscl_dump_vcache(const tek_sc_item_id *item_id) {
   }
   tscl_dump_ctx ctx = {
       .file = file,
-      .indent_buf = malloc(6 * (tscl_get_dm_dir_depth(manifest.dirs) + 1) + 1)};
+      .indent_buf = malloc(6 * (tscl_get_dm_dir_depth(manifest.dirs) + 2) + 1)};
   if (!ctx.indent_buf) {
     fputs(tsc_gettext("Error: failed to allocate indentation buffer\n"),
           stderr);
@@ -1277,12 +1298,13 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   fprintf(file,
           tsc_gettext("Total chunks: %u\n"
                       "Total transfer operations: %u\n"
+                      "Total transfer operation groups: %u\n"
                       "Total files: %u\n"
                       "Total directories: %u\n"
                       "Current stage: %s\n"
                       "Total deletions: %u\n"),
-          delta.num_chunks, delta.num_transfer_ops, delta.num_files,
-          delta.num_dirs, stage_str, delta.num_deletions);
+          delta.num_chunks, delta.num_transfer_ops, delta.num_trans_op_grps,
+          delta.num_files, delta.num_dirs, stage_str, delta.num_deletions);
   tscl_bytes_to_unit(&ctx, delta.transfer_buf_size);
   fprintf(file, tsc_gettext("RAM transfer buffer size: %u B%s\n"),
           delta.transfer_buf_size, ctx.unit_buf);
@@ -1295,6 +1317,10 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   tscl_bytes_to_unit(&ctx, delta.total_file_growth);
   fprintf(file, tsc_gettext("Total file growth: %llu B%s\n"),
           (unsigned long long)delta.total_file_growth, ctx.unit_buf);
+  auto const disk_space = tek_sc_dd_estimate_disk_space(&delta);
+  tscl_bytes_to_unit(&ctx, disk_space);
+  fprintf(file, tsc_gettext("Estimated required disk space: %llu B%s\n"),
+          (unsigned long long)disk_space, ctx.unit_buf);
   tscl_dump_delta_dir(delta.dirs, &ctx, 0);
   fclose(ctx.file);
   tek_sc_dp_free(&patch);

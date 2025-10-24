@@ -16,6 +16,7 @@
 ///    tscp_sdd_hdr
 ///    tscp_sdd_chunk[num_chunks]
 ///    tscp_sdd_transfer_op[num_transfer_ops]
+///    tscp_sdd_trans_op_grp[num_trans_op_grps]
 ///    tscp_sdd_file[num_files]
 ///    tscp_sdd_dirs[num_dirs]
 ///
@@ -66,6 +67,8 @@ struct tscp_sdd_hdr {
   int32_t num_chunks;
   /// Total number of transfer operation entries in the delta.
   int32_t num_transfer_ops;
+  /// Total number of transfer operation group entries in the delta.
+  int32_t num_trans_op_grps;
   /// Total number of file entries in the delta.
   int32_t num_files;
   /// Total number of directory entries in the delta.
@@ -77,9 +80,6 @@ struct tscp_sdd_hdr {
   int32_t num_deletions;
   /// Size of the RAM buffer used when performing transfer operations, in bytes.
   int32_t transfer_buf_size;
-  /// Must be set to zero to avoid producing inconsistent CRC on different
-  ///    platforms.
-  uint32_t padding;
   /// Total download size / amount of data to be transferred over network, in
   ///    bytes.
   int64_t download_size;
@@ -141,6 +141,17 @@ struct tscp_sdd_transfer_op {
   int64_t transfer_buf_off;
 };
 
+/// Serialized delta transfer operation group entry.
+typedef struct tscp_sdd_trans_op_grp tscp_sdd_trans_op_grp;
+/// @copydoc tscp_sdd_trans_op_grp
+struct tscp_sdd_trans_op_grp {
+  /// Job status of the entry.
+  /// Holds a @ref tek_sc_job_entry_status value.
+  int32_t status;
+  /// Number of transfer operation entries in the group.
+  int32_t num_transfer_ops;
+};
+
 /// Serialized delta file entry.
 typedef struct tscp_sdd_file tscp_sdd_file;
 /// @copydoc tscp_sdd_file
@@ -155,8 +166,8 @@ struct tscp_sdd_file {
   int32_t flags;
   /// Number of chunk entries assigned to the file.
   int32_t num_chunks;
-  /// Number of transfer operation entries assigned to the file.
-  int32_t num_transfer_ops;
+  /// Number of transfer operation group entries assigned to the file.
+  int32_t num_trans_op_grps;
 };
 
 /// Serialized delta directory entry.
@@ -278,8 +289,8 @@ static inline void tscp_dd_init_file(const tek_sc_dm_file *_Nonnull file,
                                      tek_sc_dd_file *_Nonnull dd_file) {
   dd_file->file = file;
   dd_file->status = TEK_SC_JOB_ENTRY_STATUS_pending;
-  dd_file->transfer_ops = nullptr;
-  dd_file->num_transfer_ops = 0;
+  dd_file->trans_op_grps = nullptr;
+  dd_file->num_trans_op_grps = 0;
   dd_file->handle = TSCI_OS_INVALID_HANDLE;
 }
 
@@ -573,6 +584,7 @@ int tek_sc_dd_serialize(const tek_sc_depot_delta *delta, void *buf,
   const int required_size =
       sizeof(tscp_sdd_hdr) + sizeof(tscp_sdd_chunk) * delta->num_chunks +
       sizeof(tscp_sdd_transfer_op) * delta->num_transfer_ops +
+      sizeof(tscp_sdd_trans_op_grp) * delta->num_trans_op_grps +
       sizeof(tscp_sdd_file) * delta->num_files +
       sizeof(tscp_sdd_dir) * delta->num_dirs;
   if (!buf || buf_size < required_size) {
@@ -587,6 +599,7 @@ int tek_sc_dd_serialize(const tek_sc_depot_delta *delta, void *buf,
                         .tgt_manifest_id = delta->target_manifest->id,
                         .num_chunks = delta->num_chunks,
                         .num_transfer_ops = delta->num_transfer_ops,
+                        .num_trans_op_grps = delta->num_trans_op_grps,
                         .num_files = delta->num_files,
                         .num_dirs = delta->num_dirs,
                         .stage = delta->stage,
@@ -631,25 +644,32 @@ int tek_sc_dd_serialize(const tek_sc_depot_delta *delta, void *buf,
     }
     sdd_transfer_op->transfer_buf_off = transfer_op->transfer_buf_offset;
   }
+  // Write transfer operation groups
+  auto const sdd_trans_op_grps =
+      (tscp_sdd_trans_op_grp *)(sdd_transfer_ops + delta->num_transfer_ops);
+  for (int i = 0; i < delta->num_trans_op_grps; ++i) {
+    auto const grp = &delta->trans_op_grps[i];
+    sdd_trans_op_grps[i] = (tscp_sdd_trans_op_grp){
+        .status = grp->status, .num_transfer_ops = grp->num_transfer_ops};
+  }
   // Write files
   auto const src_files_base =
       delta->source_manifest ? delta->source_manifest->files : nullptr;
   auto const tgt_files_base = delta->target_manifest->files;
   auto const sdd_files =
-      (tscp_sdd_file *)(sdd_transfer_ops + delta->num_transfer_ops);
+      (tscp_sdd_file *)(sdd_trans_op_grps + delta->num_trans_op_grps);
   for (int i = 0; i < delta->num_files; ++i) {
     auto const file = &delta->files[i];
     sdd_files[i] = (tscp_sdd_file){
         .index = file->file - ((file->flags & TEK_SC_DD_FILE_FLAG_delete)
                                    ? src_files_base
                                    : tgt_files_base),
-        .status = delta->stage == TEK_SC_DD_STAGE_patching ? file->status
-                  : file->status == TEK_SC_JOB_ENTRY_STATUS_done
+        .status = file->status == TEK_SC_JOB_ENTRY_STATUS_done
                       ? TEK_SC_JOB_ENTRY_STATUS_done
                       : TEK_SC_JOB_ENTRY_STATUS_pending,
         .flags = file->flags,
         .num_chunks = file->num_chunks,
-        .num_transfer_ops = file->num_transfer_ops};
+        .num_trans_op_grps = file->num_trans_op_grps};
   }
   // Write directories
   auto const src_dirs_base =
@@ -717,6 +737,7 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
   // Read header
   delta->num_chunks = hdr->num_chunks;
   delta->num_transfer_ops = hdr->num_transfer_ops;
+  delta->num_trans_op_grps = hdr->num_trans_op_grps;
   delta->num_files = hdr->num_files;
   delta->num_dirs = hdr->num_dirs;
   delta->stage = hdr->stage;
@@ -729,8 +750,10 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
   auto const sdd_chunks = (const tscp_sdd_chunk *)(hdr + 1);
   auto const sdd_transfer_ops =
       (const tscp_sdd_transfer_op *)(sdd_chunks + hdr->num_chunks);
+  auto const sdd_trans_op_grps =
+      (const tscp_sdd_trans_op_grp *)(sdd_transfer_ops + hdr->num_transfer_ops);
   auto const sdd_files =
-      (const tscp_sdd_file *)(sdd_transfer_ops + hdr->num_transfer_ops);
+      (const tscp_sdd_file *)(sdd_trans_op_grps + hdr->num_trans_op_grps);
   auto const sdd_dirs = (const tscp_sdd_dir *)(sdd_files + hdr->num_files);
   if (buf_size < ((const void *)(sdd_dirs + hdr->num_dirs) - buf)) {
     return tscp_desdd_err(TEK_SC_ERRC_invalid_data);
@@ -739,6 +762,7 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
   delta->chunks =
       tsci_os_mem_alloc(sizeof *delta->chunks * hdr->num_chunks +
                         sizeof *delta->transfer_ops * hdr->num_transfer_ops +
+                        sizeof *delta->trans_op_grps * hdr->num_trans_op_grps +
                         sizeof *delta->files * hdr->num_files +
                         sizeof *delta->dirs * hdr->num_dirs);
   if (!delta->chunks) {
@@ -746,8 +770,10 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
   }
   delta->transfer_ops =
       (tek_sc_dd_transfer_op *)(delta->chunks + hdr->num_chunks);
+  delta->trans_op_grps =
+      (tek_sc_dd_trans_op_grp *)(delta->transfer_ops + delta->num_transfer_ops);
   delta->files =
-      (tek_sc_dd_file *)(delta->transfer_ops + delta->num_transfer_ops);
+      (tek_sc_dd_file *)(delta->trans_op_grps + delta->num_trans_op_grps);
   delta->dirs = (tek_sc_dd_dir *)(delta->files + delta->num_files);
   // Read chunks
   auto const chunks_base = target_manifest->chunks;
@@ -779,12 +805,26 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
     }
     transfer_op->transfer_buf_offset = sdd_transfer_op->transfer_buf_off;
   }
+  // Read transfer operation groups
+  auto cur_transfer_op = delta->transfer_ops;
+  for (int i = 0; i < hdr->num_trans_op_grps; ++i) {
+    auto const grp = &delta->trans_op_grps[i];
+    auto const sdd_grp = &sdd_trans_op_grps[i];
+    grp->status = sdd_grp->status;
+    grp->num_transfer_ops = sdd_grp->num_transfer_ops;
+    if (sdd_grp->num_transfer_ops) {
+      grp->transfer_ops = cur_transfer_op;
+      cur_transfer_op += sdd_grp->num_transfer_ops;
+    } else {
+      grp->transfer_ops = nullptr;
+    }
+  }
   // Read files
   auto const src_files_base =
       hdr->src_manifest_id ? source_manifest->files : nullptr;
   auto const tgt_files_base = target_manifest->files;
   auto cur_chunk = delta->chunks;
-  auto cur_transfer_op = delta->transfer_ops;
+  auto cur_trans_op_grp = delta->trans_op_grps;
   for (int i = 0; i < hdr->num_files; ++i) {
     auto const file = &delta->files[i];
     auto const sdd_file = &sdd_files[i];
@@ -802,14 +842,14 @@ tek_sc_err tek_sc_dd_deserialize(const void *buf, int buf_size,
     } else {
       file->chunks = nullptr;
     }
-    if (sdd_file->num_transfer_ops) {
-      file->transfer_ops = cur_transfer_op;
-      cur_transfer_op += sdd_file->num_transfer_ops;
+    if (sdd_file->num_trans_op_grps) {
+      file->trans_op_grps = cur_trans_op_grp;
+      cur_trans_op_grp += sdd_file->num_trans_op_grps;
     } else {
-      file->transfer_ops = nullptr;
+      file->trans_op_grps = nullptr;
     }
     file->num_chunks = sdd_file->num_chunks;
-    file->num_transfer_ops = sdd_file->num_transfer_ops;
+    file->num_trans_op_grps = sdd_file->num_trans_op_grps;
     file->handle = TSCI_OS_INVALID_HANDLE;
   }
   // Read directories (except pointers)
@@ -842,6 +882,8 @@ void tek_sc_dd_free(tek_sc_depot_delta *delta) {
     tsci_os_mem_free(delta->chunks,
                      sizeof *delta->chunks * delta->num_chunks +
                          sizeof *delta->transfer_ops * delta->num_transfer_ops +
+                         sizeof *delta->trans_op_grps *
+                             delta->num_trans_op_grps +
                          sizeof *delta->files * delta->num_files +
                          sizeof *delta->dirs * delta->num_dirs);
   }
@@ -853,10 +895,14 @@ int64_t tek_sc_dd_estimate_disk_space(const tek_sc_depot_delta *delta) {
   // Find the largest transfer buffer file size
   for (int i = 0; i < delta->num_files; ++i) {
     auto const file = &delta->files[i];
-    int64_t transfer_buf_size = 0;
-    for (int j = 0; j < file->num_transfer_ops; ++j) {
-      auto const transfer_op = &file->transfer_ops[j];
-      if (transfer_op->transfer_buf_offset >= 0) {
+    for (int j = 0; j < file->num_trans_op_grps; ++j) {
+      auto const grp = &file->trans_op_grps[j];
+      int64_t transfer_buf_size = 0;
+      for (int k = 0; k < grp->num_transfer_ops; ++k) {
+        auto const transfer_op = &grp->transfer_ops[k];
+        if (transfer_op->transfer_buf_offset < 0) {
+          continue;
+        }
         switch (transfer_op->type) {
         case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
           transfer_buf_size += transfer_op->data.relocation.size;
@@ -870,9 +916,9 @@ int64_t tek_sc_dd_estimate_disk_space(const tek_sc_depot_delta *delta) {
           transfer_buf_size += size;
         }
       }
-    }
-    if (transfer_buf_size > size) {
-      size = transfer_buf_size;
+      if (transfer_buf_size > size) {
+        size = transfer_buf_size;
+      }
     }
   }
   // Add size of all chunks to be downloaded
