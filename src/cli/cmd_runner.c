@@ -256,7 +256,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
         snprintf(total_buf, sizeof total_buf, tsc_gettext("%u KiB"),
                  (unsigned)total / 0x400);
       }
-      const double speed = (double)((current - previous_val) * 1000) /
+      const double speed = (double)((current - previous_val) * 8000) /
                            (double)(cur_ticks - prev_ticks_val);
       char speed_buf[32];
       speed_buf[0] = '\0';
