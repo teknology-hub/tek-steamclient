@@ -462,6 +462,22 @@ struct tek_sc_dd_transfer_op {
   int64_t transfer_buf_offset;
 };
 
+/// Delta transfer operation group entry.
+///
+/// Transfer operations from one group do not have any intersections with any
+///    transfer operations from other groups, which allows reusing transfer
+///    buffer file and reduces its peak size.
+typedef struct tek_sc_dd_trans_op_grp tek_sc_dd_trans_op_grp;
+/// @copydoc tek_sc_dd_trans_op_grp
+struct tek_sc_dd_trans_op_grp {
+  /// Job status of the entry.
+  tek_sc_job_entry_status status;
+  /// Number of transfer operation entries in the group.
+  int num_transfer_ops;
+  /// Pointer to the group's transfer operation entry array.
+  tek_sc_dd_transfer_op *_Nullable transfer_ops;
+};
+
 /// Flags describing types of operations to be performed for particular file.
 enum [[clang::flag_enum]] tek_sc_dd_file_flag {
   /// No flags yet, only used during delta creation.
@@ -498,12 +514,12 @@ struct tek_sc_dd_file {
   tek_sc_dd_file_flag flags;
   /// Pointer to the file's chunk entry array.
   tek_sc_dd_chunk *_Nullable chunks;
-  /// Pointer to the file's transfer operation entry array.
-  tek_sc_dd_transfer_op *_Nullable transfer_ops;
+  /// Pointer to the file's transfer operation group entry array.
+  tek_sc_dd_trans_op_grp *_Nullable trans_op_grps;
   /// Number of chunk entries assigned to the file.
   int num_chunks;
-  /// Number of transfer operation entries assigned to the file.
-  int num_transfer_ops;
+  /// Number of transfer operation group entries assigned to the file.
+  int num_trans_op_grps;
   union {
     /// Number of chunks/transfer operations that haven't been processed yet at
     ///    current stage.
@@ -620,6 +636,8 @@ struct tek_sc_depot_delta {
   tek_sc_dd_chunk *_Nonnull chunks;
   /// Pointer to the delta's transfer operation entry array.
   tek_sc_dd_transfer_op *_Nonnull transfer_ops;
+  /// Pointer to the delta's transfer operation group entry array.
+  tek_sc_dd_trans_op_grp *_Nonnull trans_op_grps;
   /// Pointer to the delta's file entry array.
   tek_sc_dd_file *_Nonnull files;
   /// Pointer to the delta's directory entry array.
@@ -630,6 +648,8 @@ struct tek_sc_depot_delta {
   int num_chunks;
   /// Total number of transfer operation entries in the delta.
   int num_transfer_ops;
+  /// Total number of transfer operation group entries in the delta.
+  int num_trans_op_grps;
   /// Total number of file entries in the delta.
   int num_files;
   /// Total number of directory entries in the delta.

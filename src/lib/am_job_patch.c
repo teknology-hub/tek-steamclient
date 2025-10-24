@@ -93,219 +93,227 @@ static bool tscp_amjp_process_dir(tscp_amjp_ctx *_Nonnull ctx,
                             tsci_os_get_last_error(), TEK_SC_ERR_IO_TYPE_open);
       return false;
     }
-    const bool is_patching = file->flags & TEK_SC_DD_FILE_FLAG_patch;
-    // Iterate transfer operations (stage 1)
-    if (is_patching && file->status == TEK_SC_JOB_ENTRY_STATUS_pending) {
-      for (int j = 0; j < file->num_transfer_ops; ++j) {
-        auto const transfer_op = &file->transfer_ops[j];
-        if (transfer_op->status != TEK_SC_JOB_ENTRY_STATUS_pending) {
+    if (file->flags & TEK_SC_DD_FILE_FLAG_patch) {
+      for (int j = 0; j < file->num_trans_op_grps; ++j) {
+        auto const grp = &file->trans_op_grps[j];
+        if (grp->status == TEK_SC_JOB_ENTRY_STATUS_done) {
           continue;
         }
-        // Pause if requested
-        if (atomic_load_explicit(state, memory_order_relaxed) ==
-            TEK_SC_AM_JOB_STATE_pause_pending) {
-          *err = tsc_err_basic(TEK_SC_ERRC_paused);
-          tsci_os_close_handle(handle);
-          return false;
-        }
-        const bool is_direct = transfer_op->transfer_buf_offset < 0;
-        switch (transfer_op->type) {
-        case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
-          // Simply copy the data to its destination or transfer buffer file
-          copy_args->src_handle = handle;
-          copy_args->tgt_handle = is_direct ? handle : ctx->tb_handle;
-          if (is_direct) {
-            copy_args->not_same_dev = false;
-          }
-          if (!tsci_os_file_copy_chunk(
-                  copy_args, transfer_op->data.relocation.source_offset,
-                  is_direct ? transfer_op->data.relocation.target_offset
-                            : transfer_op->transfer_buf_offset,
-                  transfer_op->data.relocation.size)) {
-            *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
-                                  tsci_os_get_last_error(),
-                                  TEK_SC_ERR_IO_TYPE_copy);
-            tsci_os_close_handle(handle);
-            return false;
-          }
-          job->progress_current += transfer_op->data.relocation.size * 2;
-          if (upd_handler) {
-            upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-          }
-          break;
-        case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
-          auto const pchunk = transfer_op->data.patch_chunk;
-          auto const src_chunk = pchunk->source_chunk;
-          auto const tgt_chunk = pchunk->target_chunk;
-          if (is_direct || tgt_chunk->size <= src_chunk->size) {
-            auto const src_buf = copy_args->buf;
-            auto const tgt_buf = src_buf + src_chunk->size;
-            // Read the source chunk
-            if (!tsci_os_file_read_at(handle, src_buf, src_chunk->size,
-                                      src_chunk->offset)) {
-              *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_read);
+        // Iterate transfer operations (stage 1)
+        if (grp->status == TEK_SC_JOB_ENTRY_STATUS_pending) {
+          for (int k = 0; k < grp->num_transfer_ops; ++k) {
+            auto const transfer_op = &grp->transfer_ops[k];
+            if (transfer_op->status != TEK_SC_JOB_ENTRY_STATUS_pending) {
+              continue;
+            }
+            // Pause if requested
+            if (atomic_load_explicit(state, memory_order_relaxed) ==
+                TEK_SC_AM_JOB_STATE_pause_pending) {
+              *err = tsc_err_basic(TEK_SC_ERRC_paused);
               tsci_os_close_handle(handle);
               return false;
             }
-            job->progress_current += src_chunk->size;
+            const bool is_direct = transfer_op->transfer_buf_offset < 0;
+            switch (transfer_op->type) {
+            case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
+              // Simply copy the data to its destination or transfer buffer file
+              copy_args->src_handle = handle;
+              copy_args->tgt_handle = is_direct ? handle : ctx->tb_handle;
+              if (is_direct) {
+                copy_args->not_same_dev = false;
+              }
+              if (!tsci_os_file_copy_chunk(
+                      copy_args, transfer_op->data.relocation.source_offset,
+                      is_direct ? transfer_op->data.relocation.target_offset
+                                : transfer_op->transfer_buf_offset,
+                      transfer_op->data.relocation.size)) {
+                *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
+                                      tsci_os_get_last_error(),
+                                      TEK_SC_ERR_IO_TYPE_copy);
+                tsci_os_close_handle(handle);
+                return false;
+              }
+              job->progress_current += transfer_op->data.relocation.size * 2;
+              if (upd_handler) {
+                upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+              }
+              break;
+            case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
+              auto const pchunk = transfer_op->data.patch_chunk;
+              auto const src_chunk = pchunk->source_chunk;
+              auto const tgt_chunk = pchunk->target_chunk;
+              if (is_direct || tgt_chunk->size <= src_chunk->size) {
+                auto const src_buf = copy_args->buf;
+                auto const tgt_buf = src_buf + src_chunk->size;
+                // Read the source chunk
+                if (!tsci_os_file_read_at(handle, src_buf, src_chunk->size,
+                                          src_chunk->offset)) {
+                  *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_read);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += src_chunk->size;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+                // Patch the chunk
+                auto const res = tek_sc_sp_patch_chunk(ctx->dec_ctx, src_buf,
+                                                       tgt_buf, pchunk);
+                if (!tek_sc_err_success(&res)) {
+                  *err = res;
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                // Write target chunk to the file
+                auto const write_handle = is_direct ? handle : ctx->tb_handle;
+                if (!tsci_os_file_write_at(
+                        write_handle, tgt_buf, tgt_chunk->size,
+                        is_direct ? tgt_chunk->offset
+                                  : transfer_op->transfer_buf_offset)) {
+                  *err = tsci_os_io_err(write_handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_write);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += tgt_chunk->size;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+              } else { // if (is_direct || tgt_chunk->size <= src_chunk->size)
+                // Simply copy the chunk to the transfer buffer file
+                copy_args->src_handle = handle;
+                copy_args->tgt_handle = ctx->tb_handle;
+                if (!tsci_os_file_copy_chunk(copy_args, src_chunk->offset,
+                                             transfer_op->transfer_buf_offset,
+                                             src_chunk->size)) {
+                  *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_copy);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += src_chunk->size * 2;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+              } // if (is_direct || tgt_chunk->size <= src_chunk->size) else
+              break;
+            } // switch (transfer_op->type)
+            transfer_op->status = is_direct ? TEK_SC_JOB_ENTRY_STATUS_done
+                                            : TEK_SC_JOB_ENTRY_STATUS_active;
+          } // for (int k = 0; k < grp->num_transfer_ops; ++k)
+          grp->status = TEK_SC_JOB_ENTRY_STATUS_setup;
+        } // if (grp->status == TEK_SC_JOB_ENTRY_STATUS_pending)
+        // Iterate transfer operations (stage 2)
+        if (grp->status == TEK_SC_JOB_ENTRY_STATUS_setup) {
+          for (int k = 0; k < grp->num_transfer_ops; ++k) {
+            auto const transfer_op = &grp->transfer_ops[k];
+            if (transfer_op->status == TEK_SC_JOB_ENTRY_STATUS_done) {
+              continue;
+            }
+            // Pause if requested
+            if (atomic_load_explicit(state, memory_order_relaxed) ==
+                TEK_SC_AM_JOB_STATE_pause_pending) {
+              *err = tsc_err_basic(TEK_SC_ERRC_paused);
+              tsci_os_close_handle(handle);
+              return false;
+            }
+            switch (transfer_op->type) {
+            case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
+              // Copy the data from the transfer buffer file
+              copy_args->src_handle = ctx->tb_handle;
+              copy_args->tgt_handle = handle;
+              if (!tsci_os_file_copy_chunk(
+                      copy_args, transfer_op->transfer_buf_offset,
+                      transfer_op->data.relocation.target_offset,
+                      transfer_op->data.relocation.size)) {
+                *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
+                                      tsci_os_get_last_error(),
+                                      TEK_SC_ERR_IO_TYPE_copy);
+                tsci_os_close_handle(handle);
+                return false;
+              }
+              job->progress_current += transfer_op->data.relocation.size * 2;
+              if (upd_handler) {
+                upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+              }
+              break;
+            case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
+              auto const pchunk = transfer_op->data.patch_chunk;
+              auto const src_chunk = pchunk->source_chunk;
+              auto const tgt_chunk = pchunk->target_chunk;
+              if (tgt_chunk->size <= src_chunk->size) {
+                // The chunk was patched earlier, simply copy it from the
+                //    transfer buffer file
+                copy_args->src_handle = ctx->tb_handle;
+                copy_args->tgt_handle = handle;
+                if (!tsci_os_file_copy_chunk(
+                        copy_args, transfer_op->transfer_buf_offset,
+                        tgt_chunk->offset, tgt_chunk->size)) {
+                  *err = tsci_os_io_err(ctx->tb_handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_copy);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += tgt_chunk->size * 2;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+              } else { // if (tgt_chunk->size <= src_chunk->size)
+                auto const src_buf = copy_args->buf;
+                auto const tgt_buf = src_buf + src_chunk->size;
+                // Read the source chunk
+                if (!tsci_os_file_read_at(ctx->tb_handle, src_buf,
+                                          src_chunk->size,
+                                          transfer_op->transfer_buf_offset)) {
+                  *err = tsci_os_io_err(ctx->tb_handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_read);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += src_chunk->size;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+                // Patch the chunk
+                auto const res = tek_sc_sp_patch_chunk(ctx->dec_ctx, src_buf,
+                                                       tgt_buf, pchunk);
+                if (!tek_sc_err_success(&res)) {
+                  *err = res;
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                // Write target chunk to the file
+                if (!tsci_os_file_write_at(handle, tgt_buf, tgt_chunk->size,
+                                           tgt_chunk->offset)) {
+                  *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
+                                        tsci_os_get_last_error(),
+                                        TEK_SC_ERR_IO_TYPE_write);
+                  tsci_os_close_handle(handle);
+                  return false;
+                }
+                job->progress_current += tgt_chunk->size;
+                if (upd_handler) {
+                  upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
+                }
+              } // if (tgt_chunk->size <= src_chunk->size) else
+              break;
+            } // switch (transfer_op->type)
+            transfer_op->status = TEK_SC_JOB_ENTRY_STATUS_done;
+            ++job->progress_current;
             if (upd_handler) {
               upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
             }
-            // Patch the chunk
-            auto const res =
-                tek_sc_sp_patch_chunk(ctx->dec_ctx, src_buf, tgt_buf, pchunk);
-            if (!tek_sc_err_success(&res)) {
-              *err = res;
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            // Write target chunk to the file
-            auto const write_handle = is_direct ? handle : ctx->tb_handle;
-            if (!tsci_os_file_write_at(
-                    write_handle, tgt_buf, tgt_chunk->size,
-                    is_direct ? tgt_chunk->offset
-                              : transfer_op->transfer_buf_offset)) {
-              *err = tsci_os_io_err(write_handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_write);
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            job->progress_current += tgt_chunk->size;
-            if (upd_handler) {
-              upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-            }
-          } else { // if (is_direct || tgt_chunk->size <= src_chunk->size)
-            // Simply copy the chunk to the transfer buffer file
-            copy_args->src_handle = handle;
-            copy_args->tgt_handle = ctx->tb_handle;
-            if (!tsci_os_file_copy_chunk(copy_args, src_chunk->offset,
-                                         transfer_op->transfer_buf_offset,
-                                         src_chunk->size)) {
-              *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_copy);
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            job->progress_current += src_chunk->size * 2;
-            if (upd_handler) {
-              upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-            }
-          } // if (is_direct || tgt_chunk->size <= src_chunk->size) else
-          break;
-        } // switch (transfer_op->type)
-        transfer_op->status = is_direct ? TEK_SC_JOB_ENTRY_STATUS_done
-                                        : TEK_SC_JOB_ENTRY_STATUS_active;
-      } // for (int j = 0; j < file->num_transfer_ops; ++j)
-      file->status = TEK_SC_JOB_ENTRY_STATUS_setup;
-    } // if (is_patching && file->status == TEK_SC_JOB_ENTRY_STATUS_pending)
-    // Iterate transfer operations (stage 2)
-    if (is_patching && file->status == TEK_SC_JOB_ENTRY_STATUS_setup) {
-      for (int j = 0; j < file->num_transfer_ops; ++j) {
-        auto const transfer_op = &file->transfer_ops[j];
-        if (transfer_op->status == TEK_SC_JOB_ENTRY_STATUS_done) {
-          continue;
-        }
-        // Pause if requested
-        if (atomic_load_explicit(state, memory_order_relaxed) ==
-            TEK_SC_AM_JOB_STATE_pause_pending) {
-          *err = tsc_err_basic(TEK_SC_ERRC_paused);
-          tsci_os_close_handle(handle);
-          return false;
-        }
-        switch (transfer_op->type) {
-        case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
-          // Copy the data from the transfer buffer file
-          copy_args->src_handle = ctx->tb_handle;
-          copy_args->tgt_handle = handle;
-          if (!tsci_os_file_copy_chunk(
-                  copy_args, transfer_op->transfer_buf_offset,
-                  transfer_op->data.relocation.target_offset,
-                  transfer_op->data.relocation.size)) {
-            *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
-                                  tsci_os_get_last_error(),
-                                  TEK_SC_ERR_IO_TYPE_copy);
-            tsci_os_close_handle(handle);
-            return false;
-          }
-          job->progress_current += transfer_op->data.relocation.size * 2;
-          if (upd_handler) {
-            upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-          }
-          break;
-        case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
-          auto const pchunk = transfer_op->data.patch_chunk;
-          auto const src_chunk = pchunk->source_chunk;
-          auto const tgt_chunk = pchunk->target_chunk;
-          if (tgt_chunk->size <= src_chunk->size) {
-            // The chunk was patched earlier, simply copy it from the
-            //    transfer buffer file
-            copy_args->src_handle = ctx->tb_handle;
-            copy_args->tgt_handle = handle;
-            if (!tsci_os_file_copy_chunk(copy_args,
-                                         transfer_op->transfer_buf_offset,
-                                         tgt_chunk->offset, tgt_chunk->size)) {
-              *err = tsci_os_io_err(ctx->tb_handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_copy);
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            job->progress_current += tgt_chunk->size * 2;
-            if (upd_handler) {
-              upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-            }
-          } else { // if (tgt_chunk->size <= src_chunk->size)
-            auto const src_buf = copy_args->buf;
-            auto const tgt_buf = src_buf + src_chunk->size;
-            // Read the source chunk
-            if (!tsci_os_file_read_at(ctx->tb_handle, src_buf, src_chunk->size,
-                                      transfer_op->transfer_buf_offset)) {
-              *err = tsci_os_io_err(ctx->tb_handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_read);
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            job->progress_current += src_chunk->size;
-            if (upd_handler) {
-              upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-            }
-            // Patch the chunk
-            auto const res =
-                tek_sc_sp_patch_chunk(ctx->dec_ctx, src_buf, tgt_buf, pchunk);
-            if (!tek_sc_err_success(&res)) {
-              *err = res;
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            // Write target chunk to the file
-            if (!tsci_os_file_write_at(handle, tgt_buf, tgt_chunk->size,
-                                       tgt_chunk->offset)) {
-              *err = tsci_os_io_err(handle, TEK_SC_ERRC_am_io,
-                                    tsci_os_get_last_error(),
-                                    TEK_SC_ERR_IO_TYPE_write);
-              tsci_os_close_handle(handle);
-              return false;
-            }
-            job->progress_current += tgt_chunk->size;
-            if (upd_handler) {
-              upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-            }
-          } // if (tgt_chunk->size <= src_chunk->size) else
-          break;
-        } // switch (transfer_op->type)
-        transfer_op->status = TEK_SC_JOB_ENTRY_STATUS_done;
-        ++job->progress_current;
-        if (upd_handler) {
-          upd_handler(desc, TEK_SC_AM_UPD_TYPE_progress);
-        }
-      } // for (int j = 0; j < file->num_transfer_ops; ++j)
-      file->status = TEK_SC_JOB_ENTRY_STATUS_active;
-    } // if (is_patching && file->status == TEK_SC_JOB_ENTRY_STATUS_active)
+          } // for (int k = 0; k < grp->num_transfer_ops; ++k)
+          grp->status = TEK_SC_JOB_ENTRY_STATUS_active;
+        } // if (grp->status == TEK_SC_JOB_ENTRY_STATUS_setup)
+      } // for (int j = 0; j < file->num_trans_op_grps; ++j)
+    } // if (file->flags & TEK_SC_DD_FILE_FLAG_patch)
     if (file->flags & TEK_SC_DD_FILE_FLAG_truncate) {
       // Pause if requested
       if (atomic_load_explicit(state, memory_order_relaxed) ==
@@ -363,44 +371,48 @@ static int64_t tscp_amjp_init_dir(const tek_sc_dd_dir *_Nonnull dir) {
     if (!(file->flags & TEK_SC_DD_FILE_FLAG_patch)) {
       continue;
     }
-    for (int j = 0; j < file->num_transfer_ops; ++j) {
-      auto const transfer_op = &file->transfer_ops[j];
-      if (transfer_op->transfer_buf_offset >= 0 &&
-          transfer_op->status != TEK_SC_JOB_ENTRY_STATUS_pending) {
-        switch (transfer_op->type) {
-        case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
-          progress += transfer_op->data.relocation.size * 2;
-          break;
-        case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
-          auto const pchunk = transfer_op->data.patch_chunk;
-          int size = pchunk->source_chunk->size;
-          if (pchunk->target_chunk->size < size) {
-            size = pchunk->target_chunk->size;
-          }
-          progress += pchunk->source_chunk->size + size;
-          break;
-        }
-      }
-      if (transfer_op->status == TEK_SC_JOB_ENTRY_STATUS_done) {
-        switch (transfer_op->type) {
-        case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
-          progress += transfer_op->data.relocation.size * 2;
-          break;
-        case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
-          auto const pchunk = transfer_op->data.patch_chunk;
-          if (transfer_op->transfer_buf_offset >= 0) {
+    for (int j = 0; j < file->num_trans_op_grps; ++j) {
+      auto const grp = &file->trans_op_grps[j];
+      for (int k = 0; k < grp->num_transfer_ops; ++k) {
+        auto const transfer_op = &grp->transfer_ops[k];
+        if (transfer_op->transfer_buf_offset >= 0 &&
+            transfer_op->status != TEK_SC_JOB_ENTRY_STATUS_pending) {
+          switch (transfer_op->type) {
+          case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
+            progress += transfer_op->data.relocation.size * 2;
+            break;
+          case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
+            auto const pchunk = transfer_op->data.patch_chunk;
             int size = pchunk->source_chunk->size;
             if (pchunk->target_chunk->size < size) {
               size = pchunk->target_chunk->size;
             }
-            progress += size + pchunk->target_chunk->size;
-          } else {
-            progress += pchunk->source_chunk->size + pchunk->target_chunk->size;
+            progress += pchunk->source_chunk->size + size;
+            break;
           }
-          break;
         }
-      }
-    } // for (int j = 0; j < file->num_transfer_ops; ++j)
+        if (transfer_op->status == TEK_SC_JOB_ENTRY_STATUS_done) {
+          switch (transfer_op->type) {
+          case TEK_SC_DD_TRANSFER_OP_TYPE_reloc:
+            progress += transfer_op->data.relocation.size * 2;
+            break;
+          case TEK_SC_DD_TRANSFER_OP_TYPE_patch:
+            auto const pchunk = transfer_op->data.patch_chunk;
+            if (transfer_op->transfer_buf_offset >= 0) {
+              int size = pchunk->source_chunk->size;
+              if (pchunk->target_chunk->size < size) {
+                size = pchunk->target_chunk->size;
+              }
+              progress += size + pchunk->target_chunk->size;
+            } else {
+              progress +=
+                  pchunk->source_chunk->size + pchunk->target_chunk->size;
+            }
+            break;
+          }
+        }
+      } // for (int k = 0; k < grp->num_transfer_ops; ++k)
+    } // for (int j = 0; j < file->num_trans_op_grps; ++j)
   } // for (int i = 0; i < dir->num_files; ++i)
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];
