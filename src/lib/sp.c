@@ -1253,16 +1253,23 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
       atomic_fetch_sub_explicit(&inst->desc->progress, progress,
                                 memory_order_relaxed);
     }
-    if (++inst->num_retries >= TSCP_MAX_NUM_RETRIES) {
+    long status = 0;
+    if (req_res == CURLE_HTTP_RETURNED_ERROR) {
+      curl_easy_getinfo(inst->curl, CURLINFO_RESPONSE_CODE, &status);
+    }
+    bool change_srv = false;
+    switch (status) {
+    case 404:
+    case 503:
+      change_srv = true;
+      break;
+    }
+    if (!change_srv && ++inst->num_retries >= TSCP_MAX_NUM_RETRIES) {
       inst->req = nullptr;
       inst->num_retries = 0;
       --thrd_ctx->num_active;
       char *url_buf = nullptr;
       curl_url_get(inst->curlu, CURLUPART_URL, &url_buf, 0);
-      long status = 0;
-      if (req_res == CURLE_HTTP_RETURNED_ERROR) {
-        curl_easy_getinfo(inst->curl, CURLINFO_RESPONSE_CODE, &status);
-      }
       req->result = (tek_sc_err){.type = TEK_SC_ERR_TYPE_curle,
                                  .primary = TEK_SC_ERRC_sp_chunk,
                                  .auxiliary = req_res,
@@ -1270,45 +1277,35 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
                                  .uri = url_buf};
       return req;
     }
-    if (req_res == CURLE_HTTP_RETURNED_ERROR) {
-      long status;
-      curl_easy_getinfo(inst->curl, CURLINFO_RESPONSE_CODE, &status);
-      switch (status) {
-      case 404:
-      case 429:
-      case 502:
-      case 503:
-      case 504:
-        if (!timestamp) {
-          timestamp = tsci_os_get_ticks() + TSCP_TIMEOUT_MS;
-        }
-        inst->timeout_timestamp = timestamp;
-        auto ptr = &thrd_ctx->timedout;
-        while (*ptr) {
-          ptr = &(*ptr)->next_timedout;
-        }
-        *ptr = inst;
-        continue;
+    switch (status) {
+    case 429:
+    case 502:
+    case 504:
+      if (!timestamp) {
+        timestamp = tsci_os_get_ticks() + TSCP_TIMEOUT_MS;
       }
+      inst->timeout_timestamp = timestamp;
+      auto ptr = &thrd_ctx->timedout;
+      while (*ptr) {
+        ptr = &(*ptr)->next_timedout;
+      }
+      *ptr = inst;
+      continue;
     }
     if (req_res == CURLE_COULDNT_RESOLVE_HOST) {
       curl_easy_setopt(inst->curl, CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
     }
-    if (req_res == CURLE_OPERATION_TIMEDOUT || inst->num_retries % 4 == 0) {
-      auto const srv_insts =
-          inst - ((inst - thrd_ctx->insts) % TEK_SCB_CHUNKS_PER_SRV);
-      int srv_ind = srv_insts->srv_ind;
+    if (change_srv || req_res == CURLE_OPERATION_TIMEDOUT ||
+        inst->num_retries % 4 == 0) {
+      int srv_ind = inst->srv_ind;
       if (++srv_ind >= dlr->desc->num_srvs) {
         srv_ind = 0;
       }
       auto const srv = &dlr->desc->srvs[srv_ind];
-      for (int i = 0; i < TEK_SCB_CHUNKS_PER_SRV; ++i) {
-        auto const inst = &srv_insts[i];
-        curl_url_set(inst->curlu, CURLUPART_SCHEME,
-                     srv->supports_https ? "https" : "http", 0);
-        curl_url_set(inst->curlu, CURLUPART_HOST, srv->host, 0);
-        inst->srv_ind = srv_ind;
-      }
+      curl_url_set(inst->curlu, CURLUPART_SCHEME,
+                   srv->supports_https ? "https" : "http", 0);
+      curl_url_set(inst->curlu, CURLUPART_HOST, srv->host, 0);
+      inst->srv_ind = srv_ind;
     }
     auto const res = curl_multi_add_handle(curlm, inst->curl);
     if (res != CURLM_OK) {
