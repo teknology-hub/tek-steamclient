@@ -33,6 +33,10 @@
 
 #include <ioringapi.h>
 
+/// @def TSCI_OS_ERR_ALREADY_EXISTS
+/// @ref tek_sc_os_errc value indicating that target file/directory already
+///    exists.
+#define TSCI_OS_ERR_ALREADY_EXISTS ERROR_ALREADY_EXISTS
 /// @def TSCI_OS_ERR_DIR_NOT_EMPTY
 /// @ref tek_sc_os_errc value indicating that target directory is not empty.
 #define TSCI_OS_ERR_DIR_NOT_EMPTY ERROR_DIR_NOT_EMPTY
@@ -92,6 +96,10 @@ struct tsci_os_aio_ctx {
 #include <liburing.h>
 #endif // def TEK_SCB_IO_URING
 
+/// @def TSCI_OS_ERR_ALREADY_EXISTS
+/// @ref tek_sc_os_errc value indicating that target file/directory already
+///    exists.
+#define TSCI_OS_ERR_ALREADY_EXISTS EEXIST
 /// @def TSCI_OS_ERR_DIR_NOT_EMPTY
 /// @ref tek_sc_os_errc value indicating that target directory is not empty.
 #define TSCI_OS_ERR_DIR_NOT_EMPTY ENOTEMPTY
@@ -411,7 +419,24 @@ tek_sc_os_handle tsci_os_dir_open_at(
     [[clang::use_handle("os")]] tek_sc_os_handle parent_dir_handle,
     const tek_sc_os_char *_Nonnull name);
 
-//===--- Directory delete -------------------------------------------------===//
+//===--- Directory move/delete --------------------------------------------===//
+
+/// Move specified subdirectory from one directory to another.
+///
+/// @param src_dir_handle
+///    Handle for the directory to move the subdirectory from.
+/// @param tgt_dir_handle
+///    Handle for the directory to move the subdirectory to.
+/// @param [in] name
+///    Name of the subdirectory to move, as a null-terminated string.
+/// @return Value indicating whether the function succeeded. Use
+///    @ref tsci_os_get_last_error to get the error code in case of failure.
+[[gnu::visibility("internal"), gnu::fd_arg(1), gnu::fd_arg(2), gnu::nonnull(3),
+  gnu::access(read_only, 3), gnu::null_terminated_string_arg(3)]]
+bool tsci_os_dir_move(
+    [[clang::use_handle("os")]] tek_sc_os_handle src_dir_handle,
+    [[clang::use_handle("os")]] tek_sc_os_handle tgt_dir_handle,
+    const tek_sc_os_char *_Nonnull name);
 
 /// Mark a subdirectory of specified directory for deletion after all active
 ///    handles for it are closed, if the subdirectory is empty.
