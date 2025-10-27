@@ -287,7 +287,14 @@ tek_sc_os_handle tsci_os_dir_open_at(tek_sc_os_handle parent_dir_handle,
   return openat(parent_dir_handle, name, O_DIRECTORY | O_CLOEXEC | O_PATH);
 }
 
-//===--- Directory delete -------------------------------------------------===//
+//===--- Directory move/delete --------------------------------------------===//
+
+bool tsci_os_dir_move(tek_sc_os_handle src_dir_handle,
+                      tek_sc_os_handle tgt_dir_handle,
+                      const tek_sc_os_char *name) {
+  return !renameat2(src_dir_handle, name, tgt_dir_handle, name,
+                    RENAME_NOREPLACE);
+}
 
 bool tsci_os_dir_delete_at(tek_sc_os_handle parent_dir_handle,
                            const tek_sc_os_char *name) {

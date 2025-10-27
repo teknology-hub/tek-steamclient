@@ -556,7 +556,49 @@ tek_sc_os_handle tsci_os_dir_open_at(tek_sc_os_handle parent_dir_handle,
                            FILE_SHARE_VALID_FLAGS, FILE_DIRECTORY_FILE);
 }
 
-//===--- Directory delete -------------------------------------------------===//
+//===--- Directory move/delete --------------------------------------------===//
+
+bool tsci_os_dir_move(tek_sc_os_handle src_dir_handle,
+                      tek_sc_os_handle tgt_dir_handle,
+                      const tek_sc_os_char *name) {
+  const USHORT name_size = wcslen(name) * sizeof *name;
+  IO_STATUS_BLOCK isb;
+  HANDLE handle;
+  auto status =
+      NtOpenFile(&handle, DELETE,
+                 &(OBJECT_ATTRIBUTES){
+                     .Length = sizeof(OBJECT_ATTRIBUTES),
+                     .RootDirectory = src_dir_handle,
+                     .ObjectName = &(UNICODE_STRING){.Length = name_size,
+                                                     .MaximumLength = name_size,
+                                                     .Buffer = (PWSTR)name},
+                     .Attributes = OBJ_CASE_INSENSITIVE},
+                 &isb, FILE_SHARE_VALID_FLAGS, FILE_DIRECTORY_FILE);
+  if (!NT_SUCCESS(status)) {
+    SetLastError(RtlNtStatusToDosError(status));
+    return false;
+  }
+  auto const info_size = offsetof(FILE_RENAME_INFO, FileName) + name_size;
+  FILE_RENAME_INFO *const info = malloc(info_size);
+  if (!info) {
+    NtClose(handle);
+    SetLastError(ERROR_OUTOFMEMORY);
+    return false;
+  }
+  info->ReplaceIfExists = FALSE;
+  info->RootDirectory = tgt_dir_handle;
+  info->FileNameLength = name_size;
+  memcpy(info->FileName, name, name_size);
+  status = NtSetInformationFile(handle, &isb, info, info_size,
+                                FileRenameInformation);
+  free(info);
+  NtClose(handle);
+  if (NT_SUCCESS(status)) {
+    return true;
+  }
+  SetLastError(RtlNtStatusToDosError(status));
+  return false;
+}
 
 bool tsci_os_dir_delete_at(tek_sc_os_handle parent_dir_handle,
                            const tek_sc_os_char *name) {
