@@ -666,12 +666,13 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
   }
   // Parse Protobuf data
   bool paths_encrypted;
+  auto &dm = *manifest;
   if (ManifestMetadata metadata; metadata.ParseFromArray(
           &unzipped_data[sizeof payload_hdr + payload_hdr.size +
                          sizeof metadata_hdr],
           metadata_hdr.size)) {
-    manifest->id = metadata.manifest_id();
-    manifest->data_size = metadata.data_size();
+    dm.id = metadata.manifest_id();
+    dm.data_size = metadata.data_size();
     paths_encrypted = metadata.paths_encrypted();
   } else {
     return dm_parse_err(TEK_SC_ERRC_protobuf_deserialize);
@@ -799,57 +800,51 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
       }
     }
     // Count the number of entries
-    int name_buf_len{};
-    int num_chunks{};
-    int num_files{};
-    int num_dirs{1}; // Root dir included here
-    auto count{[&name_buf_len, &num_chunks, &num_files,
-                &num_dirs](auto &&self, const dm_dir_node &node) -> void {
-      num_files += node.files.size();
+    dm.num_chunks = 0;
+    dm.num_files = 0;
+    dm.num_dirs = 1; // Root dir included here
+    dm.buf_size = 0;
+    auto count{[&dm](auto &&self, const dm_dir_node &node) -> void {
+      dm.num_files += node.files.size();
       for (const auto &[name, file] : node.files) {
-        name_buf_len += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
+        dm.buf_size += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
         if (file.flags() & ManifestFileFlag::MANIFEST_FILE_FLAG_SYMLINK) {
-          name_buf_len += tsci_os_str_pstrlen(file.link_target().data(),
-                                              file.link_target().length());
+          dm.buf_size += tsci_os_str_pstrlen(file.link_target().data(),
+                                             file.link_target().length()) +
+                         1;
         }
-        num_chunks += file.chunks_size();
+        dm.num_chunks += file.chunks_size();
       }
-      num_dirs += node.subdirs.size();
+      dm.num_dirs += node.subdirs.size();
       for (const auto &[name, subnode] : node.subdirs) {
-        name_buf_len += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
+        dm.buf_size += tsci_os_str_pstrlen(name.data(), name.length()) + 1;
         self(self, subnode);
       }
     }};
     count(count, root);
-    manifest->num_chunks = num_chunks;
-    manifest->num_files = num_files;
-    manifest->num_dirs = num_dirs;
     // Allocate the buffer and set array pointers
     // Typical manifest size justifies use of direct page allocation
-    manifest->buf_size = sizeof *manifest->chunks * num_chunks +
-                         sizeof *manifest->files * num_files +
-                         sizeof *manifest->dirs * num_dirs +
-                         sizeof(tek_sc_os_char) * name_buf_len;
-    manifest->chunks = reinterpret_cast<tek_sc_dm_chunk *>(
-        tsci_os_mem_alloc(manifest->buf_size));
-    if (!manifest->chunks) {
+    dm.buf_size = sizeof(tek_sc_os_char) * dm.buf_size +
+                  sizeof *dm.chunks * dm.num_chunks +
+                  sizeof *dm.files * dm.num_files +
+                  sizeof *dm.dirs * dm.num_dirs;
+    dm.chunks =
+        reinterpret_cast<tek_sc_dm_chunk *>(tsci_os_mem_alloc(dm.buf_size));
+    if (!dm.chunks) {
       return tsci_err_os(TEK_SC_ERRC_manifest_parse, tsci_os_get_last_error());
     }
-    manifest->files =
-        reinterpret_cast<tek_sc_dm_file *>(manifest->chunks + num_chunks);
-    manifest->dirs =
-        reinterpret_cast<tek_sc_dm_dir *>(manifest->files + num_files);
-    auto next_name{
-        reinterpret_cast<tek_sc_os_char *>(manifest->dirs + num_dirs)};
+    dm.files = reinterpret_cast<tek_sc_dm_file *>(dm.chunks + dm.num_chunks);
+    dm.dirs = reinterpret_cast<tek_sc_dm_dir *>(dm.files + dm.num_files);
     // Build the manifest tree
-    const auto root_dir{manifest->dirs};
-    root_dir->name = nullptr;
-    root_dir->parent = nullptr;
-    dm_parse_ctx ctx{.next_name = next_name,
-                     .next_chunk = manifest->chunks,
-                     .next_file = manifest->files,
-                     .next_dir = root_dir + 1};
-    dm_process_dir(ctx, root, *root_dir);
+    auto &root_dir{*dm.dirs};
+    root_dir.name = nullptr;
+    root_dir.parent = nullptr;
+    dm_parse_ctx ctx{
+        .next_name = reinterpret_cast<tek_sc_os_char *>(dm.dirs + dm.num_dirs),
+        .next_chunk = dm.chunks,
+        .next_file = dm.files,
+        .next_dir = dm.dirs + 1};
+    dm_process_dir(ctx, root, root_dir);
   } // Payload parsing scope
   return tsc_err_ok();
 }
