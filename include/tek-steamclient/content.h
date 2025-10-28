@@ -710,7 +710,7 @@ extern "C" {
 /// Decompress, decrypt and parse the manifest file downloaded from SteamPipe
 ///    to a @ref tek_sc_depot_manifest structure.
 ///
-/// This function doesn't set the `item` field of @p manifest.
+/// This function doesn't set the `item_id` field of @p manifest.
 ///
 /// @param [in] data
 ///    Pointer to the buffer containing depot manifest file data from SteamPipe.
