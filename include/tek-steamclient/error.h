@@ -70,171 +70,177 @@ enum tek_sc_errc {
   TEK_SC_ERRC_am_db_update,
   /// (6) Application manager job I/O error.
   TEK_SC_ERRC_am_io,
-  /// (7) Steam didn't provide any manifest ID for this item.
+  /// (7) The job is already running.
+  TEK_SC_ERRC_am_job_alr_running,
+  /// (8) Steam didn't provide any manifest ID for this item.
   TEK_SC_ERRC_am_no_man_id,
-  /// (8) Attempting to start a job for a Steam Workshop item, but no directory
+  /// (9) There is no job to run for this item.
+  TEK_SC_ERRC_am_no_job,
+  /// (10) Attempting to start a job for a Steam Workshop item, but no directory
   ///    for such items was provided.
   TEK_SC_ERRC_am_no_ws_dir,
-  /// (9) Attempting to uninstall an item with unknown current manifest ID.
+  /// (11) There is already an unifnished job for this item.
+  TEK_SC_ERRC_am_unfin_job,
+  /// (12) Attempting to uninstall an item with unknown current manifest ID.
   TEK_SC_ERRC_am_uninst_unknown,
-  /// (10) Failed to set Steam Workshop item directory.
+  /// (13) Failed to set Steam Workshop item directory.
   TEK_SC_ERRC_am_ws_dir,
-  /// (11) Worker thread error.
+  /// (14) Worker thread error.
   TEK_SC_ERRC_am_wt,
-  /// (12) Failed to get PICS access token.
+  /// (15) Failed to get PICS access token.
   TEK_SC_ERRC_cm_access_token,
-  /// (13) PICS access token request has been denied.
+  /// (16) PICS access token request has been denied.
   TEK_SC_ERRC_cm_access_token_denied,
-  /// (14) There is another incomplete Steam CM authentication session on the
+  /// (17) There is another incomplete Steam CM authentication session on the
   ///    client.
   TEK_SC_ERRC_cm_another_auth,
-  /// (15) Steam CM authentication session failed.
+  /// (18) Steam CM authentication session failed.
   TEK_SC_ERRC_cm_auth,
-  /// (16) Failed to get PICS changes.
+  /// (19) Failed to get PICS changes.
   TEK_SC_ERRC_cm_changes,
-  /// (17) Failed to establish connection to a Steam CM server.
+  /// (20) Failed to establish connection to a Steam CM server.
   TEK_SC_ERRC_cm_connect,
-  /// (18) Failed to create a CM client instance.
+  /// (21) Failed to create a CM client instance.
   TEK_SC_ERRC_cm_create,
-  /// (19) Failed to get depot decryption key.
+  /// (22) Failed to get depot decryption key.
   TEK_SC_ERRC_cm_depot_key,
-  /// (20) Failed to get depot patch information.
+  /// (23) Failed to get depot patch information.
   TEK_SC_ERRC_cm_depot_patch_info,
-  /// (21) Abnormal disconnection from a Steam CM server.
+  /// (24) Abnormal disconnection from a Steam CM server.
   TEK_SC_ERRC_cm_disconnect,
-  /// (22) Failed to get encrypted app ticket.
+  /// (25) Failed to get encrypted app ticket.
   TEK_SC_ERRC_cm_enc_app_ticket,
-  /// (23) Failed to get account license list.
+  /// (26) Failed to get account license list.
   TEK_SC_ERRC_cm_licenses,
-  /// (24) Missing PICS access token for the app/package.
+  /// (27) Missing PICS access token for the app/package.
   TEK_SC_ERRC_cm_missing_token,
-  /// (25) Failed to get manifest request code.
+  /// (28) Failed to get manifest request code.
   TEK_SC_ERRC_cm_mrc,
-  /// (26) CM client is not connected to a server.
+  /// (29) CM client is not connected to a server.
   TEK_SC_ERRC_cm_not_connected,
-  /// (27) CM client is not signed into an account.
+  /// (30) CM client is not signed into an account.
   TEK_SC_ERRC_cm_not_signed_in,
-  /// (28) Failed to encrypt account password with the RSA public key.
+  /// (31) Failed to encrypt account password with the RSA public key.
   TEK_SC_ERRC_cm_pass_encryption,
-  /// (29) Failed to get PICS product info.
+  /// (32) Failed to get PICS product info.
   TEK_SC_ERRC_cm_product_info,
-  /// (30) Failed to get Steam CM server list from the Steam Web API.
+  /// (33) Failed to get Steam CM server list from the Steam Web API.
   TEK_SC_ERRC_cm_server_list,
-  /// (31) Steam Web API returned empty CM server list.
+  /// (34) Steam Web API returned empty CM server list.
   TEK_SC_ERRC_cm_server_list_empty,
-  /// (32) Steam CM server reported itself as unavailable.
+  /// (35) Steam CM server reported itself as unavailable.
   TEK_SC_ERRC_cm_server_unavailable,
-  /// (33) Failed to sign into a Steam account.
+  /// (36) Failed to sign into a Steam account.
   TEK_SC_ERRC_cm_sign_in,
-  /// (34) Failed to get SteamPipe server list.
+  /// (37) Failed to get SteamPipe server list.
   TEK_SC_ERRC_cm_sp_servers,
-  /// (35) Got empty SteamPipe server list.
+  /// (38) Got empty SteamPipe server list.
   TEK_SC_ERRC_cm_sp_servers_empty,
-  /// (36) Failed to submit Steam Guard code.
+  /// (39) Failed to submit Steam Guard code.
   TEK_SC_ERRC_cm_submit_code,
-  /// (37) Timed out waiting for response to a message.
+  /// (40) Timed out waiting for response to a message.
   TEK_SC_ERRC_cm_timeout,
-  /// (38) Expired Steam authentication token.
+  /// (41) Expired Steam authentication token.
   TEK_SC_ERRC_cm_token_expired,
-  /// (39) Invalid Steam authentication token.
+  /// (42) Invalid Steam authentication token.
   TEK_SC_ERRC_cm_token_invalid,
-  /// (40) The token is not renewable.
+  /// (43) The token is not renewable.
   TEK_SC_ERRC_cm_token_not_renewable,
-  /// (41) Failed to renew Steam authentication token.
+  /// (44) Failed to renew Steam authentication token.
   TEK_SC_ERRC_cm_token_renew,
-  /// (42) Unknown app/package ID.
+  /// (45) Unknown app/package ID.
   TEK_SC_ERRC_cm_unknown_product,
-  /// (43) Failed to get Steam Workshop item details.
+  /// (46) Failed to get Steam Workshop item details.
   TEK_SC_ERRC_cm_ws_details,
-  /// (44) Failed to query Steam Workshop items.
+  /// (47) Failed to query Steam Workshop items.
   TEK_SC_ERRC_cm_ws_query,
-  /// (45) CRC32 checksum mismatch.
+  /// (48) CRC32 checksum mismatch.
   TEK_SC_ERRC_crc_mismatch,
-  /// (46) curl_easy_init() returned nullptr.
+  /// (49) curl_easy_init() returned nullptr.
   TEK_SC_ERRC_curle_init,
-  /// (47) curl_multi_init() returned nullptr.
+  /// (50) curl_multi_init() returned nullptr.
   TEK_SC_ERRC_curlm_init,
-  /// (48) curl_url() returned nullptr.
+  /// (51) curl_url() returned nullptr.
   TEK_SC_ERRC_curl_url,
-  /// (49) Failed to deserialize depot delta.
+  /// (52) Failed to deserialize depot delta.
   TEK_SC_ERRC_delta_deserialize,
-  /// (50) Provided manifests do not match the ones expected by the delta.
+  /// (53) Provided manifests do not match the ones expected by the delta.
   TEK_SC_ERRC_delta_manifests_mismatch,
-  /// (51) Provided patch does not match the one expected by the delta.
+  /// (54) Provided patch does not match the one expected by the delta.
   TEK_SC_ERRC_delta_patch_mismatch,
-  /// (52) Depot decryption key not found in the cache.
+  /// (55) Depot decryption key not found in the cache.
   TEK_SC_ERRC_depot_key_not_found,
-  /// (53) GZip decompression error.
+  /// (56) GZip decompression error.
   TEK_SC_ERRC_gzip,
-  /// (54) Encountered invalid data.
+  /// (57) Encountered invalid data.
   TEK_SC_ERRC_invalid_data,
-  /// (55) Invalid URL was specified.
+  /// (58) Invalid URL was specified.
   TEK_SC_ERRC_invalid_url,
-  /// (56) JSON parsing error.
+  /// (59) JSON parsing error.
   TEK_SC_ERRC_json_parse,
-  /// (57) LZMA decompression error.
+  /// (60) LZMA decompression error.
   TEK_SC_ERRC_lzma,
-  /// (58) Magic number mismatch (data corruption).
+  /// (61) Magic number mismatch (data corruption).
   TEK_SC_ERRC_magic_mismatch,
-  /// (59) Failed to deserialize depot manifest.
+  /// (62) Failed to deserialize depot manifest.
   TEK_SC_ERRC_manifest_deserialize,
-  /// (60) Failed to parse depot manifest.
+  /// (63) Failed to parse depot manifest.
   TEK_SC_ERRC_manifest_parse,
-  /// (61) Memory allocation error.
+  /// (64) Memory allocation error.
   TEK_SC_ERRC_mem_alloc,
-  /// (62) Failed to deserialize depot patch.
+  /// (65) Failed to deserialize depot patch.
   TEK_SC_ERRC_patch_deserialize,
-  /// (63) Provided manifests do not match the ones expected by the patch.
+  /// (66) Provided manifests do not match the ones expected by the patch.
   TEK_SC_ERRC_patch_manifests_mismatch,
-  /// (64) Failed to parse depot patch.
+  /// (67) Failed to parse depot patch.
   TEK_SC_ERRC_patch_parse,
-  /// (65) The job has been paused.
+  /// (68) The job has been paused.
   TEK_SC_ERRC_paused,
-  /// (66) Failed to deserialize a Protobuf message.
+  /// (69) Failed to deserialize a Protobuf message.
   TEK_SC_ERRC_protobuf_deserialize,
-  /// (67) Failed to serialize a Protobuf message.
+  /// (70) Failed to serialize a Protobuf message.
   TEK_SC_ERRC_protobuf_serialize,
-  /// (68) Failed to fetch a tek-s3 server manifest.
+  /// (71) Failed to fetch a tek-s3 server manifest.
   TEK_SC_ERRC_s3c_manifest,
-  /// (69) Failed to get manifest request code from a tek-s3 server.
+  /// (72) Failed to get manifest request code from a tek-s3 server.
   TEK_SC_ERRC_s3c_mrc,
-  /// (70) Failed to establish WebSocket connection to a tek-s3 server.
+  /// (73) Failed to establish WebSocket connection to a tek-s3 server.
   TEK_SC_ERRC_s3c_ws_connect,
-  /// (71) Abnormal disconnection from a tek-s3 server.
+  /// (74) Abnormal disconnection from a tek-s3 server.
   TEK_SC_ERRC_s3c_ws_disconnect,
-  /// (72) Timed out waiting for server response.
+  /// (75) Timed out waiting for server response.
   TEK_SC_ERRC_s3c_ws_timeout,
-  /// (73) SHA-1 hashing error.
+  /// (76) SHA-1 hashing error.
   TEK_SC_ERRC_sha,
-  /// (74) Failed to download a chunk from SteamPipe.
+  /// (77) Failed to download a chunk from SteamPipe.
   TEK_SC_ERRC_sp_chunk,
-  /// (75) Failed to decode a chunk.
+  /// (78) Failed to decode a chunk.
   TEK_SC_ERRC_sp_decode,
-  /// (76) Failed to create a chunk decoding context.
+  /// (79) Failed to create a chunk decoding context.
   TEK_SC_ERRC_sp_dec_ctx,
-  /// (77) Failed to download a depot manifest from SteamPipe.
+  /// (80) Failed to download a depot manifest from SteamPipe.
   TEK_SC_ERRC_sp_dm,
-  /// (78) Failed to download a depot patch from SteamPipe.
+  /// (81) Failed to download a depot patch from SteamPipe.
   TEK_SC_ERRC_sp_dp,
-  /// (79) There is already a maximum number of active requests on the thread.
+  /// (82) There is already a maximum number of active requests on the thread.
   TEK_SC_ERRC_sp_max_reqs,
-  /// (80) Failed to create multi downloader.
+  /// (83) Failed to create multi downloader.
   TEK_SC_ERRC_sp_multi_dlr,
-  /// (81) Unknown chunk compression method.
+  /// (84) Unknown chunk compression method.
   TEK_SC_ERRC_sp_unknown_comp,
-  /// (82) Item installation is already up to date.
+  /// (85) Item installation is already up to date.
   TEK_SC_ERRC_up_to_date,
-  /// (83) Failed to deserialize verification cache.
+  /// (86) Failed to deserialize verification cache.
   TEK_SC_ERRC_vc_deserialize,
-  /// (84) Verification cache does not bind to the provided manifest.
+  /// (87) Verification cache does not bind to the provided manifest.
   TEK_SC_ERRC_vc_manifest_mismatch,
-  /// (85) VDF parsing error.
+  /// (88) VDF parsing error.
   TEK_SC_ERRC_vdf_parse,
-  /// (86) Failed to start a worker thread.
+  /// (89) Failed to start a worker thread.
   TEK_SC_ERRC_wt_start,
-  /// (87) Zip extraction error.
+  /// (90) Zip extraction error.
   TEK_SC_ERRC_zip,
-  /// (88) Zstandard decompression error.
+  /// (91) Zstandard decompression error.
   TEK_SC_ERRC_zstd
 };
 /// @copydoc tek_sc_errc

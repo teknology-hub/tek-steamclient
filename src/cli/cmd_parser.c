@@ -62,6 +62,82 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
     } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("status"))) {
       cmd->type = TSCL_CMD_TYPE_am_status;
       return ind + 1;
+    } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("create-job"))) {
+      cmd->type = TSCL_CMD_TYPE_am_create_job;
+      if (++ind == argc) {
+        fputs(tsc_gettext("Error: <item_id> not provided for \"create-job\"\n"),
+              stderr);
+        return 0;
+      }
+      const tek_sc_os_char *cur = argv[ind];
+      const tek_sc_os_char *endptr;
+      auto val = tscl_os_strtoull(cur, &endptr);
+      if (endptr == cur) {
+        fputs(tsc_gettext("Error: app ID part of <item_id> for \"create-job\" "
+                          "is not a number\n"),
+              stderr);
+        return 0;
+      }
+      cmd->am_create_job.item_id.app_id = val;
+      if (*endptr != '-') {
+        fputs(tsc_gettext("Error: <item_id> for \"create-job\" doesn't contain "
+                          "a depot ID\n"),
+              stderr);
+        return 0;
+      }
+      cur = endptr + 1;
+      val = tscl_os_strtoull(cur, &endptr);
+      if (endptr == cur) {
+        fputs(tsc_gettext("Error: depot ID part of <item_id> for "
+                          "\"create-job\" is not a number\n"),
+              stderr);
+        return 0;
+      }
+      cmd->am_create_job.item_id.depot_id = val;
+      if (*endptr == '-') {
+        cur = endptr + 1;
+        val = tscl_os_strtoull(cur, &endptr);
+        if (endptr == cur) {
+          fputs(tsc_gettext("Error: Steam Workshop item ID part of <item_id> "
+                            "for \"create-job\" is not a number\n"),
+                stderr);
+          return 0;
+        }
+        cmd->am_create_job.item_id.ws_item_id = val;
+      } else {
+        cmd->am_create_job.item_id.ws_item_id = 0;
+      }
+      if (++ind == argc) {
+        fputs(tsc_gettext(
+                  "Error: <manifest_id> not provided for \"create-job\"\n"),
+              stderr);
+        return 0;
+      }
+      cur = argv[ind];
+      cmd->am_create_job.manifest_id = tscl_os_strtoull(cur, &endptr);
+      if (endptr == cur) {
+        fputs(tsc_gettext(
+                  "Error: <manifest_id> for \"create-job\" is not a number\n"),
+              stderr);
+        return 0;
+      }
+      if (++ind == argc) {
+        fputs(tsc_gettext(
+                  "Error: <force_verify> not provided for \"create-job\"\n"),
+              stderr);
+        return 0;
+      }
+      if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("true"))) {
+        cmd->am_create_job.force_verify = true;
+      } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("false"))) {
+        cmd->am_create_job.force_verify = false;
+      } else {
+        fputs(tsc_gettext("Error: <force_verify> for \"create-job\" must be "
+                          "\"true\" or \"false\"\n"),
+              stderr);
+        return 0;
+      }
+      return ind + 1;
     } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("run-job"))) {
       cmd->type = TSCL_CMD_TYPE_am_run_job;
       if (++ind == argc) {
@@ -106,36 +182,6 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
         cmd->am_run_job.item_id.ws_item_id = val;
       } else {
         cmd->am_run_job.item_id.ws_item_id = 0;
-      }
-      if (++ind == argc) {
-        fputs(
-            tsc_gettext("Error: <manifest_id> not provided for \"run-job\"\n"),
-            stderr);
-        return 0;
-      }
-      cur = argv[ind];
-      cmd->am_run_job.manifest_id = tscl_os_strtoull(cur, &endptr);
-      if (endptr == cur) {
-        fputs(tsc_gettext(
-                  "Error: <manifest_id> for \"run-job\" is not a number\n"),
-              stderr);
-        return 0;
-      }
-      if (++ind == argc) {
-        fputs(
-            tsc_gettext("Error: <force_verify> not provided for \"run-job\"\n"),
-            stderr);
-        return 0;
-      }
-      if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("true"))) {
-        cmd->am_run_job.force_verify = true;
-      } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("false"))) {
-        cmd->am_run_job.force_verify = false;
-      } else {
-        fputs(tsc_gettext("Error: <force_verify> for \"run-job\" must be "
-                          "\"true\" or \"false\"\n"),
-              stderr);
-        return 0;
       }
       return ind + 1;
     } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("cancel-job"))) {

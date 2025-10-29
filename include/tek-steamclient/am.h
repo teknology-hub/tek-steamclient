@@ -198,27 +198,6 @@ struct tek_sc_am_item_desc {
 typedef void tek_sc_am_job_upd_func(tek_sc_am_item_desc *_Nonnull desc,
                                     tek_sc_am_upd_type upd_mask);
 
-/// Application manager job arguments.
-typedef struct tek_sc_am_job_args tek_sc_am_job_args;
-/// @copydoc tek_sc_am_job_args
-struct tek_sc_am_job_args {
-  /// Pointer to the ID of the item to run the job for.
-  const tek_sc_item_id *_Nonnull item_id;
-  /// ID of the manifest to update to/verify against. Can be set to `0` to use
-  ///    `latest_manifest_id` from the item's @ref tek_sc_am_item_desc if
-  ///    available, or fetch latest from Steam CM if not. Can be set to
-  ///    `UINT64_MAX` to uninstall the item.
-  /// Ignored when resuming previously paused job.
-  uint64_t manifest_id;
-  /// Optional pointer to the job update handler function to use.
-  tek_sc_am_job_upd_func *_Nullable upd_handler;
-  /// Value indicating whether the to perform verification even if it can be
-  ///    avoided (e.g no update is required or current manifest ID is known
-  ///    before update).
-  /// Ignored when resuming previously paused job.
-  bool force_verify;
-};
-
 //===-- Functions ---------------------------------------------------------===//
 
 #ifdef __cplusplus
@@ -316,42 +295,68 @@ void tek_sc_am_item_descs_unlock(tek_sc_am *_Nonnull am);
 [[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_write, 1)]]
 tek_sc_err tek_sc_am_check_for_upds(tek_sc_am *_Nonnull am, long timeout_ms);
 
-/// Run/resume application manager job for specified item.
+/// Create an application manager job for specified item.
 ///
 /// If current manifest ID for the item is unknown (item's
 ///    @ref tek_sc_am_item_desc is not present or has `current_manifest_id` set
-///    to `0`) or `args->force_verify` is `true`, a verification will be
-///    performed, that is comparing all local files of the item and their data
-///    against manifest entries to determine mismatching and missing ones, then
-///    a delta is produced as a result. If delta is empty (all entries match), a
-///    @ref tek_sc_err with `primary` set to @ref TEK_SC_ERRC_up_to_date is
-///    returned.
-/// If current manifest ID is `args->manifest_id`, a @ref tek_sc_err with
-///    `primary` set to @ref TEK_SC_ERRC_up_to_date is returned immediately.
-///    Otherwise, a delta between current manifest and @p manifest_id is
-///    computed.
-/// Otherwise, the produced delta is processed.
-/// The job may be running for a long time, so it's recommended to call this
-///    function in its own thread in GUI applications.
+///    to `0`) or `force_verify` is `true`, the job will perform a verification,
+///    that is comparing all local files of the item and their data against
+///    manifest entries to determine mismatching and missing ones, and produce a
+///    delta from it. If delta is empty (all entries match),
+///    @ref tek_sc_am_run_job will return @ref tek_sc_err with `primary` set to
+///    @ref TEK_SC_ERRC_up_to_date.
+/// If current manifest ID is `manifest_id`, @ref tek_sc_am_run_job will return
+///    a @ref tek_sc_err with `primary` set to @ref TEK_SC_ERRC_up_to_date
+///    immediately.
+/// Otherwise, the job will compute a delta between current manifest and
+///    @p manifest_id.
+///
+/// @param [in, out] am
+///    Pointer to the application manager instance that the job will belong to.
+/// @param [in] item_id
+///    Pointer to the ID of the item to run the job for.
+/// @param manifest_id
+///    ID of the manifest to update to/verify against. Can be set to `0` to use
+///    `latest_manifest_id` from the item's @ref tek_sc_am_item_desc if
+///    available, or fetch latest from Steam CM if not. Can be set to
+///    `UINT64_MAX` to uninstall the item.
+/// @param force_verify
+///    Value indicating whether to perform verification even if it can be
+///    avoided (e.g no update is required or current manifest ID is known before
+///    update).
+/// @param [out] item_desc
+///    Optional address of variable that on success receives pointer to the
+///    @ref tek_sc_am_item_desc for the item.
+/// @return A @ref tek_sc_err indicating the result of operation.
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
+  gnu::access(read_only, 2), gnu::access(write_only, 5)]]
+tek_sc_err
+tek_sc_am_create_job(tek_sc_am *_Nonnull am,
+                     const tek_sc_item_id *_Nonnull item_id,
+                     uint64_t manifest_id, bool force_verify,
+                     tek_sc_am_item_desc *_Nullable *_Nullable item_desc);
+
+/// Run/resume an application manager job.
+///
+/// The job may be running for a long time, so in GUI applications it's
+///    recommended to call this function in its own thread.
 ///
 /// @param [in, out] am
 ///    Pointer to the application manager instance that will run the job.
-/// @param [in] args
-///    Pointer to the job arguments structure.
-/// @param [out] item_desc
-///    Address of variable that receives pointer to the @ref tek_sc_am_item_desc
-///    for the item shortly after starting the job.
+/// @param [in, out] item_desc
+///    Pointer to the item state descriptor whose job is to be run.
+/// @param upd_handler
+///    Optional pointer to the job update handler function to use.
 /// @return A @ref tek_sc_err indicating the result of the job. There are
 ///    `primary` values with special meaning: @ref TEK_SC_ERRC_up_to_date
 ///    indicates that there is no update available, or verification found no
 ///    mismatches; @ref TEK_SC_ERRC_paused indicates that the job has been
 ///    paused.
-[[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_only, 2), gnu::access(write_only, 3)]]
-tek_sc_err
-tek_sc_am_run_job(tek_sc_am *_Nonnull am,
-                  const tek_sc_am_job_args *_Nonnull args,
-                  tek_sc_am_item_desc *_Nullable *_Nonnull item_desc);
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
+  gnu::access(read_only, 2), clang::callback(upd_handler, __, __)]]
+tek_sc_err tek_sc_am_run_job(tek_sc_am *_Nonnull am,
+                             tek_sc_am_item_desc *_Nonnull item_desc,
+                             tek_sc_am_job_upd_func *_Nullable upd_handler);
 
 /// Request specified job to pause.
 ///
