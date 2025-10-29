@@ -74,7 +74,7 @@ enum tek_sc_errc {
   TEK_SC_ERRC_am_job_alr_running,
   /// (8) Steam didn't provide any manifest ID for this item.
   TEK_SC_ERRC_am_no_man_id,
-  /// (9) There is no job to run for this item.
+  /// (9) There is no job for this item.
   TEK_SC_ERRC_am_no_job,
   /// (10) Attempting to start a job for a Steam Workshop item, but no directory
   ///    for such items was provided.

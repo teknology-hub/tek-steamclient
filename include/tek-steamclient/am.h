@@ -340,6 +340,8 @@ tek_sc_am_create_job(tek_sc_am *_Nonnull am,
 ///
 /// The job may be running for a long time, so in GUI applications it's
 ///    recommended to call this function in its own thread.
+/// If the job successfully uninstalls the item, @p item_desc will be removed
+///    from the application manager and freed.
 ///
 /// @param [in, out] am
 ///    Pointer to the application manager instance that will run the job.
@@ -366,8 +368,9 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *_Nonnull am,
 void tek_sc_am_pause_job(tek_sc_am_item_desc *_Nonnull item_desc);
 
 /// Cancel specified job, that is clean its cache directory and reset the state.
-///    If the job is running, the function will request it to pause and wait for
-///    it to stop first.
+///    The job must be in the stopped state. If `current_manifest_id` in
+///    @p item_desc is zero, @p item_desc will be removed from the application
+///    manager and freed.
 ///
 /// @param [in, out] am
 ///    Pointer to the application manager instance to cancel the job for.

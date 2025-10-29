@@ -704,7 +704,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
           &job->state, &expected, TEK_SC_AM_JOB_STATE_running,
           memory_order_relaxed, memory_order_relaxed)) {
     if (upd_handler) {
-      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_state);
+      upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_state);
     }
   } else {
     return tsc_err_basic(TEK_SC_ERRC_am_job_alr_running);
@@ -714,9 +714,9 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
     // Fetch latest manifest ID from Steam CM
     job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
     if (upd_handler) {
-      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+      upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_stage);
     }
-    res = tsci_am_get_latest_man_id(am, &desc->desc.id);
+    res = tsci_am_get_latest_man_id(am, &item_desc->id);
     if (!tek_sc_err_success(&res)) {
       goto upd_db_item;
     }
@@ -742,11 +742,11 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
       if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
         job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
         if (upd_handler) {
-          upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+          upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_stage);
         }
       }
       bool available;
-      res = tsci_am_get_patch_info(am, &desc->desc.id, job->source_manifest_id,
+      res = tsci_am_get_patch_info(am, &item_desc->id, job->source_manifest_id,
                                    job->target_manifest_id, &available);
       if (!tek_sc_err_success(&res)) {
         goto upd_db_item;
@@ -812,7 +812,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
       goto free_ctx;
     }
     tek_sc_os_char dir_name[35];
-    auto const item_id = &desc->desc.id;
+    auto const item_id = &item_desc->id;
     if (item_id->ws_item_id) {
       TSCI_OS_SNPRINTF(dir_name, sizeof dir_name / sizeof *dir_name,
                        TEK_SC_OS_STR("%" PRIx32 "-%" PRIx32 "-%" PRIx64),
@@ -866,7 +866,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
     }
     job->delta = &ctx.delta;
     if (upd_handler) {
-      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_delta_created);
+      upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_delta_created);
     }
   } else {
     // Load existing file
@@ -921,7 +921,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
       if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
         job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
         if (upd_handler) {
-          upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+          upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_stage);
         }
       }
       // Get SteamPipe server list
@@ -1013,23 +1013,23 @@ finalize:
   if (tscp_am_is_finished(&res)) {
     job->stage = TEK_SC_AM_JOB_STAGE_finalizing;
     if (upd_handler) {
-      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+      upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_stage);
     }
-    tsci_am_clean_job_dir(am->data_dir_handle, &desc->desc.id);
+    tsci_am_clean_job_dir(am->data_dir_handle, &item_desc->id);
     if (job->target_manifest_id == UINT64_MAX) {
-      desc->desc.status = 0;
-      desc->desc.current_manifest_id = 0;
+      item_desc->status = 0;
+      item_desc->current_manifest_id = 0;
     } else {
-      desc->desc.current_manifest_id = job->target_manifest_id;
-      if (!desc->desc.latest_manifest_id) {
-        desc->desc.latest_manifest_id = desc->desc.current_manifest_id;
+      item_desc->current_manifest_id = job->target_manifest_id;
+      if (!item_desc->latest_manifest_id) {
+        item_desc->latest_manifest_id = item_desc->current_manifest_id;
       }
-      if (desc->desc.current_manifest_id == desc->desc.latest_manifest_id) {
-        desc->desc.status &= ~TEK_SC_AM_ITEM_STATUS_upd_available;
+      if (item_desc->current_manifest_id == item_desc->latest_manifest_id) {
+        item_desc->status &= ~TEK_SC_AM_ITEM_STATUS_upd_available;
       } else {
-        desc->desc.status |= TEK_SC_AM_ITEM_STATUS_upd_available;
+        item_desc->status |= TEK_SC_AM_ITEM_STATUS_upd_available;
       }
-      desc->desc.status &= ~TEK_SC_AM_ITEM_STATUS_job;
+      item_desc->status &= ~TEK_SC_AM_ITEM_STATUS_job;
     }
     job->stage = 0;
     job->progress_current = 0;
@@ -1039,73 +1039,105 @@ finalize:
     job->patch_status = TEK_SC_AM_JOB_PATCH_STATUS_unknown;
   }
 upd_db_item:
-  // Save current item and job state to the state database
-  static const char query[] =
-      "UPDATE items SET status = ?, current_manifest_id = ?, job_stage = ?, "
-      "job_progress_current = ?, job_progress_total = ?, job_src_man_id = ?, "
-      "job_tgt_man_id = ?, job_patch_status = ? WHERE app_id = ? AND depot_id "
-      "= ? AND ws_item_id = ?";
-  sqlite3_stmt *stmt;
-  int sqlite_res =
-      sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
-  if (sqlite_res == SQLITE_OK) {
-    sqlite_res = sqlite3_bind_int(stmt, 1, desc->desc.status);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int64(
-        stmt, 2, (sqlite3_int64)desc->desc.current_manifest_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 3, job->stage);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
+  int sqlite_res;
+  if (item_desc->current_manifest_id ||
+      (item_desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
+    // Save current item and job state to the state database
+    static const char query[] =
+        "UPDATE items SET status = ?, current_manifest_id = ?, job_stage = ?, "
+        "job_progress_current = ?, job_progress_total = ?, job_src_man_id = ?, "
+        "job_tgt_man_id = ?, job_patch_status = ? WHERE app_id = ? AND "
+        "depot_id = ? AND ws_item_id = ?";
+    sqlite3_stmt *stmt;
     sqlite_res =
-        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)job->progress_current);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
+        sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
+    if (sqlite_res == SQLITE_OK) {
+      sqlite_res = sqlite3_bind_int(stmt, 1, item_desc->status);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int64(
+          stmt, 2, (sqlite3_int64)item_desc->current_manifest_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 3, job->stage);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 4, (sqlite3_int64)job->progress_current);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 5, (sqlite3_int64)job->progress_total);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 6, (sqlite3_int64)job->source_manifest_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 7, (sqlite3_int64)job->target_manifest_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 8, (int)job->patch_status);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 9, (int)item_desc->id.app_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 10, (int)item_desc->id.depot_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 11, (sqlite3_int64)item_desc->id.ws_item_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_step(stmt);
+      if (sqlite_res == SQLITE_DONE) {
+        sqlite_res = SQLITE_OK;
+      }
+    cleanup_upd_stmt:
+      sqlite3_finalize(stmt);
+    } // if (sqlite_res == SQLITE_OK)
+  } else { // if (current_manifest_id || (status & TEK_SC_AM_ITEM_STATUS_job))
+    // Delete item entry from the state database
+    static const char query[] = "DELETE FROM items WHERE app_id = ? AND "
+                                "depot_id = ? AND ws_item_id = ?";
+    sqlite3_stmt *stmt;
     sqlite_res =
-        sqlite3_bind_int64(stmt, 5, (sqlite3_int64)job->progress_total);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
+        sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
+    if (sqlite_res == SQLITE_OK) {
+      sqlite_res = sqlite3_bind_int(stmt, 1, (int)item_desc->id.app_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 2, (int)item_desc->id.depot_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 3, (sqlite3_int64)item_desc->id.ws_item_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res = sqlite3_step(stmt);
+      if (sqlite_res == SQLITE_DONE) {
+        sqlite_res = SQLITE_OK;
+      }
+    cleanup_del_stmt:
+      sqlite3_finalize(stmt);
     }
-    sqlite_res =
-        sqlite3_bind_int64(stmt, 6, (sqlite3_int64)job->source_manifest_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res =
-        sqlite3_bind_int64(stmt, 7, (sqlite3_int64)job->target_manifest_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 8, (int)job->patch_status);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 9, (int)desc->desc.id.app_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 10, (int)desc->desc.id.depot_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res =
-        sqlite3_bind_int64(stmt, 11, (sqlite3_int64)desc->desc.id.ws_item_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_step(stmt);
-    if (sqlite_res == SQLITE_DONE) {
-      sqlite_res = SQLITE_OK;
-    }
-  cleanup_upd_stmt:
-    sqlite3_finalize(stmt);
-  } // if (sqlite_res == SQLITE_OK)
+  } // if (current_manifest_id || (status & TEK_SC_AM_ITEM_STATUS_job)) else
   if (sqlite_res != SQLITE_OK && !tscp_am_is_err(&res)) {
     res = tscp_am_err_sqlite(TEK_SC_ERRC_am_db_update, sqlite_res);
   }
@@ -1114,7 +1146,25 @@ upd_db_item:
                         memory_order_release);
   tsci_os_futex_wake((_Atomic(uint32_t) *)&job->state);
   if (upd_handler) {
-    upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_state);
+    upd_handler(item_desc, TEK_SC_AM_UPD_TYPE_state);
+  }
+  if (!item_desc->current_manifest_id &&
+      !(item_desc->status & TEK_SC_AM_ITEM_STATUS_job) &&
+      !pthread_mutex_trylock(&am->item_descs_mtx)) {
+    // Remove and free the item state descriptor
+    if (&am->item_descs->desc == item_desc) {
+      am->item_descs = (tsci_am_item_desc *)item_desc->next;
+    } else {
+      for (auto prev_desc = (tek_sc_am_item_desc *)am->item_descs; prev_desc;
+           prev_desc = prev_desc->next) {
+        if (prev_desc->next == item_desc) {
+          prev_desc->next = item_desc->next;
+          break;
+        }
+      }
+    }
+    free(desc);
+    pthread_mutex_unlock(&am->item_descs_mtx);
   }
   return res;
 }
