@@ -439,13 +439,19 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "manager instance, and check for their updates\n"
         "For the commands below, <item_id> is either <app_id>-<depot_id> or "
         "<app_id>-<depot_id>-<workshop_item_id>\n"
-        "  am run-job <item_id> <manifest_id> <force_verify> - Run/resume a "
-        "job for specified item. <manifest_id> can be ID of the manifest to "
-        "update to or verify against, or 0 to use ID of the latest available "
-        "manifest, or -1 to uninstall the item. <force_verify> must be either "
-        "\"true\" or \"false\"; if \"true\", file verification will still be "
-        "performed even if it's otherwise not necessary. Jobs can be paused by "
-        "sending a SIGINT signal (Ctrl+C) or terminating the program\n"
+        "  am create-job <item_id> <manifest_id> <force_verify> - Create a job "
+        "for specified item. This command won't run the created job "
+        "automatically, for that use \"run-job\" command. Only one job can "
+        "exist for an item at a time; if you want to create another job, the "
+        "previous one must be successfully finished or cancelled first. "
+        "<manifest_id> can be ID of the manifest to update to or verify "
+        "against, or 0 to use ID of the latest available manifest, or -1 to "
+        "uninstall the item. <force_verify> must be either \"true\" or "
+        "\"false\"; if \"true\", file verification will still be performed "
+        "even if it's otherwise not necessary\n"
+        "  am run-job <item_id> - Run/resume a job for specified item. It can "
+        "be paused by sending a SIGINT signal (Ctrl+C) or terminating the "
+        "program\n"
         "  am cancel-job <item_id> - Cancel a job for specified item, cleaning "
         "up its cache directory and resetting its state"));
 #ifdef TEK_SCB_CLI_DUMP
@@ -591,18 +597,44 @@ bool tscl_run_cmd(const tscl_command *cmd) {
             stderr);
       return false;
     } // if (tscl_g_ctx.am) else
+  case TSCL_CMD_TYPE_am_create_job:
+    if (tscl_g_ctx.am) {
+      auto const res =
+          tek_sc_am_create_job(tscl_g_ctx.am, &cmd->am_create_job.item_id,
+                               cmd->am_create_job.manifest_id,
+                               cmd->am_create_job.force_verify, nullptr);
+      if (!tek_sc_err_success(&res)) {
+        tscl_print_err(&res);
+        return false;
+      }
+      return true;
+    } else {
+      fputs(tsc_gettext("Error: There is no initialized application manager "
+                        "instance to create job for\n"),
+            stderr);
+      return false;
+    }
   case TSCL_CMD_TYPE_am_run_job:
     if (tscl_g_ctx.am) {
+      auto const id = &cmd->am_run_job.item_id;
+      auto const desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, id);
+      if (!desc) {
+        char item_id[43];
+        snprintf(item_id, sizeof item_id,
+                 id->ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
+                                : "%" PRIu32 "-%" PRIu32,
+                 id->app_id, id->depot_id, id->ws_item_id);
+        fprintf(
+            stderr,
+            tsc_gettext(
+                "Error: Application manager doesn't have state for item %s\n"),
+            item_id);
+        return false;
+      }
+      tscl_job_desc = desc;
+      const bool verification = !desc->job.source_manifest_id;
       tscl_os_reg_sig_handler(tscl_job_sig_handler);
-      auto const res =
-          tek_sc_am_run_job(tscl_g_ctx.am,
-                            &(tek_sc_am_job_args){
-                                .item_id = &cmd->am_run_job.item_id,
-                                .manifest_id = cmd->am_run_job.manifest_id,
-                                .upd_handler = tscl_upd_handler,
-                                .force_verify = cmd->am_run_job.force_verify,
-                            },
-                            &tscl_job_desc);
+      auto const res = tek_sc_am_run_job(tscl_g_ctx.am, desc, tscl_upd_handler);
       tscl_os_unreg_sig_handler();
       switch (res.primary) {
       case TEK_SC_ERRC_ok:
@@ -612,9 +644,8 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         puts(tsc_gettext("The job has been paused successfully"));
         return true;
       case TEK_SC_ERRC_up_to_date:
-        puts(cmd->am_run_job.force_verify
-                 ? tsc_gettext("No mismatches have been found")
-                 : tsc_gettext("The item is already up to date"));
+        puts(verification ? tsc_gettext("No mismatches have been found")
+                          : tsc_gettext("The item is already up to date"));
         return true;
       default:
         tscl_print_err(&res);
@@ -628,14 +659,14 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     }
   case TSCL_CMD_TYPE_am_cancel_job:
     if (tscl_g_ctx.am) {
-      auto const desc =
-          tek_sc_am_get_item_desc(tscl_g_ctx.am, &cmd->am_cancel_job.item_id);
+      auto const id = &cmd->am_cancel_job.item_id;
+      auto const desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, id);
       if (!desc) {
         char item_id[43];
         snprintf(item_id, sizeof item_id,
-                 desc->id.ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
-                                     : "%" PRIu32 "-%" PRIu32,
-                 desc->id.app_id, desc->id.depot_id, desc->id.ws_item_id);
+                 id->ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
+                                : "%" PRIu32 "-%" PRIu32,
+                 id->app_id, id->depot_id, id->ws_item_id);
         fprintf(
             stderr,
             tsc_gettext(

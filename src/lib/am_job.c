@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file
-/// Implementation of @ref tek_sc_am_run_job.
+/// Implementation of @ref tek_sc_am_create_job and @ref tek_sc_am_run_job.
 ///
 //===----------------------------------------------------------------------===//
 #include "common/am.h"
@@ -553,21 +553,18 @@ void tsci_am_job_finish_dir(tek_sc_dd_dir *dir) {
   }
 }
 
-//===-- Public function ---------------------------------------------------===//
+//===-- Public functions --------------------------------------------------===//
 
-tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
-                             tek_sc_am_item_desc **item_desc) {
-  if (args->item_id->ws_item_id &&
-      am->ws_dir_handle == TSCI_OS_INVALID_HANDLE) {
-    return tsc_err_basic(TEK_SC_ERRC_am_no_ws_dir);
-  }
+tek_sc_err tek_sc_am_create_job(tek_sc_am *am, const tek_sc_item_id *item_id,
+                                uint64_t manifest_id, bool force_verify,
+                                tek_sc_am_item_desc **item_desc) {
   pthread_mutex_lock(&am->item_descs_mtx);
   auto desc_ptr = &am->item_descs;
   tsci_am_item_desc *desc = nullptr;
   // Find item's state descriptor or the position in the linked list to
   //    instert it to while maintaining sort order
   while (*desc_ptr) {
-    const int res = tsci_am_cmp_item_id(&(*desc_ptr)->desc.id, args->item_id);
+    const int res = tsci_am_cmp_item_id(&(*desc_ptr)->desc.id, item_id);
     if (!res) {
       desc = *desc_ptr;
       break;
@@ -578,7 +575,6 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
     desc_ptr = (tsci_am_item_desc **)&(*desc_ptr)->desc.next;
   }
   auto res = tsc_err_ok();
-  sqlite3_stmt *stmt;
   if (!desc) {
     // There was no state descriptor, allocate it and add to the database
     desc = calloc(1, sizeof *desc);
@@ -586,7 +582,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
       pthread_mutex_unlock(&am->item_descs_mtx);
       return tsc_err_basic(TEK_SC_ERRC_mem_alloc);
     }
-    desc->desc.id = *args->item_id;
+    desc->desc.id = *item_id;
     desc->desc.next = *desc_ptr ? &(*desc_ptr)->desc : nullptr;
     *desc_ptr = desc;
     static const char query[] =
@@ -595,6 +591,7 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
         "job_progress_current, "
         "job_progress_total, job_src_man_id, job_tgt_man_id, job_patch_status) "
         "VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)";
+    sqlite3_stmt *stmt;
     int sqlite_res =
         sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
     if (sqlite_res == SQLITE_OK) {
@@ -623,34 +620,96 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, const tek_sc_am_job_args *args,
     }
   } // if (!desc)
   pthread_mutex_unlock(&am->item_descs_mtx);
-  desc->job_upd_handler = args->upd_handler;
-  *item_desc = &desc->desc;
   if (!tek_sc_err_success(&res)) {
     return res;
   }
   auto const job = &desc->desc.job;
-  if (!(desc->desc.status & TEK_SC_AM_ITEM_STATUS_job)) {
-    if (args->manifest_id == UINT64_MAX && !desc->desc.current_manifest_id) {
-      return tsc_err_basic(TEK_SC_ERRC_am_uninst_unknown);
+  if (desc->desc.status & TEK_SC_AM_ITEM_STATUS_job) {
+    return tsc_err_basic(TEK_SC_ERRC_am_unfin_job);
+  }
+  if (manifest_id == UINT64_MAX && !desc->desc.current_manifest_id) {
+    return tsc_err_basic(TEK_SC_ERRC_am_uninst_unknown);
+  }
+  desc->desc.status |= TEK_SC_AM_ITEM_STATUS_job;
+  job->source_manifest_id = (force_verify && manifest_id != UINT64_MAX)
+                                ? 0
+                                : desc->desc.current_manifest_id;
+  job->target_manifest_id =
+      manifest_id ? manifest_id : desc->desc.latest_manifest_id;
+  // Update the state database
+  static const char query[] =
+      "UPDATE items SET status = ?, job_src_man_id = ?, job_tgt_man_id = ? "
+      "WHERE app_id = ? AND depot_id = ? AND ws_item_id = ?";
+  sqlite3_stmt *stmt;
+  int sqlite_res =
+      sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
+  if (sqlite_res == SQLITE_OK) {
+    sqlite_res = sqlite3_bind_int(stmt, 1, desc->desc.status);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
     }
-    desc->desc.status |= TEK_SC_AM_ITEM_STATUS_job;
-    // Set initial job parameters
-    job->source_manifest_id =
-        (args->force_verify && args->manifest_id != UINT64_MAX)
-            ? 0
-            : desc->desc.current_manifest_id;
-    job->target_manifest_id = args->manifest_id;
+    sqlite_res =
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)job->source_manifest_id);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
+    }
+    sqlite_res =
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)job->target_manifest_id);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
+    }
+    sqlite_res = sqlite3_bind_int(stmt, 4, (int)item_id->app_id);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
+    }
+    sqlite_res = sqlite3_bind_int(stmt, 5, (int)item_id->depot_id);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
+    }
+    sqlite_res =
+        sqlite3_bind_int64(stmt, 6, (sqlite3_int64)item_id->ws_item_id);
+    if (sqlite_res != SQLITE_OK) {
+      goto cleanup_upd_stmt;
+    }
+    sqlite_res = sqlite3_step(stmt);
+    if (sqlite_res == SQLITE_DONE) {
+      sqlite_res = SQLITE_OK;
+    }
+  cleanup_upd_stmt:
+    sqlite3_finalize(stmt);
+  } // if (sqlite_res == SQLITE_OK)
+  if (sqlite_res != SQLITE_OK) {
+    return tscp_am_err_sqlite(TEK_SC_ERRC_am_db_update, sqlite_res);
   }
-  auto const upd_handler = desc->job_upd_handler;
-  // Notify that the job has started
-  atomic_store_explicit(&job->state, TEK_SC_AM_JOB_STATE_running,
-                        memory_order_release);
-  if (upd_handler) {
-    upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_state);
+  if (item_desc) {
+    *item_desc = &desc->desc;
   }
-  if (!job->target_manifest_id) {
-    job->target_manifest_id = desc->desc.latest_manifest_id;
+  return tsc_err_ok();
+}
+
+tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
+                             tek_sc_am_job_upd_func *upd_handler) {
+  if (!(item_desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
+    return tsc_err_basic(TEK_SC_ERRC_am_no_job);
   }
+  if (item_desc->id.ws_item_id && am->ws_dir_handle == TSCI_OS_INVALID_HANDLE) {
+    return tsc_err_basic(TEK_SC_ERRC_am_no_ws_dir);
+  }
+  auto const desc = (tsci_am_item_desc *)item_desc;
+  desc->job_upd_handler = upd_handler;
+  auto const job = &item_desc->job;
+  // Change the job state to running and notify
+  tek_sc_am_job_state expected = TEK_SC_AM_JOB_STATE_stopped;
+  if (atomic_compare_exchange_strong_explicit(
+          &job->state, &expected, TEK_SC_AM_JOB_STATE_running,
+          memory_order_relaxed, memory_order_relaxed)) {
+    if (upd_handler) {
+      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_state);
+    }
+  } else {
+    return tsc_err_basic(TEK_SC_ERRC_am_job_alr_running);
+  }
+  auto res = tsc_err_ok();
   if (!job->target_manifest_id) {
     // Fetch latest manifest ID from Steam CM
     job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
@@ -986,6 +1045,7 @@ upd_db_item:
       "job_progress_current = ?, job_progress_total = ?, job_src_man_id = ?, "
       "job_tgt_man_id = ?, job_patch_status = ? WHERE app_id = ? AND depot_id "
       "= ? AND ws_item_id = ?";
+  sqlite3_stmt *stmt;
   int sqlite_res =
       sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
   if (sqlite_res == SQLITE_OK) {

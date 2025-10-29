@@ -104,6 +104,8 @@ enum tscl_cmd_type {
   /// Get status of all items managed by current application manager
   ///    instance, and check for their updates.
   TSCL_CMD_TYPE_am_status,
+  /// Create an application manager job.
+  TSCL_CMD_TYPE_am_create_job,
   /// Run/resume an application manager job.
   TSCL_CMD_TYPE_am_run_job,
   /// Cancel an application manager job.
@@ -147,15 +149,20 @@ struct tscl_command {
       ///    null-terminated string.
       const tek_sc_os_char *_Nonnull path;
     } am_set_workshop_dir;
-    /// "am run-job" command arguments.
+    /// "am create-job" command arguments.
     struct {
-      /// ID of the item to run/resume job for.
+      /// ID of the item to create a job for.
       tek_sc_item_id item_id;
       /// ID of the manifest to update to/verify against.
       uint64_t manifest_id;
       /// Value indicating whether file verification will still be performed
       ///    even if it's otherwise not necessary.
       bool force_verify;
+    } am_create_job;
+    /// "am run-job" command arguments.
+    struct {
+      /// ID of the item to run/resume job for.
+      tek_sc_item_id item_id;
     } am_run_job;
     /// "am cancel-job" command arguments.
     struct {

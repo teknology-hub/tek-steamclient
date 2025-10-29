@@ -64,12 +64,18 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
     return tsc_gettext("Failed to update a database row");
   case TEK_SC_ERRC_am_io:
     return tsc_gettext("Application manager job I/O error");
+  case TEK_SC_ERRC_am_job_alr_running:
+    return tsc_gettext("The job is already running");
   case TEK_SC_ERRC_am_no_man_id:
     return tsc_gettext("Steam didn't provide any manifest ID for this item");
+  case TEK_SC_ERRC_am_no_job:
+    return tsc_gettext("There is no job to run for this item");
   case TEK_SC_ERRC_am_no_ws_dir:
     return tsc_gettext(
         "Attempting to start a job for a Steam Workshop item, but no "
         "directory for such items was provided");
+  case TEK_SC_ERRC_am_unfin_job:
+    return tsc_gettext("There is already an unifnished job for this item");
   case TEK_SC_ERRC_am_uninst_unknown:
     return tsc_gettext(
         "Attempting to uninstall an item with unknown current manifest ID");
