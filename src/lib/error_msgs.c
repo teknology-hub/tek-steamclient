@@ -69,7 +69,7 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
   case TEK_SC_ERRC_am_no_man_id:
     return tsc_gettext("Steam didn't provide any manifest ID for this item");
   case TEK_SC_ERRC_am_no_job:
-    return tsc_gettext("There is no job to run for this item");
+    return tsc_gettext("There is no job for this item");
   case TEK_SC_ERRC_am_no_ws_dir:
     return tsc_gettext(
         "Attempting to start a job for a Steam Workshop item, but no "

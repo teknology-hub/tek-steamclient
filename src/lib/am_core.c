@@ -289,6 +289,7 @@ cleanup_am:
 }
 
 void tek_sc_am_destroy(tek_sc_am *am) {
+  pthread_mutex_lock(&am->item_descs_mtx);
   for (auto desc = am->item_descs; desc;
        desc = (tsci_am_item_desc *)desc->desc.next) {
     tek_sc_am_job_state expected = TEK_SC_AM_JOB_STATE_running;
@@ -303,6 +304,7 @@ void tek_sc_am_destroy(tek_sc_am *am) {
                          TEK_SC_AM_JOB_STATE_pause_pending, UINT32_MAX);
     }
   }
+  pthread_mutex_unlock(&am->item_descs_mtx);
   pthread_mutex_destroy(&am->cm_ctx.mtx);
   pthread_mutex_destroy(&am->item_descs_mtx);
   for (auto desc = am->item_descs; desc;) {
@@ -372,21 +374,12 @@ void tek_sc_am_pause_job(tek_sc_am_item_desc *item_desc) {
 }
 
 tek_sc_err tek_sc_am_cancel_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc) {
-  auto const desc = (tsci_am_item_desc *)item_desc;
-  auto const state = &desc->desc.job.state;
-  // Wait for the job to stop if it's running
-  tek_sc_am_job_state expected = TEK_SC_AM_JOB_STATE_running;
-  if (atomic_compare_exchange_strong_explicit(
-          state, &expected, TEK_SC_AM_JOB_STATE_pause_pending,
-          memory_order_acquire, memory_order_relaxed)) {
-    if (desc->dlr) {
-      tek_sc_sp_multi_dlr_cancel(desc->dlr);
-    }
-    atomic_store_explicit(&desc->sp_cancel_flag, true, memory_order_relaxed);
+  if (!(item_desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
+    return tsc_err_basic(TEK_SC_ERRC_am_no_job);
   }
-  while (expected != TEK_SC_AM_JOB_STATE_stopped) {
-    tsci_os_futex_wait((const _Atomic(uint32_t) *)state, expected, UINT32_MAX);
-    expected = atomic_load_explicit(state, memory_order_relaxed);
+  if (atomic_load_explicit(&item_desc->job.state, memory_order_relaxed) !=
+      TEK_SC_AM_JOB_STATE_stopped) {
+    return tsc_err_basic(TEK_SC_ERRC_am_job_alr_running);
   }
   // Clean job directory
   auto res = tsci_am_clean_job_dir(am->data_dir_handle, &item_desc->id);
@@ -402,44 +395,92 @@ tek_sc_err tek_sc_am_cancel_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc) {
   job->source_manifest_id = 0;
   job->target_manifest_id = 0;
   job->patch_status = TEK_SC_AM_JOB_PATCH_STATUS_unknown;
-  // Commit changes to the state database
-  static const char query[] =
-      "UPDATE items SET status = ?, job_stage = 0, job_progress_current = 0, "
-      "job_progress_total = 0, job_src_man_id = 0, job_tgt_man_id = 0, "
-      "job_patch_status = 0 WHERE app_id = ? AND depot_id = ? AND ws_item_id = "
-      "?";
-  sqlite3_stmt *stmt;
-  int sqlite_res =
-      sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
-  if (sqlite_res == SQLITE_OK) {
-    sqlite_res = sqlite3_bind_int(stmt, 1, item_desc->status);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 2, (int)item_desc->id.app_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_bind_int(stmt, 3, (int)item_desc->id.depot_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
+  int sqlite_res;
+  if (item_desc->current_manifest_id) {
+    // Commit changes to the state database
+    static const char query[] =
+        "UPDATE items SET status = ?, job_stage = 0, job_progress_current = 0, "
+        "job_progress_total = 0, job_src_man_id = 0, job_tgt_man_id = 0, "
+        "job_patch_status = 0 WHERE app_id = ? AND depot_id = ? AND ws_item_id "
+        "= ?";
+    sqlite3_stmt *stmt;
     sqlite_res =
-        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)item_desc->id.ws_item_id);
-    if (sqlite_res != SQLITE_OK) {
-      goto cleanup_upd_stmt;
-    }
-    sqlite_res = sqlite3_step(stmt);
-    if (sqlite_res == SQLITE_DONE) {
-      sqlite_res = SQLITE_OK;
-    }
-  cleanup_upd_stmt:
-    sqlite3_finalize(stmt);
-  } // if (sqlite_res == SQLITE_OK)
+        sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
+    if (sqlite_res == SQLITE_OK) {
+      sqlite_res = sqlite3_bind_int(stmt, 1, item_desc->status);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 2, (int)item_desc->id.app_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 3, (int)item_desc->id.depot_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 4, (sqlite3_int64)item_desc->id.ws_item_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_upd_stmt;
+      }
+      sqlite_res = sqlite3_step(stmt);
+      if (sqlite_res == SQLITE_DONE) {
+        sqlite_res = SQLITE_OK;
+      }
+    cleanup_upd_stmt:
+      sqlite3_finalize(stmt);
+    } // if (sqlite_res == SQLITE_OK)
+  } else { // if (item_desc->current_manifest_id)
+    // Delete item entry from the state database
+    static const char query[] = "DELETE FROM items WHERE app_id = ? AND "
+                                "depot_id = ? AND ws_item_id = ?";
+    sqlite3_stmt *stmt;
+    sqlite_res =
+        sqlite3_prepare_v2(am->db, query, sizeof query, &stmt, nullptr);
+    if (sqlite_res == SQLITE_OK) {
+      sqlite_res = sqlite3_bind_int(stmt, 1, (int)item_desc->id.app_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res = sqlite3_bind_int(stmt, 2, (int)item_desc->id.depot_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res =
+          sqlite3_bind_int64(stmt, 3, (sqlite3_int64)item_desc->id.ws_item_id);
+      if (sqlite_res != SQLITE_OK) {
+        goto cleanup_del_stmt;
+      }
+      sqlite_res = sqlite3_step(stmt);
+      if (sqlite_res == SQLITE_DONE) {
+        sqlite_res = SQLITE_OK;
+      }
+    cleanup_del_stmt:
+      sqlite3_finalize(stmt);
+    } // if (sqlite_res == SQLITE_OK)
+  } // if (item_desc->current_manifest_id) else
   if (sqlite_res != SQLITE_OK) {
     res = (tek_sc_err){.type = TEK_SC_ERR_TYPE_sqlite,
                        .primary = TEK_SC_ERRC_am_db_update,
                        .auxiliary = sqlite_res};
+  }
+  if (!item_desc->current_manifest_id &&
+      !pthread_mutex_trylock(&am->item_descs_mtx)) {
+    // Remove and free the item state descriptor
+    if (&am->item_descs->desc == item_desc) {
+      am->item_descs = (tsci_am_item_desc *)item_desc->next;
+    } else {
+      for (auto prev_desc = (tek_sc_am_item_desc *)am->item_descs; prev_desc;
+           prev_desc = prev_desc->next) {
+        if (prev_desc->next == item_desc) {
+          prev_desc->next = item_desc->next;
+          break;
+        }
+      }
+    }
+    free(item_desc);
+    pthread_mutex_unlock(&am->item_descs_mtx);
   }
   return res;
 }
