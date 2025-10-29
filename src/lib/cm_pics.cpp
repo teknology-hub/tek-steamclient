@@ -220,7 +220,7 @@ static void timeout_pics_pi(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the @ref tek_sc_cm_data_pics.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_pat(cm_client &client, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
@@ -290,7 +290,7 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_pcs(cm_client &client, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *) {
@@ -334,7 +334,7 @@ static bool handle_pcs(cm_client &client, const MessageHeader &,
 /// @return Value indicating whether the response is final, or more messages
 ///    are coming.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_ppi(cm_client &client, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {

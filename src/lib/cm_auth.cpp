@@ -193,7 +193,7 @@ static void send_status_req(lws_sorted_usec_list_t *_Nonnull sul);
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_basvc(cm_client &client, const MessageHeader &header,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
@@ -266,7 +266,7 @@ static bool handle_basvc(cm_client &client, const MessageHeader &header,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_basvq(cm_client &client, const MessageHeader &,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
@@ -311,7 +311,7 @@ static bool handle_basvq(cm_client &client, const MessageHeader &,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_gatfa(cm_client &client, const MessageHeader &,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
@@ -340,7 +340,7 @@ static bool handle_gatfa(cm_client &client, const MessageHeader &,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_gprpk(cm_client &client, const MessageHeader &,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
@@ -497,7 +497,7 @@ encrypt_success:;
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_pass(cm_client &client, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *) {
@@ -567,7 +567,7 @@ static bool handle_pass(cm_client &client, const MessageHeader &,
 ///    Pointer to the @ref tek_sc_cm_data_enc_app_ticket.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_reat(cm_client &client, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {

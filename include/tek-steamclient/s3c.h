@@ -99,7 +99,7 @@ void tek_sc_s3c_get_mrc(const char *_Nonnull url, long timeout_ms,
   gnu::access(read_only, 2), gnu::access(read_only, 3),
   gnu::access(read_only, 4), gnu::null_terminated_string_arg(2),
   gnu::null_terminated_string_arg(3), gnu::null_terminated_string_arg(4),
-  clang::callback(cb, __, __, user_data)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_s3c_auth_credentials(tek_sc_lib_ctx *_Nonnull lib_ctx,
                                  const char *_Nonnull url,
                                  const char *_Nonnull account_name,
@@ -127,7 +127,7 @@ void tek_sc_s3c_auth_credentials(tek_sc_lib_ctx *_Nonnull lib_ctx,
 ///    milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
   gnu::access(read_only, 2), gnu::access(none, 4),
-  gnu::null_terminated_string_arg(2), clang::callback(cb, __, __, user_data)]]
+  gnu::null_terminated_string_arg(2), clang::callback(cb, __, __, __)]]
 void tek_sc_s3c_auth_qr(tek_sc_lib_ctx *_Nonnull lib_ctx,
                         const char *_Nonnull url,
                         tek_sc_cm_callback_func *_Nonnull cb,

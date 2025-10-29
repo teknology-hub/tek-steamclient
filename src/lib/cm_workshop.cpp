@@ -89,7 +89,7 @@ static void timeout_qi(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the @ref tek_sc_cm_data_ws.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_gd(cm_client &client, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {
@@ -163,7 +163,7 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
 ///    Pointer to the @ref tek_sc_cm_data_ws.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_qf(cm_client &client, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {

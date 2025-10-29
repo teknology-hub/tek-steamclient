@@ -537,7 +537,7 @@ void tek_sc_cm_set_user_data(tek_sc_cm_client *_Nonnull client,
 ///    server. `data` will point to a @ref tek_sc_err indicating the
 ///    disconnection reason.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 4), gnu::access(read_write, 1),
-  clang::callback(connection_cb, client, __, __)]]
+  clang::callback(connection_cb, __, __, __)]]
 void tek_sc_cm_connect(tek_sc_cm_client *_Nonnull client,
                        tek_sc_cm_callback_func *_Nonnull connection_cb,
                        long fetch_timeout_ms,
@@ -588,7 +588,7 @@ tek_sc_cm_parse_auth_token(const char *_Nonnull token);
   gnu::access(read_only, 2), gnu::access(read_only, 3),
   gnu::access(read_only, 4), gnu::null_terminated_string_arg(2),
   gnu::null_terminated_string_arg(3), gnu::null_terminated_string_arg(4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_auth_credentials(tek_sc_cm_client *_Nonnull client,
                                 const char *_Nonnull device_name,
                                 const char *_Nonnull account_name,
@@ -612,7 +612,7 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *_Nonnull client,
 ///    Timeout for the initial message response, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
   gnu::access(read_only, 2), gnu::null_terminated_string_arg(2),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_auth_qr(tek_sc_cm_client *_Nonnull client,
                        const char *_Nonnull device_name,
                        tek_sc_cm_callback_func *_Nonnull cb, long timeout_ms);
@@ -650,7 +650,7 @@ tek_sc_cm_auth_submit_code(tek_sc_cm_client *_Nonnull client,
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
   gnu::access(read_only, 2), gnu::null_terminated_string_arg(2),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_auth_renew_token(tek_sc_cm_client *_Nonnull client,
                                 const char *_Nonnull token,
                                 tek_sc_cm_callback_func *_Nonnull cb,
@@ -668,7 +668,7 @@ void tek_sc_cm_auth_renew_token(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *_Nonnull client,
                                   tek_sc_cm_data_enc_app_ticket *_Nonnull data,
                                   tek_sc_cm_callback_func *_Nonnull cb,
@@ -690,7 +690,7 @@ void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *_Nonnull client,
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
   gnu::access(read_only, 2), gnu::null_terminated_string_arg(2),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_sign_in(tek_sc_cm_client *_Nonnull client,
                        const char *_Nonnull token,
                        tek_sc_cm_callback_func *_Nonnull cb, long timeout_ms);
@@ -706,7 +706,7 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_sign_in_anon(tek_sc_cm_client *_Nonnull client,
                             tek_sc_cm_callback_func *_Nonnull cb,
                             long timeout_ms);
@@ -723,7 +723,7 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_licenses(tek_sc_cm_client *_Nonnull client,
                             tek_sc_cm_callback_func *_Nonnull cb,
                             long timeout_ms);
@@ -742,7 +742,7 @@ void tek_sc_cm_get_licenses(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_access_token(tek_sc_cm_client *_Nonnull client,
                                 tek_sc_cm_data_pics *_Nonnull data,
                                 tek_sc_cm_callback_func *_Nonnull cb,
@@ -764,7 +764,7 @@ void tek_sc_cm_get_access_token(tek_sc_cm_client *_Nonnull client,
 ///    buffers that have to be downloaded over HTTP, the `timeout_ms` specified
 ///    in @p data applies on top of this one.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_product_info(tek_sc_cm_client *_Nonnull client,
                                 tek_sc_cm_data_pics *_Nonnull data,
                                 tek_sc_cm_callback_func *_Nonnull cb,
@@ -784,7 +784,7 @@ void tek_sc_cm_get_product_info(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message(s), in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 3), gnu::access(read_write, 1),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_changes(tek_sc_cm_client *_Nonnull client,
                            uint32_t changenumber,
                            tek_sc_cm_callback_func *_Nonnull cb,
@@ -804,7 +804,7 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_depot_key(tek_sc_cm_client *_Nonnull client,
                              tek_sc_cm_data_depot_key *_Nonnull data,
                              tek_sc_cm_callback_func *_Nonnull cb,
@@ -827,7 +827,7 @@ void tek_sc_cm_get_depot_key(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 5), gnu::access(read_write, 1),
-  gnu::access(read_only, 2), clang::callback(cb, client, __, __)]]
+  gnu::access(read_only, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_dp_info(tek_sc_cm_client *_Nonnull client,
                            const tek_sc_item_id *_Nonnull item_id,
                            uint64_t source_manifest_id,
@@ -847,7 +847,7 @@ void tek_sc_cm_get_dp_info(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_mrc(tek_sc_cm_client *_Nonnull client,
                        tek_sc_cm_data_mrc *_Nonnull data,
                        tek_sc_cm_callback_func *_Nonnull cb, long timeout_ms);
@@ -863,7 +863,7 @@ void tek_sc_cm_get_mrc(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_sp_servers(tek_sc_cm_client *_Nonnull client,
                               tek_sc_cm_callback_func *_Nonnull cb,
                               long timeout_ms);
@@ -884,7 +884,7 @@ void tek_sc_cm_get_sp_servers(tek_sc_cm_client *_Nonnull client,
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
-  gnu::access(read_write, 2), clang::callback(cb, client, data, __)]]
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_ws_get_details(tek_sc_cm_client *_Nonnull client,
                               tek_sc_cm_data_ws *_Nonnull data,
                               tek_sc_cm_callback_func *_Nonnull cb,
@@ -914,7 +914,7 @@ void tek_sc_cm_ws_get_details(tek_sc_cm_client *_Nonnull client,
 ///    Timeout for the response message, in milliseconds.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2, 6), gnu::access(read_write, 1),
   gnu::access(read_write, 2), gnu::access(read_only, 5),
-  gnu::null_terminated_string_arg(5), clang::callback(cb, client, data, __)]]
+  gnu::null_terminated_string_arg(5), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_ws_query_items(tek_sc_cm_client *_Nonnull client,
                               tek_sc_cm_data_ws *_Nonnull data, uint32_t app_id,
                               int page, const char *_Nullable search_query,
