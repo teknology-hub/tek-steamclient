@@ -133,7 +133,7 @@ static void timeout_gss(lws_sorted_usec_list_t *_Nonnull sul) {
 ///    Pointer to the @ref tek_sc_cm_data_depot_key.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_gddk(cm_client &client, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
@@ -178,7 +178,7 @@ static bool handle_gddk(cm_client &client, const MessageHeader &,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_gdpi(cm_client &client, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *) {
@@ -212,7 +212,7 @@ static bool handle_gdpi(cm_client &client, const MessageHeader &,
 ///    Pointer to the @ref tek_sc_cm_data_mrc.
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
-  gnu::access(read_write, 6), clang::callback(cb, client, inout_data, __)]]
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_gmrc(cm_client &client, const MessageHeader &header,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
@@ -251,7 +251,7 @@ static bool handle_gmrc(cm_client &client, const MessageHeader &header,
 ///    Pointer to the callback function.
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, client, __, __)]]
+  clang::callback(cb, __, __, __)]]
 static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
