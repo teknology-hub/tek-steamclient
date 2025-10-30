@@ -64,6 +64,23 @@ struct tscp_amji_ctx {
 
 //===-- Private functions -------------------------------------------------===//
 
+/// Count the total number of chunks in specified directory tree.
+///
+/// @param [in] dir
+///    Pointer to the delta directory entry to process.
+/// @return Total number of chunks in the directory tree.
+[[gnu::nonnull(1), gnu::access(read_only, 1)]]
+static int64_t tscp_amji_count_dir(const tek_sc_dd_dir *_Nonnull dir) {
+  int64_t res = 0;
+  for (int i = 0; i < dir->num_files; ++i) {
+    res += dir->files[i].file->num_chunks;
+  }
+  for (int i = 0; i < dir->num_subdirs; ++i) {
+    res += tscp_amji_count_dir(&dir->subdirs[i]);
+  }
+  return res;
+}
+
 /// Install data in specified directory.
 ///
 /// @param [in, out] ctx
@@ -344,6 +361,7 @@ static bool tscp_amji_process_dir(tscp_amji_ctx *_Nonnull ctx,
           atomic_store_explicit(&subdir->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
                                 memory_order_relaxed);
           tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
+          atomic_fetch_add_explicit(&ctx->progress, tscp_amji_count_dir(subdir), memory_order_relaxed);
           if (atomic_fetch_sub_explicit(&dir->num_rem_children_a, 1,
                                         memory_order_relaxed) == 1) {
             tsci_am_job_finish_dir(dir);
