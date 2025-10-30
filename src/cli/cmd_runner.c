@@ -155,7 +155,8 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     default:
       stage_str = tsc_gettext("Unknown stage");
     }
-    printf(tsc_gettext("\033[2K\rJob stage updated: %s\n"), stage_str);
+    fputs("\033[2K\r", stdout);
+    printf(tsc_gettext("Job stage updated: %s\n"), stage_str);
     start_progress =
         (types & TEK_SC_AM_UPD_TYPE_progress) ? desc->job.progress_current : 0;
     start_ticks = tscl_os_get_ticks();
@@ -221,11 +222,12 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
         tscl_os_strlcat_utf8(eta_buf, unit_buf, sizeof eta_buf);
       }
     }
+    fputs("\033[2K\r", stdout);
     switch (desc->job.stage) {
     case TEK_SC_AM_JOB_STAGE_verifying:
     case TEK_SC_AM_JOB_STAGE_patching:
       // Percentage display
-      printf(tsc_gettext("\033[2K\r[%s] %6.2f%%%s\r"), bar,
+      printf(tsc_gettext("[%s] %6.2f%%%s"), bar,
              (double)(current * 100) / (double)total, eta_buf);
       break;
     case TEK_SC_AM_JOB_STAGE_dw_manifest:
@@ -270,8 +272,8 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
         snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u kbit/s"),
                  (unsigned)speed / 1000);
       }
-      printf(tsc_gettext("\033[2K\r[%s] %12s/%-12s (%-12s)%s\r"), bar, cur_buf,
-             total_buf, speed_buf, eta_buf);
+      printf(tsc_gettext("[%s] %12s/%-12s (%-12s)%s"), bar, cur_buf, total_buf,
+             speed_buf, eta_buf);
       break;
     }
     case TEK_SC_AM_JOB_STAGE_installing:
@@ -280,7 +282,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       if (!num_width) {
         num_width = snprintf(nullptr, 0, "%llu", (unsigned long long)total);
       }
-      printf(tsc_gettext("\033[2K\r[%s] %*llu/%llu%s\r"), bar, num_width,
+      printf(tsc_gettext("[%s] %*llu/%llu%s"), bar, num_width,
              (unsigned long long)current, (unsigned long long)total, eta_buf);
       break;
     }
@@ -648,6 +650,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                           : tsc_gettext("The item is already up to date"));
         return true;
       default:
+        puts("");
         tscl_print_err(&res);
         return false;
       }
