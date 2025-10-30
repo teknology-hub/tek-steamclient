@@ -763,6 +763,11 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     _Atomic(uint32_t) ftx = 0;
     switch (cmd->s3c_signin.type) {
     case TSCL_S3_AUTH_TYPE_credentials:
+      if (strstr(cmd->s3c_signin.url, "https://") != cmd->s3c_signin.url) {
+        puts(tsc_gettext(
+            "WARNING: Connection to specified server is not encrypted, "
+            "credentials sent to it are vulnerable to eavesdropping!"));
+      }
       fputs(tsc_gettext("Enter your account name: "), stdout);
       char account_name[128];
       if (!fgets(account_name, sizeof account_name, stdin)) {
