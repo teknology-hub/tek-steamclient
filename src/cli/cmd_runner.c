@@ -437,8 +437,10 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "  am set-workshop-dir <path> - Set Steam Workshop directory path for "
         "current application manager instance. You cannot run jobs for Steam "
         "Workshop items before executing this command\n"
-        "  am status - Get status of all items managed by current application "
-        "manager instance, and check for their updates\n"
+        "  am status - (interactive mode only) Get current status of all items "
+        "managed by current application manager instance\n"
+        "  am check-for-updates - Check for all item updates. The results can "
+        "be viewed via \"am status\" command\n"
         "For the commands below, <item_id> is either <app_id>-<depot_id> or "
         "<app_id>-<depot_id>-<workshop_item_id>\n"
         "  am create-job <item_id> <manifest_id> <force_verify> - Create a job "
@@ -556,46 +558,45 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     }
   case TSCL_CMD_TYPE_am_status:
     if (tscl_g_ctx.am) {
-      auto const res = tek_sc_am_check_for_upds(tscl_g_ctx.am, 10000);
-      if (!tek_sc_err_success(&res)) {
-        tscl_print_err(&res);
-        return false;
-      }
-      if (tscl_g_ctx.interactive) {
-        tek_sc_am_item_descs_lock(tscl_g_ctx.am);
-        for (auto desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, nullptr); desc;
-             desc = desc->next) {
-          char item_id[43];
-          snprintf(item_id, sizeof item_id,
-                   desc->id.ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
-                                       : "%" PRIu32 "-%" PRIu32,
-                   desc->id.app_id, desc->id.depot_id, desc->id.ws_item_id);
-          char status[256];
-          status[0] = '\0';
-          if (desc->current_manifest_id) {
-            tscl_os_strlcat_utf8(status, tsc_gettext("installed"),
-                                 sizeof status);
-          }
-          if (desc->status & TEK_SC_AM_ITEM_STATUS_job) {
-            if (status[0]) {
-              tscl_os_strlcat_utf8(status, ", ", sizeof status);
-            }
-            tscl_os_strlcat_utf8(status, tsc_gettext("job paused"),
-                                 sizeof status);
-          } else if (desc->current_manifest_id &&
-                     (desc->status & TEK_SC_AM_ITEM_STATUS_upd_available)) {
-            tscl_os_strlcat_utf8(status, ", ", sizeof status);
-            tscl_os_strlcat_utf8(status, tsc_gettext("update available"),
-                                 sizeof status);
-          }
-          printf(tsc_gettext("%s: [%s]\n"), item_id, status);
+      tek_sc_am_item_descs_lock(tscl_g_ctx.am);
+      for (auto desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, nullptr); desc;
+           desc = desc->next) {
+        char item_id[43];
+        snprintf(item_id, sizeof item_id,
+                 desc->id.ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
+                                     : "%" PRIu32 "-%" PRIu32,
+                 desc->id.app_id, desc->id.depot_id, desc->id.ws_item_id);
+        if (desc->status & TEK_SC_AM_ITEM_STATUS_job) {
+          printf(tsc_gettext("%s: job %llu->%llu\n"), item_id,
+                 (unsigned long long)desc->job.source_manifest_id,
+                 (unsigned long long)desc->job.target_manifest_id);
+        } else {
+          printf(tsc_gettext("%s: manifest ID %llu%s\n"), item_id,
+                 (unsigned long long)desc->current_manifest_id,
+                 (desc->status & TEK_SC_AM_ITEM_STATUS_upd_available)
+                     ? tsc_gettext(", update available")
+                     : "");
         }
-        tek_sc_am_item_descs_unlock(tscl_g_ctx.am);
-      } // if (tscl_g_ctx.interactive)
+      }
+      tek_sc_am_item_descs_unlock(tscl_g_ctx.am);
       return true;
     } else { // if (tscl_g_ctx.am)
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to get status of\n"),
+            stderr);
+      return false;
+    } // if (tscl_g_ctx.am) else
+  case TSCL_CMD_TYPE_am_check_for_updates:
+    if (tscl_g_ctx.am) {
+      auto const res = tek_sc_am_check_for_upds(tscl_g_ctx.am, 20000);
+      if (!tek_sc_err_success(&res)) {
+        tscl_print_err(&res);
+        return false;
+      }
+      return true;
+    } else { // if (tscl_g_ctx.am)
+      fputs(tsc_gettext("Error: There is no initialized application manager "
+                        "instance to check for updates for\n"),
             stderr);
       return false;
     } // if (tscl_g_ctx.am) else
