@@ -57,9 +57,11 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         "Workshop directory path for current application manager instance. You "
         "cannot run jobs for Steam Workshop items before executing this "
         "command\n"
-        "  am status                                             Get status of "
-        "all items managed by current application manager instance, and check "
-        "for their updates\n"
+        "  am status                                             (interactive "
+        "mode only) Get current status of all items managed by current "
+        "application manager instance\n"
+        "  am check-for-updates                                  Check for all "
+        "item updates. The results can be viewed via \"am status\" command\n"
         " For the commands below, <item_id> is either <app_id>-<depot_id> or "
         "<app_id>-<depot_id>-<workshop_item_id>\n"
         "  am create-job <item_id> <manifest_id> <force_verify>  Create a job "
@@ -131,6 +133,9 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         break;
       case TSCL_CMD_TYPE_exit:
         name = "exit/quit";
+        break;
+      case TSCL_CMD_TYPE_am_status:
+        name = "am status";
         break;
       case TSCL_CMD_TYPE_s3c_signin:
         name = "s3c signin";

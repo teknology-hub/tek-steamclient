@@ -62,6 +62,9 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
     } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("status"))) {
       cmd->type = TSCL_CMD_TYPE_am_status;
       return ind + 1;
+    } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("check-for-updates"))) {
+      cmd->type = TSCL_CMD_TYPE_am_check_for_updates;
+      return ind + 1;
     } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("create-job"))) {
       cmd->type = TSCL_CMD_TYPE_am_create_job;
       if (++ind == argc) {

@@ -101,9 +101,11 @@ enum tscl_cmd_type {
   /// Set Steam Workshop directory path for current application manager
   ///    instance.
   TSCL_CMD_TYPE_am_set_workshop_dir,
-  /// Get status of all items managed by current application manager
-  ///    instance, and check for their updates.
+  /// Get current status of all items managed by current application manager
+  ///    instance.
   TSCL_CMD_TYPE_am_status,
+  /// Check for item updates.
+  TSCL_CMD_TYPE_am_check_for_updates,
   /// Create an application manager job.
   TSCL_CMD_TYPE_am_create_job,
   /// Run/resume an application manager job.
