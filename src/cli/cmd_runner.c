@@ -717,7 +717,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
 #ifdef TEK_SCB_S3C
   case TSCL_CMD_TYPE_s3c_sync_manifest: {
     auto const res = tek_sc_s3c_fetch_manifest(
-        tscl_g_ctx.lib_ctx, cmd->s3c_sync_manifest.url, 10000);
+        tscl_g_ctx.lib_ctx, cmd->s3c_sync_manifest.url, 30000);
     if (!tek_sc_err_success(&res)) {
       tscl_print_err(&res);
       return false;
@@ -804,7 +804,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
       }
       tek_sc_s3c_auth_credentials(tscl_g_ctx.lib_ctx, cmd->s3c_signin.url,
                                   account_name, password, tscl_signin_cb, &ftx,
-                                  60000);
+                                  600000);
       break;
     case TSCL_S3_AUTH_TYPE_qr:
       tek_sc_s3c_auth_qr(tscl_g_ctx.lib_ctx, cmd->s3c_signin.url,
@@ -812,7 +812,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     }
     tscl_os_reg_sig_handler(tscl_signin_sig_handler);
     while (!atomic_load_explicit(&ftx, memory_order_acquire)) {
-      tscl_os_futex_wait(&ftx, 0, 65000);
+      tscl_os_futex_wait(&ftx, 0, 605000);
     }
     tscl_os_unreg_sig_handler();
     if (tek_sc_err_success(&tscl_s3c_res)) {
