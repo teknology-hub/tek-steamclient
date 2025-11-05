@@ -31,8 +31,10 @@
 #include <forward_list>
 #include <libwebsockets.h>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <sqlite3.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -164,9 +166,6 @@ struct tek_sc_lib_ctx {
   /// Value indicating whether @ref lws_thread should destroy @ref lws_ctx and
   ///    exit as soon as it can.
   std::atomic_bool cleanup_requested;
-  /// Value indicating whether @ref tek_sc_lib_cleanup should attempt saving
-  ///    cached data to a file.
-  bool use_file_cache;
   /// Futex that is set to 1 after @ref lws_ctx is initialized.
   std::atomic_uint32_t lws_init;
   /// CM client instances assinged to the context.
@@ -184,6 +183,9 @@ struct tek_sc_lib_ctx {
   std::map<std::uint32_t, tek_sc_aes256_key> depot_keys;
   /// Mutex locking concurrent write access to @ref depot_keys.
   std::shared_mutex depot_keys_mtx;
+  /// Cache database connection handle.
+  std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> cache{nullptr,
+                                                              sqlite3_close_v2};
 #ifdef TEK_SCB_S3C
   /// Known tek-s3 servers.
   std::vector<tek::steamclient::s3c::server> s3_servers;
