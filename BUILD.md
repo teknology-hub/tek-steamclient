@@ -41,7 +41,7 @@ Here's the list of libraries that tek-steamclient depends on:
 |Library|Usage|
 |-|-|
 |liblzma from [XZ Utils](https://tukaani.org/xz)|LZMA decompression|
-|[libzip](https://libzip.org)|Zip archive extraction|
+|[minizip](https://github.com/madler/zlib/tree/master/contrib/minizip) or [minizip-ng](https://github.com/zlib-ng/minizip-ng)|Zip archive extraction|
 |[libzstd](https://github.com/facebook/zstd)|Zstandard decompression|
 
 ### Application manager API dependencies
