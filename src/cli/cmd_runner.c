@@ -109,7 +109,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       break;
     }
     case TEK_SC_AM_JOB_STATE_pause_pending:
-      puts(tsc_gettext("A pause has been requested for the job"));
+      puts(tsc_gettext("\nA pause has been requested for the job"));
       break;
     default:
     }
