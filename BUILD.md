@@ -66,9 +66,9 @@ cd tek-steamclient
 ```
 , or download a point release e.g.
 ```sh
-curl -LOJ https://github.com/teknology-hub/tek-steamclient/releases/download/v1.0.0/tek-steamclient-1.0.0.tar.gz`
-tar -xzf tek-steamclient-1.0.0.tar.gz
-cd tek-steamclient-1.0.0
+curl -LOJ https://github.com/teknology-hub/tek-steamclient/releases/download/vX.Y.Z/tek-steamclient-X.Y.Z.tar.gz`
+tar -xzf tek-steamclient-X.Y.Z.tar.gz
+cd tek-steamclient-X.Y.Z
 ```
 
 ## 3. Setup build directory

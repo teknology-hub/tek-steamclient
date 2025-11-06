@@ -21,7 +21,7 @@ There are statically linked binaries for libtek-steamclient-1.dll and tek-sc-cli
 
 ### Linux
 
-There is `tek-sc-cli-x86_64.AppImage` in [releases](https://github.com/teknology-hub/tek-steamclient/releases), which is built in a Fedora 42 container and signed by Nuclearist's [GPG key](https://teknology-hub.com/public-keys/nuclearist.asc). It can be run with `TEK_SC_USE_SYSTEM_LIBS=1` environment variable to prefer system libraries over bundled ones.
+There is `tek-sc-cli-x86_64.AppImage` in [releases](https://github.com/teknology-hub/tek-steamclient/releases), which is built in a Fedora 43 container and signed by Nuclearist's [GPG key](https://teknology-hub.com/public-keys/nuclearist.asc). It can be run with `TEK_SC_USE_SYSTEM_LIBS=1` environment variable to prefer system libraries over bundled ones.
 
 To use the library, you have to install a package for your distro listed below, or [build from source](https://github.com/teknology-hub/tek-steamclient/blob/main/BUILD.md) if it's not there.
 
