@@ -71,6 +71,22 @@ typedef _Null_unspecified HANDLE tek_sc_os_handle;
 /// Make a string literal for @ref tek_sc_os_char string.
 #define TEK_SC_OS_STR(str) L##str
 
+#ifndef TEK_SC_STATIC
+
+/// If library was built with localization support, extract localization files
+///    to specified directory and use them.
+///
+/// This will also call `setlocale` to use OS current locale.
+///
+/// @param [in] path
+///    Path to the directory where a directory structure similar to Unix'
+///    `/usr/locale` will be created at, as a null-terminated string.
+[[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_only, 1),
+  gnu::null_terminated_string_arg(1)]]
+void tek_sc_load_locale(const tek_sc_os_char *_Nonnull path);
+
+#endif // ndef TEK_SC_STATIC
+
 #elifdef __linux__ // def _WIN32
 // Linux-specific declarations
 

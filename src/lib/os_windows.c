@@ -15,12 +15,17 @@
 #include "os.h"
 
 #include "common/error.h"
+#include "config.h"               // IWYU pragma: keep
 #include "tek-steamclient/base.h" // IWYU pragma: keep
 #include "tek-steamclient/content.h"
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
 
 #include <ioringapi.h>
+#ifdef TEK_SCB_GETTEXT
+#include <libintl.h>
+#include <locale.h>
+#endif // def TEK_SCB_GETTEXT
 #include <limits.h>
 #include <ntstatus.h>
 #include <pthread.h>
@@ -1357,3 +1362,128 @@ int tsci_os_str_to_pstr(const char *restrict str, int len,
                         tek_sc_os_char *restrict pstr) {
   return MultiByteToWideChar(CP_UTF8, 0, str, len, pstr, INT_MAX);
 }
+
+//===-- Public function ---------------------------------------------------===//
+
+#ifndef TEK_SC_STATIC
+
+#ifdef TEK_SCB_GETTEXT
+
+void tek_sc_load_locale(const tek_sc_os_char *path) {
+  setlocale(LC_ALL, ".UTF-8");
+  HMODULE module;
+  if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCWSTR)tek_sc_load_locale, &module)) {
+    return;
+  }
+  auto const list_res_info =
+      FindResourceW(module, MAKEINTRESOURCEW(1000), RT_RCDATA);
+  if (!list_res_info) {
+    return;
+  }
+  auto const list_res = LoadResource(module, list_res_info);
+  if (!list_res) {
+    return;
+  }
+  const PCWSTR list = LockResource(list_res);
+  if (!list || !*list) {
+    return;
+  }
+  UNICODE_STRING path_str;
+  if (!RtlDosPathNameToNtPathName_U(path, &path_str, nullptr, nullptr)) {
+    return;
+  }
+  OBJECT_ATTRIBUTES attrs = {.Length = sizeof attrs,
+                             .ObjectName = &path_str,
+                             .Attributes = OBJ_CASE_INSENSITIVE};
+  IO_STATUS_BLOCK isb;
+  HANDLE dir_handle;
+  auto status = NtOpenFile(&dir_handle, FILE_TRAVERSE, &attrs, &isb,
+                           FILE_SHARE_VALID_FLAGS, FILE_DIRECTORY_FILE);
+  RtlFreeUnicodeString(&path_str);
+  if (!NT_SUCCESS(status)) {
+    return;
+  }
+  int res_id = 1001;
+  for (auto loc_name = list; *loc_name;
+       loc_name += wcslen(loc_name) + 1, ++res_id) {
+    auto const loc_res_info =
+        FindResourceW(module, MAKEINTRESOURCEW(res_id), RT_RCDATA);
+    if (!loc_res_info) {
+      break;
+    }
+    auto const loc_res = LoadResource(module, loc_res_info);
+    if (!loc_res) {
+      continue;
+    }
+    auto loc_data = LockResource(loc_res);
+    if (!loc_data) {
+      continue;
+    }
+    auto loc_data_size = SizeofResource(module, loc_res_info);
+    if (!loc_data_size) {
+      continue;
+    }
+    attrs.RootDirectory = dir_handle;
+    auto name_size = wcslen(loc_name) * sizeof *loc_name;
+    path_str = (UNICODE_STRING){.Length = name_size,
+                                .MaximumLength = name_size,
+                                .Buffer = (PWSTR)loc_name};
+    HANDLE sub_handle;
+    status = NtCreateFile(&sub_handle, FILE_TRAVERSE, &attrs, &isb, nullptr,
+                          FILE_ATTRIBUTE_DIRECTORY, FILE_SHARE_VALID_FLAGS,
+                          FILE_OPEN_IF, FILE_DIRECTORY_FILE, nullptr, 0);
+    if (!NT_SUCCESS(status)) {
+      continue;
+    }
+    attrs.RootDirectory = sub_handle;
+    name_size = wcslen(L"LC_MESSAGES") * sizeof(WCHAR);
+    path_str = (UNICODE_STRING){.Length = name_size,
+                                .MaximumLength = name_size,
+                                .Buffer = L"LC_MESSAGES"};
+    status = NtCreateFile(&sub_handle, FILE_TRAVERSE, &attrs, &isb, nullptr,
+                          FILE_ATTRIBUTE_DIRECTORY, FILE_SHARE_VALID_FLAGS,
+                          FILE_OPEN_IF, FILE_DIRECTORY_FILE, nullptr, 0);
+    NtClose(attrs.RootDirectory);
+    if (!NT_SUCCESS(status)) {
+      continue;
+    }
+    attrs.RootDirectory = sub_handle;
+    name_size = wcslen(L"tek-steamclient.mo") * sizeof(WCHAR);
+    path_str = (UNICODE_STRING){.Length = name_size,
+                                .MaximumLength = name_size,
+                                .Buffer = L"tek-steamclient.mo"};
+    status = NtCreateFile(&sub_handle,
+                          FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE,
+                          &attrs, &isb, nullptr, FILE_ATTRIBUTE_NORMAL,
+                          FILE_SHARE_READ, FILE_OPEN_IF,
+                          FILE_SEQUENTIAL_ONLY | FILE_SYNCHRONOUS_IO_NONALERT |
+                              FILE_NON_DIRECTORY_FILE,
+                          nullptr, 0);
+    NtClose(attrs.RootDirectory);
+    if (!NT_SUCCESS(status)) {
+      continue;
+    }
+    while (loc_data_size) {
+      if (!NT_SUCCESS(NtWriteFile(sub_handle, nullptr, nullptr, nullptr, &isb,
+                                  loc_data, loc_data_size, nullptr, nullptr)) ||
+          !isb.Information) {
+        break;
+      }
+      loc_data += isb.Information;
+      loc_data_size -= isb.Information;
+    }
+    NtClose(sub_handle);
+  } // for (auto loc_name : list)
+  NtClose(dir_handle);
+  libintl_wbindtextdomain("tek-steamclient", path);
+}
+
+#else // def TEK_SCB_GETTEXT
+
+void tek_sc_load_locale(const tek_sc_os_char *) {}
+
+#endif // def TEK_SCB_GETTEXT else
+
+#endif // ndef TEK_SC_STATIC

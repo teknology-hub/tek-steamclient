@@ -58,7 +58,10 @@ if is_windows
     compiler.find_library('synchronization')
   ]
   if (get_option('gettext'))
-    win_deps += compiler.find_library('intl')
+    win_deps += [
+      dependency('iconv'),
+      compiler.find_library('intl')
+    ]
   endif # get_option('gettext')
 endif # is_windows
 zlib_dep = dependency('zlib-ng', required: get_option('zlib_ng'))

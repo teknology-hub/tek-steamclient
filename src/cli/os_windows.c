@@ -20,7 +20,7 @@
 
 #ifdef TEK_SCB_GETTEXT
 #include <libintl.h>
-#endif // TEK_SCB_GETTEXT
+#endif // def TEK_SCB_GETTEXT
 #include <process.h>
 #include <shlobj.h>
 #include <stdatomic.h>
@@ -125,37 +125,41 @@ void tscl_os_win_setup(void) {
   SetConsoleOutputCP(CP_UTF8);
 #ifdef TEK_SCB_GETTEXT
   // Extract localization files
-  auto const module = GetModuleHandleW(
-#ifdef TEK_SC_STATIC
-      nullptr
-#else  // def TEK_SC_STATIC
-      L"libtek-steamclient-" TEK_SCB_SOVERSION ".dll"
-#endif // def TEK_SC_STATIC else
-  );
-  if (!module) {
-    goto skip_loc;
-  }
-  auto const list_res_info =
-      FindResourceW(module, MAKEINTRESOURCEW(1000), RT_RCDATA);
-  if (!list_res_info) {
-    goto skip_loc;
-  }
-  auto const list_res = LoadResource(module, list_res_info);
-  if (!list_res) {
-    goto skip_loc;
-  }
-  const PCWSTR list = LockResource(list_res);
-  if (!list || !*list) {
-    goto skip_loc;
-  }
   PWSTR path;
   if (SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_CREATE, nullptr,
                            &path) != S_OK) {
     goto skip_loc;
   }
+  auto const path_len = wcslen(path);
+  auto const path_size = path_len * sizeof *path;
+  static const WCHAR rel_path[] = L"\\tek-steamclient\\locale";
+  const PWSTR buf = malloc(path_size + sizeof rel_path);
+  if (!buf) {
+    goto free_path;
+  }
+  memcpy(buf, path, path_size);
+  memcpy(&buf[path_len], rel_path, sizeof rel_path);
+#ifdef TEK_SC_STATIC
+  auto const module = GetModuleHandleW(nullptr);
+  if (!module) {
+    goto free_buf;
+  }
+  auto const list_res_info =
+      FindResourceW(module, MAKEINTRESOURCEW(1000), RT_RCDATA);
+  if (!list_res_info) {
+    goto free_buf;
+  }
+  auto const list_res = LoadResource(module, list_res_info);
+  if (!list_res) {
+    goto free_buf;
+  }
+  const PCWSTR list = LockResource(list_res);
+  if (!list || !*list) {
+    goto free_buf;
+  }
   UNICODE_STRING path_str;
   if (!RtlDosPathNameToNtPathName_U(path, &path_str, nullptr, nullptr)) {
-    goto free_path;
+    goto free_buf;
   }
   OBJECT_ATTRIBUTES attrs = {.Length = sizeof attrs,
                              .ObjectName = &path_str,
@@ -166,7 +170,7 @@ void tscl_os_win_setup(void) {
                            FILE_SHARE_VALID_FLAGS, FILE_DIRECTORY_FILE);
   RtlFreeUnicodeString(&path_str);
   if (!NT_SUCCESS(status)) {
-    goto free_path;
+    goto free_buf;
   }
   attrs.RootDirectory = dir_handle;
   USHORT name_size = wcslen(L"tek-steamclient") * sizeof(WCHAR);
@@ -178,7 +182,7 @@ void tscl_os_win_setup(void) {
                         FILE_OPEN_IF, FILE_DIRECTORY_FILE, nullptr, 0);
   NtClose(attrs.RootDirectory);
   if (!NT_SUCCESS(status)) {
-    goto free_path;
+    goto free_buf;
   }
   attrs.RootDirectory = dir_handle;
   name_size = wcslen(L"locale") * sizeof(WCHAR);
@@ -189,7 +193,7 @@ void tscl_os_win_setup(void) {
                         FILE_OPEN_IF, FILE_DIRECTORY_FILE, nullptr, 0);
   NtClose(attrs.RootDirectory);
   if (!NT_SUCCESS(status)) {
-    goto free_path;
+    goto free_buf;
   }
   int res_id = 1001;
   for (auto loc_name = list; *loc_name;
@@ -263,16 +267,14 @@ void tscl_os_win_setup(void) {
     NtClose(sub_handle);
   } // for (auto loc_name : list)
   NtClose(dir_handle);
-  auto const path_len = wcslen(path);
-  auto const path_size = path_len * sizeof *path;
-  static const WCHAR rel_path[] = L"\\tek-steamclient\\locale";
-  const PWSTR buf = malloc(path_size + sizeof rel_path);
-  if (!buf) {
-    goto free_path;
-  }
-  memcpy(buf, path, path_size);
-  memcpy(&buf[path_len], rel_path, sizeof rel_path);
   libintl_wbindtextdomain("tek-steamclient", buf);
+free_buf:
+#else  // def TEK_SC_STATIC
+  tek_sc_load_locale(buf);
+  // Text domains are set per-module, need to do it here as well to localize
+  //    tek-sc-cli messages
+  libintl_wbindtextdomain("tek-steamclient", buf);
+#endif // def TEK_SC_STATIC else
   free(buf);
 free_path:
   CoTaskMemFree(path);
