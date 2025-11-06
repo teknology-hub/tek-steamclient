@@ -64,7 +64,14 @@ endif # is_windows
 zlib_dep = dependency('zlib-ng', required: get_option('zlib_ng'))
 if not zlib_dep.found()
   zlib_dep = dependency('zlib')
-endif
+endif # not zlib_dep.found()
+mz_needed = get_option('content') or get_option('steampipe')
+if mz_needed
+  mz_dep = dependency('minizip-ng', required: get_option('minizip_ng'))
+  if not mz_dep.found()
+    mz_dep = dependency('minizip')
+  endif # not mz_dep.found()
+endif # mz_needed
 liburing_valid = get_option('app_manager') and not is_windows
 if liburing_valid
   liburing_dep = dependency('liburing', required: get_option('io_uring'))
@@ -115,17 +122,17 @@ lib_deps = [
   dependency('threads'),
   zlib_dep
 ]
-if (get_option('content') or get_option('steampipe'))
-  lib_deps += dependency('libzip')
-endif # get_option('content') or get_option('steampipe')
-if (get_option('steampipe'))
+if mz_needed
+  lib_deps += mz_dep
+endif # mz_needed
+if get_option('steampipe')
   libzstd_dep = dependency('libzstd')
   lib_deps += [
     dependency('liblzma'),
     libzstd_dep
   ]
 endif # get_option('steampipe')
-if (get_option('app_manager'))
+if get_option('app_manager')
   lib_deps += subproject(
     'ValveFileVDF'
   ).get_variable('valve_file_vdf_dep')

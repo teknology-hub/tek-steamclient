@@ -32,6 +32,7 @@
 #include "tek/steamclient/content/manifest_payload.pb.h"
 #include "tek/steamclient/content/patch_payload.pb.h"
 #include "utils.h"
+#include "zip_api.h"
 
 #include <algorithm>
 #include <compare>
@@ -47,7 +48,6 @@
 #include <ranges>
 #include <span>
 #include <string_view>
-#include <zip.h>
 
 namespace tek::steamclient::content {
 
@@ -608,48 +608,26 @@ extern "C" {
 tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
                            const tek_sc_aes256_key depot_key,
                            tek_sc_depot_manifest *manifest) {
-  std::unique_ptr<unsigned char[]> unzipped_data;
-  zip_uint64_t unzipped_data_size;
   // Unzip the manifest
-  {
-    const std::unique_ptr<zip_source_t, decltype(&zip_source_close)> zip_source{
-        zip_source_buffer_create(data, data_size, 0, nullptr),
-        zip_source_close};
-    if (!zip_source) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-    const std::unique_ptr<zip_t, decltype(&zip_close)> zip_archive{
-        zip_open_from_source(zip_source.get(), ZIP_RDONLY, nullptr), zip_close};
-    if (!zip_archive) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-    zip_stat_t zip_stat;
-    if (zip_stat_index(zip_archive.get(), 0, 0, &zip_stat) < 0) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-    if (!(zip_stat.valid & ZIP_STAT_SIZE) ||
-        zip_stat.size < sizeof(file_section_hdr) * 2) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-    unzipped_data_size = zip_stat.size;
-    const std::unique_ptr<zip_file_t, decltype(&zip_fclose)> zip_file{
-        zip_fopen_index(zip_archive.get(), 0, 0), zip_fclose};
-    if (!zip_file) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-    unzipped_data.reset(new unsigned char[unzipped_data_size]);
-    if (zip_fread(zip_file.get(), unzipped_data.get(), unzipped_data_size) !=
-        static_cast<zip_int64_t>(unzipped_data_size)) {
-      return dm_parse_err(TEK_SC_ERRC_zip);
-    }
-  } // Unzip scope
+  int unzipped_data_size;
+  const auto handle{
+      tsci_zip_open_get_size(data, data_size, &unzipped_data_size)};
+  if (!handle) {
+    return dm_parse_err(TEK_SC_ERRC_zip);
+  }
+  const auto unzipped_data{
+      std::make_unique_for_overwrite<unsigned char[]>(unzipped_data_size)};
+  if (!tsci_zip_read_close(handle, unzipped_data.get(), unzipped_data_size)) {
+    return dm_parse_err(TEK_SC_ERRC_zip);
+  }
   // Check section headers and sizes
   const auto &payload_hdr{
       *reinterpret_cast<const file_section_hdr *>(unzipped_data.get())};
   if (payload_hdr.magic != manifest_payload_magic) {
     return dm_parse_err(TEK_SC_ERRC_magic_mismatch);
   }
-  if (sizeof(file_section_hdr) * 2 + payload_hdr.size > unzipped_data_size) {
+  if (sizeof(file_section_hdr) * 2 + payload_hdr.size >
+      static_cast<std::uint32_t>(unzipped_data_size)) {
     return dm_parse_err(TEK_SC_ERRC_invalid_data);
   }
   file_section_hdr metadata_hdr;
@@ -661,7 +639,7 @@ tek_sc_err tek_sc_dm_parse(const void *data, int data_size,
   }
   if (sizeof payload_hdr + payload_hdr.size + sizeof metadata_hdr +
           metadata_hdr.size >
-      unzipped_data_size) {
+      static_cast<std::uint32_t>(unzipped_data_size)) {
     return dm_parse_err(TEK_SC_ERRC_invalid_data);
   }
   // Parse Protobuf data

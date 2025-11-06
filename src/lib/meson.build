@@ -15,6 +15,11 @@ lib_src = [
 if get_option('s3_client')
   lib_src += 'src/lib/s3c.cpp'
 endif # get_option('s3_client')
+if mz_needed
+  lib_src += (mz_dep.name() == 'minizip-ng'
+    ? 'src/lib/zip_mzng.c'
+    : 'src/lib/zip_mz.c')
+endif # mz_needed
 if get_option('content')
   lib_src += [
     'src/lib/depot_delta_compute.cpp',

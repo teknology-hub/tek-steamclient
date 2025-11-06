@@ -23,6 +23,7 @@
 #include "tek-steamclient/content.h"
 #include "tek-steamclient/error.h"
 #include "utils.h"
+#include "zip_api.h"
 #include "zlib_api.h"
 
 #include <curl/curl.h>
@@ -37,7 +38,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <zip.h>
 #include <zstd.h>
 
 /// @def TSCP_MAX_NUM_RETRIES
@@ -433,42 +433,13 @@ static void tscp_chunk_dec_ctx_free(tek_sc_sp_dec_ctx *_Nonnull ctx) {
 static tek_sc_errc tscp_decomp_chunk_zip(const void *_Nonnull input,
                                          int input_size,
                                          void *_Nonnull output) {
-  auto const source = zip_source_buffer_create(input, input_size, 0, nullptr);
-  if (!source) {
+  int output_size;
+  auto const handle = tsci_zip_open_get_size(input, input_size, &output_size);
+  if (!handle) {
     return TEK_SC_ERRC_zip;
   }
-  tek_sc_errc res;
-  auto const archive = zip_open_from_source(source, ZIP_RDONLY, nullptr);
-  if (!archive) {
-    res = TEK_SC_ERRC_zip;
-    goto cleanup_source;
-  }
-  zip_stat_t st;
-  if (zip_stat_index(archive, 0, 0, &st) < 0) {
-    res = TEK_SC_ERRC_zip;
-    goto cleanup_archive;
-  }
-  if (!(st.valid & ZIP_STAT_SIZE)) {
-    res = TEK_SC_ERRC_zip;
-    goto cleanup_archive;
-  }
-  auto const file = zip_fopen_index(archive, 0, 0);
-  if (!file) {
-    res = TEK_SC_ERRC_zip;
-    goto cleanup_archive;
-  }
-  if (zip_fread(file, output, st.size) != (zip_int64_t)st.size) {
-    res = TEK_SC_ERRC_zip;
-    goto cleanup_file;
-  }
-  res = TEK_SC_ERRC_ok;
-cleanup_file:
-  zip_fclose(file);
-cleanup_archive:
-  zip_close(archive);
-cleanup_source:
-  zip_source_close(source);
-  return res;
+  return tsci_zip_read_close(handle, output, output_size) ? TEK_SC_ERRC_ok
+                                                          : TEK_SC_ERRC_zip;
 }
 
 /// Decompress VZ-archived chunk.

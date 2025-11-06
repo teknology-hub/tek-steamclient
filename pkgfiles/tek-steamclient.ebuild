@@ -13,10 +13,10 @@ https://github.com/TinyTinni/ValveFileVDF/archive/refs/tags/v1.1.1.tar.gz
 "
 
 LICENSE="GPL-3+"
-SLOT="0"
+SLOT="2"
 KEYWORDS="amd64"
 
-IUSE="+app-manager +cli +cli-dump +content io-uring +nls +qr +s3-client +steampipe zlib-ng"
+IUSE="+app-manager +cli +cli-dump +content io-uring +minizip-ng +nls +qr +s3-client +steampipe zlib-ng"
 REQUIRED_USE="
 	app-manager? ( content steampipe )
 	cli-dump? ( app-manager )
@@ -25,7 +25,8 @@ REQUIRED_USE="
 COMMON_DEPEND="
 	dev-db/sqlite
 	dev-libs/openssl
-	dev-libs/protobuf[protobuf(+)]
+	dev-libs/protobuf:=[protobuf(+)]
+	!games-util/tek-steamclient:*
 	net-libs/libwebsockets[client,extensions,ssl]
 	net-misc/curl[ssl]
 	app-manager? (
@@ -34,21 +35,24 @@ COMMON_DEPEND="
 	cli? (
 		qr? ( media-gfx/qrencode )
 	)
-	content? ( dev-libs/libzip )
+	content? (
+		minizip-ng? ( sys-libs/minizip-ng )
+		!minizip-ng? ( virtual/minizip )
+	)
 	steampipe? (
 		app-arch/xz-utils
 		app-arch/zstd
 		dev-libs/libzip
 	)
 	zlib-ng? ( sys-libs/zlib-ng )
-	!zlib-ng? ( sys-libs/zlib )
+	!zlib-ng? ( virtual/zlib )
 "
 DEPEND="
 	${COMMON_DEPEND}
 	dev-libs/rapidjson
 "
 BDEPEND="
-dev-libs/protobuf[protoc(+)]
+dev-libs/protobuf:=[protoc(+)]
 nls? ( sys-devel/gettext )
 "
 RDEPEND="${COMMON_DEPEND}"
@@ -67,6 +71,7 @@ src_configure() {
 		$(meson_use cli-dump cli_dump)
 		$(meson_use content)
 		$(meson_feature io-uring io_uring)
+		$(meson_feature minizip-ng minizip_ng)
 		$(meson_use nls gettext)
 		$(meson_feature qr)
 		$(meson_use s3-client s3_client)
