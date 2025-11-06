@@ -716,7 +716,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
 #endif // def TEK_SCB_AM
 #ifdef TEK_SCB_S3C
   case TSCL_CMD_TYPE_s3c_sync_manifest: {
-    auto const res = tek_sc_s3c_fetch_manifest(
+    auto const res = tek_sc_s3c_sync_manifest(
         tscl_g_ctx.lib_ctx, cmd->s3c_sync_manifest.url, 30000);
     if (!tek_sc_err_success(&res)) {
       tscl_print_err(&res);
