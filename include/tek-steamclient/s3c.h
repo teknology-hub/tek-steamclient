@@ -38,8 +38,8 @@ extern "C" {
 /// @return A @ref tek_sc_err indicating the result of operation.
 [[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
   gnu::access(read_only, 2), gnu::null_terminated_string_arg(2)]]
-tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *_Nonnull lib_ctx,
-                                     const char *_Nonnull url, long timeout_ms);
+tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *_Nonnull lib_ctx,
+                                    const char *_Nonnull url, long timeout_ms);
 
 /// Get URL of a tek-s3 server that can provide manifest request codes for
 ///    specified app/depot.

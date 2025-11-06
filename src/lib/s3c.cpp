@@ -520,8 +520,8 @@ constexpr lws_protocols protocol{.name = "tek-s3",
 
 extern "C" {
 
-tek_sc_err tek_sc_s3c_fetch_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
-                                     long timeout_ms) {
+tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
+                                    long timeout_ms) {
   tsc_curl_ctx curl_ctx;
   if (!curl_ctx.curl) {
     return tsc_err_sub(TEK_SC_ERRC_s3c_manifest, TEK_SC_ERRC_curle_init);
