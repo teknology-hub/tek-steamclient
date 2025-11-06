@@ -14,6 +14,8 @@
 //===----------------------------------------------------------------------===//
 #include "zip_api.h"
 
+#include "tek-steamclient/base.h" // IWYU pragma: keep
+
 #include <minizip/ioapi.h>
 #include <minizip/unzip.h>
 #include <stdlib.h>

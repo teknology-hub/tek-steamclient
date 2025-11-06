@@ -15,6 +15,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "tek-steamclient/base.h" // IWYU pragma: keep
+
 #ifdef __cplusplus
 extern "C" {
 #endif // def __cplusplus
