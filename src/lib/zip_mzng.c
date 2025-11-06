@@ -55,5 +55,9 @@ bool tsci_zip_read_close(void *handle, void *buf, int size) {
   const bool res = mz_zip_entry_read(handle, buf, size) == size;
   mz_zip_entry_close(handle);
   mz_zip_close(handle);
+  void *strm;
+  mz_zip_get_stream(handle, &strm);
+  mz_zip_delete(&handle);
+  mz_stream_mem_delete(&strm);
   return res;
 }

@@ -300,9 +300,14 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
     data_mrc.manifest_id = manifest_id;
     /// Make up to 5 attempts to get MRC, so it uses different tek-s3 servers if
     ///    available
+    const char *prev_uri = nullptr;
     for (int i = 0; i < 5; ++i) {
       tek_sc_s3c_get_mrc(s3_srv, 8000, &data_mrc);
       if (!tek_sc_err_success(&data_mrc.result)) {
+        if (prev_uri) {
+          free((void *)prev_uri);
+        }
+        prev_uri = data_mrc.result.uri;
         s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
                                             item_id->depot_id);
         continue;
