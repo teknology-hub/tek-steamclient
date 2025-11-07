@@ -381,10 +381,10 @@ tek_sc_os_char *tsci_os_get_cache_dir(void) {
 
 char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
   LPWSTR msg;
-  auto const res = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                                      FORMAT_MESSAGE_IGNORE_INSERTS |
-                                      FORMAT_MESSAGE_FROM_SYSTEM,
-                                  nullptr, errc, 0, (LPWSTR)&msg, 0, nullptr);
+  auto res = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                                FORMAT_MESSAGE_IGNORE_INSERTS |
+                                FORMAT_MESSAGE_FROM_SYSTEM,
+                            nullptr, errc, 0, (LPWSTR)&msg, 0, nullptr);
   if (!res) {
     static const char unk_msg[] = "Unknown error";
     char *const buf = malloc(sizeof unk_msg);
@@ -394,8 +394,15 @@ char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
     memcpy(buf, unk_msg, sizeof unk_msg);
     return buf;
   }
-  auto const buf_size = WideCharToMultiByte(CP_UTF8, 0, msg, res + 1, nullptr,
-                                            0, nullptr, nullptr);
+  // Remove trailing CRLF
+  if (msg[res - 1] == L'\n') {
+    msg[--res] = L'\0';
+    if (msg[res - 1] == L'\r') {
+      msg[--res] = L'\0';
+    }
+  }
+  const int buf_size = WideCharToMultiByte(CP_UTF8, 0, msg, res + 1, nullptr, 0,
+                                           nullptr, nullptr);
   char *const buf = malloc(buf_size);
   if (!buf) {
     abort();
