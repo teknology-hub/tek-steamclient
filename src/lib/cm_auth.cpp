@@ -656,7 +656,11 @@ static void send_status_req(lws_sorted_usec_list_t *sul) {
 
 } // namespace
 
+} // namespace tek::steamclient::cm
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
 
 extern "C" {
 
@@ -984,5 +988,3 @@ void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *client,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm

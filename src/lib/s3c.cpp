@@ -516,7 +516,12 @@ constexpr lws_protocols protocol{.name = "tek-s3",
                                  .user = nullptr,
                                  .tx_packet_size = 4096};
 
+} // namespace tek::steamclient::s3c
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient;
+using namespace tek::steamclient::s3c;
 
 extern "C" {
 
@@ -824,5 +829,3 @@ void tek_sc_s3c_auth_cancel(tek_sc_lib_ctx *lib_ctx) {
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::s3c

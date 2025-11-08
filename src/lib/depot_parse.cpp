@@ -601,7 +601,11 @@ static constexpr tek_sc_err dp_parse_err(tek_sc_errc errc) noexcept {
 
 } // namespace
 
+} // namespace tek::steamclient::content
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient::content;
 
 extern "C" {
 
@@ -1044,5 +1048,3 @@ tek_sc_err tek_sc_dp_parse(const void *data, int data_size,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::content

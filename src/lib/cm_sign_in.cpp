@@ -48,13 +48,14 @@ static void timeout(lws_sorted_usec_list_t *_Nonnull sul) {
 
 } // namespace
 
-//===-- Internal method ---------------------------------------------------===//
-
 } // namespace tek::steamclient::cm
 
-void tek_sc_cm_client::handle_logon(
-    const tek::steamclient::cm::MessageHeader &header, const void *data,
-    int size) {
+//===-- Internal method ---------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
+
+void tek_sc_cm_client::handle_logon(const MessageHeader &header,
+                                    const void *data, int size) {
   if (!sign_in_entry.cb) {
     // This message is not expected at the moment
     return;
@@ -62,7 +63,7 @@ void tek_sc_cm_client::handle_logon(
   // Cancel the timeout
   lws_sul_cancel(&sign_in_entry.sul);
   // Parse the payload
-  tek::steamclient::cm::msg_payloads::LogonResponse payload;
+  msg_payloads::LogonResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     auto res{
         tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_protobuf_deserialize)};
@@ -78,17 +79,14 @@ void tek_sc_cm_client::handle_logon(
       // Anonymous account, won't provide any licenses
       num_lics = 0;
     }
-    conn_state.store(tek::steamclient::cm::conn_state::signed_in,
-                     std::memory_order::release);
+    conn_state.store(conn_state::signed_in, std::memory_order::release);
   }
   auto res{eresult == TEK_SC_CM_ERESULT_ok
                ? tsc_err_ok()
-               : tek::steamclient::cm::err(TEK_SC_ERRC_cm_sign_in, eresult)};
+               : err(TEK_SC_ERRC_cm_sign_in, eresult)};
   sign_in_entry.cb(this, &res, user_data);
   sign_in_entry.cb = nullptr;
 }
-
-namespace tek::steamclient::cm {
 
 //===-- Public functions --------------------------------------------------===//
 
@@ -178,5 +176,3 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm

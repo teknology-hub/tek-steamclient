@@ -646,12 +646,14 @@ http_success:
 
 } // namespace
 
-//===-- Internal method ---------------------------------------------------===//
-
 } // namespace tek::steamclient::cm
 
+//===-- Internal method ---------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
+
 void tek_sc_cm_client::handle_license_list(const void *data, int size) {
-  tek::steamclient::cm::msg_payloads::LicenseList payload;
+  msg_payloads::LicenseList payload;
   if (!payload.ParseFromArray(data, size)) {
     return;
   }
@@ -678,8 +680,6 @@ void tek_sc_cm_client::handle_license_list(const void *data, int size) {
   }
   lics_a_entries.clear();
 }
-
-namespace tek::steamclient::cm {
 
 //===-- Public functions --------------------------------------------------===//
 
@@ -739,12 +739,12 @@ void tek_sc_cm_get_access_token(tek_sc_cm_client *client,
   std::ranges::for_each(
       std::span{data->app_entries,
                 static_cast<std::size_t>(data->num_app_entries)},
-      [&payload{msg.payload}](auto id) { payload.add_app_ids(id); },
+      [&msg](auto id) { msg.payload.add_app_ids(id); },
       &tek_sc_cm_pics_entry::id);
   std::ranges::for_each(
       std::span{data->package_entries,
                 static_cast<std::size_t>(data->num_package_entries)},
-      [&payload{msg.payload}](auto id) { payload.add_package_ids(id); },
+      [&msg](auto id) { msg.payload.add_package_ids(id); },
       &tek_sc_cm_pics_entry::id);
   // Setup the await entry
   client->a_entries_mtx.lock();
@@ -900,5 +900,3 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm

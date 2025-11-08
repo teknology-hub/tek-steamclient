@@ -139,7 +139,11 @@ static void tsc_lws_loop(tek_sc_lib_ctx &lib_ctx) noexcept {
 
 } // namespace
 
+} // namespace tek::steamclient
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient;
 
 extern "C" {
 
@@ -469,5 +473,3 @@ bool tek_sc_lib_get_depot_key(tek_sc_lib_ctx *lib_ctx, uint32_t depot_id,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient
