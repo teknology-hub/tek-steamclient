@@ -62,6 +62,7 @@ int main(int argc, char *argv[]) {
   } else { // if (argc > 1)
     tscl_g_ctx.interactive = true;
     printf(
+        // L18N: %s is the tek-steamclient library version string
         tsc_gettext(
             "tek-steamclient %s\nEnter \"help\" to list available commands\n"),
         tek_sc_version());
@@ -132,6 +133,7 @@ int main(int argc, char *argv[]) {
           auto const closing = tscl_os_strchr(cur, c);
           if (!closing) {
             fprintf(stderr,
+                    // L18N: %c is a ' or " character
                     tsc_gettext(
                         "Error: The command is missing closing %c character\n"),
                     (char)c);

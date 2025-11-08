@@ -30,6 +30,10 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
     return 0;
   }
   if (!tscl_os_strcmp(argv[1], TEK_SC_OS_STR("--help"))) {
+    // L18N: output of tek-sc-cli's "--help" command-line argument (main part)
+    // Here and further, command names cannot be translated; you may however
+    //    translate stuff in <angled brackets>, but make sure to use the same
+    //    translations in other messages that reference them, e.g. error ones
     puts(tsc_gettext("Usage: tek-sc-cli - run interactively, allowing you to "
                      "enter commands one at a time\n"
                      "    OR tek-sc-cli <option> - see options below\n"
@@ -44,6 +48,8 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
                      "  exit  (interactive mode only) Exit the program\n"
                      "  quit  (interactive mode only) Synonym for \"exit\""));
 #ifdef TEK_SCB_AM
+    // L18N: output of tek-sc-cli's "--help" command-line argument (application
+    //    manager module).
     puts(tsc_gettext(
         " Application manager:\n"
         "  am init <path>                                        Initialize "
@@ -81,6 +87,8 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         "for specified item, cleaning up its cache directory and resetting its "
         "state"));
 #ifdef TEK_SCB_CLI_DUMP
+    // L18N: output of tek-sc-cli's "--help" command-line argument ("am dump"
+    //    command)
     puts(tsc_gettext(
         "  am dump <type> <item_id> <manifest_id>                Dump "
         "specified tek-steamclient content file into a human-readable text "
@@ -93,6 +101,8 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
 #endif // def TEK_SCB_CLI_DUMP
 #endif // def TEK_SCB_AM
 #ifdef TEK_SCB_S3C
+    // L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
+    //    sync-manifest" command)
     puts(tsc_gettext(
         " tek-s3 client:\n"
         "  s3c sync-manifest <url>  Synchronize manifest of tek-s3 server at "
@@ -100,10 +110,14 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         "of apps/depots that it can provide manifest request codes for"));
     puts(
 #ifdef TEK_SCB_QR
+        // L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
+        //    signin" command with QR support)
         tsc_gettext("  s3c signin <type> <url>  (interactive mode only) Submit "
                     "a Steam account to a tek-s3 server at specified URL. "
                     "<type> must be either \"credentials\" or \"qr\"")
 #else  // def TEK_SCB_QR
+       // L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
+       //    signin" command without QR support)
         tsc_gettext("  s3c signin <url>         (interactive mode only) Submit "
                     "a Steam account to a tek-s3 server at specified URL")
 #endif // def TEK_SCB_QR else
@@ -146,6 +160,7 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
       }
       fprintf(
           stderr,
+          // L18N: %s is the command entered by the user
           tsc_gettext("Error: \"%s\" can only be used in interactive mode\n"),
           name);
       free(cmd_buf);

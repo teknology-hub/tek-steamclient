@@ -72,6 +72,9 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       return;
     }
     if (tscl_g_ctx.interactive) {
+      // L18N: Message displayed when not enough disk space is available, in
+      //    interactive mode. First %.2f is the amount of required disk space,
+      //    second %.2f is the number of available disk space, both in gibibytes
       printf(tsc_gettext("The job is estimated to require %.2f GiB of disk "
                          "space, but only %.2f GiB is available on the "
                          "disk.\nDo you want to proceed anyway? [Y/N]: "),
@@ -90,6 +93,10 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       }
     } else {
       fprintf(stderr,
+              // L18N: Message displayed when not enough disk space is
+              //    available, in non-interactive mode. First %.2f is the amount
+              //    of required disk space, second %.2f is the number of
+              //    available disk space, both in gibibytes
               tsc_gettext(
                   "Warning: The job is estimated to require %.2f GiB of disk "
                   "space, but only %.2f GiB is available on the disk.\n"),
@@ -105,6 +112,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
                desc->id.ws_item_id ? "%" PRIu32 "-%" PRIu32 "-%" PRIu64
                                    : "%" PRIu32 "-%" PRIu32,
                desc->id.app_id, desc->id.depot_id, desc->id.ws_item_id);
+      // L18N: Job state notification. %s is the item ID
       printf(tsc_gettext("Starting the job for %s\n"), item_id);
       break;
     }
@@ -126,36 +134,47 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     const char *stage_str;
     switch (desc->job.stage) {
     case TEK_SC_AM_JOB_STAGE_fetching_data:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Fetching data");
       break;
     case TEK_SC_AM_JOB_STAGE_dw_manifest:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Downloading manifest");
       break;
     case TEK_SC_AM_JOB_STAGE_dw_patch:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Downloading patch");
       break;
     case TEK_SC_AM_JOB_STAGE_verifying:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Verifying installed files");
       break;
     case TEK_SC_AM_JOB_STAGE_downloading:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Downloading new data");
       break;
     case TEK_SC_AM_JOB_STAGE_patching:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Patching");
       break;
     case TEK_SC_AM_JOB_STAGE_installing:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Installing new data");
       break;
     case TEK_SC_AM_JOB_STAGE_deleting:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Deleting delisted content");
       break;
     case TEK_SC_AM_JOB_STAGE_finalizing:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Finalizing");
       break;
     default:
+      // L18N: Job stage name
       stage_str = tsc_gettext("Unknown stage");
     }
     fputs("\033[2K\r", stdout);
+    // L18N: Job stage notification. %s is a job stage name from above
     printf(tsc_gettext("Job stage updated: %s\n"), stage_str);
     start_progress =
         (types & TEK_SC_AM_UPD_TYPE_progress) ? desc->job.progress_current : 0;
@@ -192,6 +211,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     eta_buf[0] = '\0';
     if (!stage_upd) {
       // Compute ETA (in seconds)
+      // L18N: Appended to the progress message when ETA is available
       tscl_os_strlcat_utf8(eta_buf, tsc_gettext(", ETA: "), sizeof eta_buf);
       const int64_t eta = (double)(total - current) /
                           ((double)(current - start_progress) /
@@ -199,6 +219,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       char unit_buf[16];
       bool first_unit = true;
       if (eta > 3600) {
+        // L18N: Appended to the ETA message above. %u is the number of hours
         snprintf(unit_buf, sizeof unit_buf, tsc_gettext("%uh"),
                  (unsigned)(eta / 3600));
         tscl_os_strlcat_utf8(eta_buf, unit_buf, sizeof eta_buf);
@@ -209,6 +230,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
         if (!first_unit) {
           tscl_os_strlcat_utf8(eta_buf, " ", sizeof eta_buf);
         }
+        // L18N: Appended to the ETA message above. %u is the number of minutes
         snprintf(unit_buf, sizeof unit_buf, tsc_gettext("%umin"), mins);
         tscl_os_strlcat_utf8(eta_buf, unit_buf, sizeof eta_buf);
         first_unit = false;
@@ -218,6 +240,7 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
         if (!first_unit) {
           tscl_os_strlcat_utf8(eta_buf, " ", sizeof eta_buf);
         }
+        // L18N: Appended to the ETA message above. %u is the number of seconds
         snprintf(unit_buf, sizeof unit_buf, tsc_gettext("%usec"), secs);
         tscl_os_strlcat_utf8(eta_buf, unit_buf, sizeof eta_buf);
       }
@@ -226,7 +249,9 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
     switch (desc->job.stage) {
     case TEK_SC_AM_JOB_STAGE_verifying:
     case TEK_SC_AM_JOB_STAGE_patching:
-      // Percentage display
+      // L18N: Progress message for stages that display percentage only. First
+      //    %s is improvised progress bar, %6.2f is the percentage number,
+      //    second %s is the ETA message if available
       printf(tsc_gettext("[%s] %6.2f%%%s"), bar,
              (double)(current * 100) / (double)total, eta_buf);
       break;
@@ -237,24 +262,30 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       char cur_buf[32];
       cur_buf[0] = '\0';
       if (current >= 0x40000000) { // 1 GiB
+        // L18N: %.2f is the number of gibibytes for progress display
         snprintf(cur_buf, sizeof cur_buf, tsc_gettext("%.2f GiB"),
                  (double)current / 0x40000000);
       } else if (current >= 0x100000) { // 1 MiB
+        // L18N: %.1f is the number of mebibytes for progress display
         snprintf(cur_buf, sizeof cur_buf, tsc_gettext("%.1f MiB"),
                  (double)current / 0x100000);
       } else {
+        // L18N: %u is the number of kibibytes for progress display
         snprintf(cur_buf, sizeof cur_buf, tsc_gettext("%u KiB"),
                  (unsigned)current / 0x400);
       }
       char total_buf[32];
       total_buf[0] = '\0';
       if (total >= 0x40000000) { // 1 GiB
+        // L18N: %.2f is the number of gibibytes for progress display
         snprintf(total_buf, sizeof total_buf, tsc_gettext("%.2f GiB"),
                  (double)total / 0x40000000);
       } else if (total >= 0x100000) { // 1 MiB
+        // L18N: %.1f is the number of mebibytes for progress display
         snprintf(total_buf, sizeof total_buf, tsc_gettext("%.1f MiB"),
                  (double)total / 0x100000);
       } else {
+        // L18N: %u is the number of kibibytes for progress display
         snprintf(total_buf, sizeof total_buf, tsc_gettext("%u KiB"),
                  (unsigned)total / 0x400);
       }
@@ -263,15 +294,26 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       char speed_buf[32];
       speed_buf[0] = '\0';
       if (speed >= 1000000000) { // 1 Gbit/s
+        // L18N: %.2f is the number of gigabits/second for download speed
+        //    display
         snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.2f Gbit/s"),
                  speed / 1000000000);
       } else if (speed >= 1000000) { // 1 Mbit/s
+        // L18N: %.1f is the number of megabits/second for download speed
+        //    display
         snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%.1f Mbit/s"),
                  speed / 1000000);
       } else {
+        // L18N: %u is the number of kilobits/second for download speed
+        //    display
         snprintf(speed_buf, sizeof speed_buf, tsc_gettext("%u kbit/s"),
                  (unsigned)speed / 1000);
       }
+      // L18N: Progress message for download stages. First %s is improvised
+      //    progress bar, %12s is the current progress, first %-12s is the total
+      //    progress, second %-12f is the speed, second %s is the ETA message if
+      //    available. Both progress and speed strings are created via one of
+      //    the format strings above
       printf(tsc_gettext("[%s] %12s/%-12s (%-12s)%s"), bar, cur_buf, total_buf,
              speed_buf, eta_buf);
       break;
@@ -282,6 +324,10 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
       if (!num_width) {
         num_width = snprintf(nullptr, 0, "%llu", (unsigned long long)total);
       }
+      // L18N: Progress message for stages that use plain numbers. First %s is
+      //    improvised progress bar, %*llu is the current progress number, %llu
+      //    is the total progress number, second %s is the ETA message if
+      //    available
       printf(tsc_gettext("[%s] %*llu/%llu%s"), bar, num_width,
              (unsigned long long)current, (unsigned long long)total, eta_buf);
       break;
@@ -421,11 +467,16 @@ static void tscl_signin_sig_handler() {
 bool tscl_run_cmd(const tscl_command *cmd) {
   switch (cmd->type) {
   case TSCL_CMD_TYPE_help:
+    // L18N: output of tek-sc-cli's "help" command (main part)
+    // Here and further, command names cannot be translated; you may however
+    //    translate stuff in <angled brackets>, but make sure to use the same
+    //    translations in other messages that reference them, e.g. error ones
     puts(tsc_gettext("General commands:\n"
                      "  help - Display this message\n"
                      "  exit - Exit the program\n"
                      "  quit - Synonym for \"exit\""));
 #ifdef TEK_SCB_AM
+    // L18N: output of tek-sc-cli's "help" command (application manager module).
     puts(tsc_gettext(
         "Application manager commands:\n"
         "  am init <path> - Initialize application manager at specified "
@@ -437,8 +488,8 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "  am set-workshop-dir <path> - Set Steam Workshop directory path for "
         "current application manager instance. You cannot run jobs for Steam "
         "Workshop items before executing this command\n"
-        "  am status - (interactive mode only) Get current status of all items "
-        "managed by current application manager instance\n"
+        "  am status - Get current status of all items managed by current "
+        "application manager instance\n"
         "  am check-for-updates - Check for all item updates. The results can "
         "be viewed via \"am status\" command\n"
         "For the commands below, <item_id> is either <app_id>-<depot_id> or "
@@ -459,6 +510,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "  am cancel-job <item_id> - Cancel a job for specified item, cleaning "
         "up its cache directory and resetting its state"));
 #ifdef TEK_SCB_CLI_DUMP
+    // L18N: output of tek-sc-cli's "help" command ("am dump" command)
     puts(tsc_gettext(
         "  am dump <type> <item_id> <manifest_id> - Dump specified "
         "tek-steamclient content file into a human-readable text file at "
@@ -471,6 +523,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
 #endif // def TEK_SCB_CLI_DUMP
 #endif // def TEK_SCB_AM
 #ifdef TEK_SCB_S3C
+    // L18N: output of tek-sc-cli's "help" command ("s3c sync-manifest" command)
     puts(tsc_gettext(
         "tek-s3 client commands:\n"
         "  s3c sync-manifest <url> - Synchronize manifest of tek-s3 server at "
@@ -478,10 +531,14 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "of apps/depots that it can provide manifest request codes for"));
     puts(
 #ifdef TEK_SCB_QR
+        // L18N: output of tek-sc-cli's "help" command ("s3c signin" command
+        //    with QR support)
         tsc_gettext("  s3c signin <type> <url> - Submit a Steam account to a "
                     "tek-s3 server at specified URL. <type> must be either "
                     "\"credentials\" or \"qr\"")
 #else  // def TEK_SCB_QR
+       // L18N: output of tek-sc-cli's "help" command ("s3c signin" command
+       //    without QR support)
         tsc_gettext("  s3c signin <url> - Submit a Steam account to a tek-s3 "
                     "server at specified URL")
 #endif // def TEK_SCB_QR else
@@ -505,6 +562,8 @@ bool tscl_run_cmd(const tscl_command *cmd) {
           auto const msg = tscl_os_get_err_msg(errc);
           fprintf(
               stderr,
+              // L18N: %u is the OS error code number, %s is the OS error
+              //    message
               tsc_gettext("Failed to get current working directory: (%u) %s\n"),
               (unsigned)errc, msg);
           free(msg);
@@ -567,13 +626,21 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                                      : "%" PRIu32 "-%" PRIu32,
                  desc->id.app_id, desc->id.depot_id, desc->id.ws_item_id);
         if (desc->status & TEK_SC_AM_ITEM_STATUS_job) {
+          // L18N: Item status string. %s is the item ID, first %llu is the
+          //    source manifest ID for the job, seconds %llu is the target
+          //    manifest ID for the job
           printf(tsc_gettext("%s: job %llu->%llu\n"), item_id,
                  (unsigned long long)desc->job.source_manifest_id,
                  (unsigned long long)desc->job.target_manifest_id);
         } else {
+          // L18N: Item status string. First %s is the item ID, %llu is current
+          //    manifest ID, second %s may be "update available" string from
+          //    below if applicable
           printf(tsc_gettext("%s: manifest ID %llu%s\n"), item_id,
                  (unsigned long long)desc->current_manifest_id,
                  (desc->status & TEK_SC_AM_ITEM_STATUS_upd_available)
+                     // L18N: Appended to the status string if item update is
+                     //    available
                      ? tsc_gettext(", update available")
                      : "");
         }
@@ -629,6 +696,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                  id->app_id, id->depot_id, id->ws_item_id);
         fprintf(
             stderr,
+            // L18N: %s is the item ID
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id);
@@ -673,6 +741,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                  id->app_id, id->depot_id, id->ws_item_id);
         fprintf(
             stderr,
+            // L18N: %s is the item ID
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id);
@@ -725,6 +794,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     return true;
   }
   case TSCL_CMD_TYPE_s3c_signin:
+    // L18N: %s is the tek-s3 server URL entered by the user
     printf(tsc_gettext(
                "IMPORTANT NOTES\n"
                "You are about to sign tek-s3 server at %s into your Steam "
@@ -827,6 +897,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
 #endif
         char buf[256];
         strftime(buf, sizeof buf, "%x %X", &tm);
+        // L18N: %s is the date and time string
         printf(tsc_gettext("Authentication succeeded, server got non-renewable "
                            "token that will expire at %s\n"),
                buf);

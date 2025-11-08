@@ -93,6 +93,7 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
   case TEK_SC_ERRC_cm_auth:
     return tsc_gettext("Steam CM authenticaiton session failed");
   case TEK_SC_ERRC_cm_changes:
+    // L18N: PICS is an acronym that should not be translated
     return tsc_gettext("Failed to get PICS changes");
   case TEK_SC_ERRC_cm_connect:
     return tsc_gettext("Failed to connect to a Steam CM server");
@@ -129,6 +130,7 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
   case TEK_SC_ERRC_cm_sign_in:
     return tsc_gettext("Failed to sign into a Steam account");
   case TEK_SC_ERRC_cm_sp_servers:
+    // L18N: "SteamPipe" should not be translated
     return tsc_gettext("Failed to get SteamPipe server list");
   case TEK_SC_ERRC_cm_sp_servers_empty:
     return tsc_gettext("Got empty SteamPipe server list");
@@ -153,6 +155,7 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
   case TEK_SC_ERRC_crc_mismatch:
     return tsc_gettext("CRC32 checksum mismatch");
   case TEK_SC_ERRC_curle_init:
+    // L18N: "curl easy/multi/URL" are API names that should not be translated
     return tsc_gettext("Failed to initialize curl easy handle");
   case TEK_SC_ERRC_curlm_init:
     return tsc_gettext("Failed to initialize curl multi handle");
@@ -260,6 +263,7 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
 static inline const char *tscp_msg_eresult(tek_sc_cm_eresult eresult) {
   switch (eresult) {
   case TEK_SC_CM_ERESULT_invalid:
+    // L18N: From here on are messages for Steam's EResult codes
     return tsc_gettext("Invalid EResult value");
   case TEK_SC_CM_ERESULT_ok:
     return tsc_gettext("OK");
@@ -531,76 +535,100 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
   const char *uri_type = nullptr;
   switch (err->type) {
   case TEK_SC_ERR_TYPE_basic:
+    // L18N: An error type
     type = tsc_gettext("Basic");
     if (err->uri) {
+      // L18N: An error URI kind
       uri_type = tsc_gettext("URL");
     }
     break;
   case TEK_SC_ERR_TYPE_sub:
+    // L18N: An error type
     type = tsc_gettext("Compound");
     aux = tscp_msg_errc(err->auxiliary);
     if (err->uri) {
+      // L18N: An error URI kind
       uri_type = tsc_gettext("URL");
     }
     break;
   case TEK_SC_ERR_TYPE_steam_cm:
+    // L18N: An error type
     type = tsc_gettext("Steam CM response");
     aux = tscp_msg_eresult(err->auxiliary);
     break;
   case TEK_SC_ERR_TYPE_os:
+    // L18N: An error type
     type = tsc_gettext("OS");
     aux = tsci_os_get_err_msg((tek_sc_os_errc)err->auxiliary);
     if (err->extra != TEK_SC_ERR_IO_TYPE_none) {
       const char *io_op_type;
       switch (err->extra) {
       case TEK_SC_ERR_IO_TYPE_check_existence:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Checking for existence");
         break;
       case TEK_SC_ERR_IO_TYPE_open:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Creating or opening");
         break;
       case TEK_SC_ERR_IO_TYPE_get_type:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Getting type of filesystem entry");
         break;
       case TEK_SC_ERR_IO_TYPE_get_size:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Getting file size");
         break;
       case TEK_SC_ERR_IO_TYPE_truncate:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Truncating");
         break;
       case TEK_SC_ERR_IO_TYPE_read:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Reading data");
         break;
       case TEK_SC_ERR_IO_TYPE_write:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Writing data");
         break;
       case TEK_SC_ERR_IO_TYPE_apply_flags:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Setting attributes or permissions");
         break;
       case TEK_SC_ERR_IO_TYPE_copy:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Copying data");
         break;
       case TEK_SC_ERR_IO_TYPE_move:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Moving");
         break;
       case TEK_SC_ERR_IO_TYPE_delete:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Deleting");
         break;
       case TEK_SC_ERR_IO_TYPE_symlink:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Creating symbolic link");
         break;
       case TEK_SC_ERR_IO_TYPE_aio_reg:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Registering for asynchronous I/O");
         break;
       case TEK_SC_ERR_IO_TYPE_aio_submit:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Submitting an asynchronous I/O request");
         break;
       case TEK_SC_ERR_IO_TYPE_aio_wait:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Waiting for asynchronous I/O completions");
         break;
       default:
+        // L18N: An I/O operation type
         io_op_type = tsc_gettext("Unknown");
       } // switch (err->extra)
+      // L18N: %u is the I/O operation type code, %s is its string
+      //    representation
       auto const fmt = tsc_gettext("I/O operation type: (%u) %s");
       const int size = snprintf(nullptr, 0, fmt, err->extra, io_op_type) + 1;
       char *const buf = malloc(size);
@@ -610,13 +638,16 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
       }
     } // if (err->extra != TEK_SC_ERR_IO_TYPE_none)
     if (err->uri) {
+      // L18N: An error URI kind
       uri_type = tsc_gettext("Path");
     }
     break;
   case TEK_SC_ERR_TYPE_curle:
+    // L18N: An error type
     type = tsc_gettext("libcurl-easy");
     aux = curl_easy_strerror(err->auxiliary);
     if (err->auxiliary == CURLE_HTTP_RETURNED_ERROR) {
+      // L18N: %u is the status code number
       auto const fmt = tsc_gettext("HTTP status code: %u");
       const int size = snprintf(nullptr, 0, fmt, err->extra) + 1;
       char *const buf = malloc(size);
@@ -626,21 +657,26 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
       }
     }
     if (err->uri) {
+      // L18N: An error URI kind
       uri_type = tsc_gettext("URL");
     }
     break;
   case TEK_SC_ERR_TYPE_curlm:
+    // L18N: An error type
     type = tsc_gettext("libcurl-multi");
     aux = curl_multi_strerror(err->auxiliary);
     break;
   case TEK_SC_ERR_TYPE_sqlite:
+    // L18N: An error type
     type = tsc_gettext("SQLite");
     aux = sqlite3_errstr(err->auxiliary);
     if (err->uri) {
+      // L18N: An error URI kind
       uri_type = tsc_gettext("Path");
     }
     break;
   default:
+    // L18N: An error type
     type = tsc_gettext("Unknown");
   } // switch (err->type)
   return (tek_sc_err_msgs){.type = err->type,

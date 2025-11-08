@@ -22,10 +22,13 @@
 void tscl_print_err(const tek_sc_err *err) {
   auto msgs = tek_sc_err_get_msgs(err);
   fprintf(stderr,
+          // L18N: %u are error code numbers, %s are corresponding error
+          //    messages
           tsc_gettext("An error has occurred\n  Error type: (%u) %s\n  Primary "
                       "message: (%u) %s\n"),
           err->type, msgs.type_str, err->primary, msgs.primary);
   if (err->type != TEK_SC_ERR_TYPE_basic) {
+    // L18N: %u is an error code number, %s is corresponding error message
     fprintf(stderr, tsc_gettext("  Auxiliary message: (%u) %s\n"),
             err->auxiliary, msgs.auxiliary);
     if (msgs.extra) {

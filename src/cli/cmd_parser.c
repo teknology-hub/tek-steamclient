@@ -252,6 +252,7 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
       } else {
         auto const str = tscl_os_str_to_utf8(argv[ind]);
         fprintf(stderr,
+                // L18N: %s is the value of <type> entered by the user
                 tsc_gettext("Error: unknown <type> \"%s\" for \"dump\"\n"),
                 str);
         free(str);
@@ -317,6 +318,7 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
     } else {
       auto const str = tscl_os_str_to_utf8(argv[ind]);
       fprintf(stderr,
+              // L18N: %s is the command name entered by the user
               tsc_gettext("Error: unknown command \"%s\" for module \"am\"\n"),
               str);
       free(str);
@@ -356,6 +358,7 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
       } else {
         auto const str = tscl_os_str_to_utf8(argv[ind]);
         fprintf(stderr,
+                // L18N: %s is the value of <type> provied by the user
                 tsc_gettext("Error: unknown <type> \"%s\" for \"signin\"\n"),
                 str);
         free(str);
@@ -374,6 +377,7 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
     } else {
       auto const str = tscl_os_str_to_utf8(argv[ind]);
       fprintf(stderr,
+              // L18N: %s is the command name entered by the user
               tsc_gettext("Error: unknown command \"%s\" for module \"s3c\"\n"),
               str);
       free(str);
@@ -382,6 +386,7 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
   } // else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("s3c")))
 #endif // def TEK_SCB_S3C
   auto const str = tscl_os_str_to_utf8(argv[ind]);
+  // L18N: %s is the command entered by the user
   fprintf(stderr, tsc_gettext("Error: unknown command \"%s\"\n"), str);
   free(str);
   return 0;
