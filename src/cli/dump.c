@@ -64,12 +64,18 @@ struct tscl_dump_ctx {
 static inline void tscl_bytes_to_unit(tscl_dump_ctx *_Nonnull ctx,
                                       int64_t val) {
   if (val >= 0x40000000) { // 1 GiB
+    // L18N: May be appended anywhere after raw number of bytes. %.2f is the
+    //    number of gibibytes
     snprintf(ctx->unit_buf, sizeof ctx->unit_buf, tsc_gettext(" (%.2f GiB)"),
              (double)val / 0x40000000);
   } else if (val >= 0x100000) { // 1 MiB
+    // L18N: May be appended anywhere after raw number of bytes. %.2f is the
+    //    number of mebibytes
     snprintf(ctx->unit_buf, sizeof ctx->unit_buf, tsc_gettext(" (%.2f MiB)"),
              (double)val / 0x100000);
   } else if (val >= 0x400) { // 1 KiB
+    // L18N: May be appended anywhere after raw number of bytes. %.2f is the
+    //    number of kibibytes
     snprintf(ctx->unit_buf, sizeof ctx->unit_buf, tsc_gettext(" (%.2f KiB)"),
              (double)val / 0x400);
   } else {
@@ -174,14 +180,19 @@ static const char *_Nonnull tscl_get_dd_status_str(
     tek_sc_job_entry_status status) {
   switch (status) {
   case TEK_SC_JOB_ENTRY_STATUS_pending:
+    // L18N: One of possible job entry status values
     return tsc_gettext("Pending");
   case TEK_SC_JOB_ENTRY_STATUS_setup:
+    // L18N: One of possible job entry status values
     return tsc_gettext("Setting up");
   case TEK_SC_JOB_ENTRY_STATUS_active:
+    // L18N: One of possible job entry status values
     return tsc_gettext("Processing");
   case TEK_SC_JOB_ENTRY_STATUS_done:
+    // L18N: One of possible job entry status values
     return tsc_gettext("Done");
   default:
+    // L18N: One of possible job entry status values
     return tsc_gettext("Unknown status");
   }
 }
@@ -530,8 +541,11 @@ static bool tscl_load_delta(const tek_sc_item_id *_Nonnull item_id,
 [[gnu::nonnull(1, 2), gnu::access(read_only, 1), gnu::access(read_write, 2)]]
 static void tscl_dump_manifest_dir(const tek_sc_dm_dir *_Nonnull dir,
                                    tscl_dump_ctx *_Nonnull ctx, int indent) {
+  // L18N: First part of directory entry string, which is followed by a
+  //    whitespace and directory name
   fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("Directory"),
           dir->name ? dir->name : TEK_SC_OS_STR("[ROOT]"));
+  // L18N: The last part of directory entry string, %u are respective numbers
   fprintf(ctx->file, tsc_gettext("(%u files; %u subdirectories)\n"),
           dir->num_files, dir->num_subdirs);
   for (int i = 0; i < dir->num_files; ++i) {
@@ -551,9 +565,14 @@ static void tscl_dump_manifest_dir(const tek_sc_dm_dir *_Nonnull dir,
       file_indent = indent + 2;
     }
     auto const file = &dir->files[i];
+    // L18N: First part of file entry string, which is followed by a whitespace
+    //    and file name
     fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("File"),
             file->name);
     tscl_bytes_to_unit(ctx, file->size);
+    // L18N: The last part of file entry string. %llu is the raw size in bytes,
+    //    %s may be a string containing number of kibi/mebi/gibibytes, %u is the
+    //    number of chunks
     fprintf(ctx->file, tsc_gettext("(Size: %llu B%s; %u chunks)\n"),
             (unsigned long long)file->size, ctx->unit_buf, file->num_chunks);
     for (int j = 0; j < file->num_chunks; ++j) {
@@ -569,6 +588,9 @@ static void tscl_dump_manifest_dir(const tek_sc_dm_dir *_Nonnull dir,
       tscl_sha1_to_str(chunk->sha.bytes, sha);
       fprintf(
           ctx->file,
+          // L18N: First %s is the indentation string, which should stay there,
+          //    second %s is chunk's SHA-1 hash, %llu is chunk's offset number,
+          //    %u are respective numbers of bytes
           tsc_gettext(
               "%sChunk %s (Offset: %llu; Size: %u B; Compressed size: %u B)\n"),
           ctx->indent_buf, sha, (unsigned long long)chunk->offset, chunk->size,
@@ -611,21 +633,34 @@ static void tscl_dump_manifest_dir(const tek_sc_dm_dir *_Nonnull dir,
 static void tscl_dump_vcache_dir(const tek_sc_verification_cache *_Nonnull vc,
                                  const tek_sc_dm_dir *_Nonnull dir,
                                  tscl_dump_ctx *_Nonnull ctx, int indent) {
+  // L18N: First part of directory entry string, which is followed by a
+  //    whitespace and directory name
   fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("Directory"),
           dir->name ? dir->name : TEK_SC_OS_STR("[ROOT]"));
   auto const vc_dir = &vc->dirs[dir - vc->manifest->dirs];
   if (vc_dir->status == TEK_SC_JOB_ENTRY_STATUS_pending) {
     fprintf(ctx->file,
+            // L18N: First %u is the number of files marked "dirty" (failed
+            //    integrity checks) so far, second %u is total number of files
+            //    in the directory, third %u is the number of subdirectories
+            //    marked dirty so far, fourth %u is total number of
+            //    subdirectories, fifth %u is the remaining number of files and
+            //    subdirectories not verified yet
             tsc_gettext("(Not verified yet; Dirty files: %u/%u; Dirty "
                         "subdirectories: %u/%u; Remaining children: %u)\n"),
             vc_dir->num_dirty_files, dir->num_files, vc_dir->num_dirty_subdirs,
             dir->num_subdirs, vc_dir->num_rem_children);
   } else if (vc_dir->num_dirty_subdirs < 0) {
+    // L18N: %u are the total numbers of files and subdirectories
     fprintf(ctx->file, tsc_gettext("(Missing; %u files; %u subdirectories)\n"),
             dir->num_files, dir->num_subdirs);
   } else {
     fprintf(
         ctx->file,
+        // L18N: First %u is the number of files marked "dirty" (failed
+        //    integrity checks), second %u is total number of files in the
+        //    directory, third %u is the number of subdirectories marked dirty,
+        //    fourth %u is total number of subdirectories
         tsc_gettext(
             "(Verified; Dirty files: %u/%u; Dirty subdirectories: %u/%u)\n"),
         vc_dir->num_dirty_files, dir->num_files, vc_dir->num_dirty_subdirs,
@@ -649,11 +684,17 @@ static void tscl_dump_vcache_dir(const tek_sc_verification_cache *_Nonnull vc,
       file_indent = indent + 2;
     }
     auto const file = &dir->files[i];
+    // L18N: First part of file entry string, which is followed by a whitespace
+    //    and file name
     fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("File"),
             file->name);
     auto const vc_file = &vc_files[i];
     if (vc_file->status == TEK_SC_JOB_ENTRY_STATUS_pending) {
       fprintf(ctx->file,
+              // L18N: First %u is the number of chunks marked "dirty" (failed
+              //    integrity checks) so far, second %u is total number of
+              //    chunks in the file, third %u is the remaining number of
+              //    chunks not verified yet
               tsc_gettext("(Not verified yet; Dirty chunks: %u/%u; Remaining "
                           "chunks: %u)\n"),
               vc_file->num_dirty_chunks, file->num_chunks,
@@ -661,15 +702,22 @@ static void tscl_dump_vcache_dir(const tek_sc_verification_cache *_Nonnull vc,
     } else {
       switch (vc_file->file_status) {
       case TEK_SC_VC_FILE_STATUS_regular:
+        // L18N: First %u is the number of chunks marked "dirty" (failed
+        //    integrity checks), second %u is total number of chunks in the file
         fprintf(ctx->file, tsc_gettext("(Verified; Dirty chunks: %u/%u)\n"),
                 vc_file->num_dirty_chunks, file->num_chunks);
         break;
       case TEK_SC_VC_FILE_STATUS_missing:
+        // L18N: %u is total number of chunks in the file
         fprintf(ctx->file, tsc_gettext("(Missing; %u chunks)\n"),
                 file->num_chunks);
         break;
       case TEK_SC_VC_FILE_STATUS_truncate:
         tscl_bytes_to_unit(ctx, file->size);
+        // L18N: %llu is the raw number of bytes representing the expected file
+        //    size, %s may be a string containing number of kibi/mebi/gibibytes,
+        //    first %u is the number of chunks marked "dirty" (failed integrity
+        //    checks), second %u is total number of chunks in the file
         fprintf(ctx->file,
                 tsc_gettext("(Verified (truncation to %llu B%s required); "
                             "Dirty chunks: %u/%u)\n"),
@@ -691,12 +739,19 @@ static void tscl_dump_vcache_dir(const tek_sc_verification_cache *_Nonnull vc,
       tscl_sha1_to_str(chunk->sha.bytes, sha);
       auto const vc_chunk = &vc_chunks[j];
       fprintf(ctx->file,
+              // L18N: First %s is the indentation string, which should stay
+              //    there, second %s is chunk's SHA-1 hash, third %s is a chunk
+              //    status value, %llu is chunk's offset number, %u are
+              //    respective numbers of bytes
               tsc_gettext("%sChunk %s (%s; Offset: %llu; Size: %u B; "
                           "Compressed size: %u B)\n"),
               ctx->indent_buf, sha,
               vc_chunk->status == TEK_SC_JOB_ENTRY_STATUS_pending
+                  // L18N: Chunk status value
                   ? tsc_gettext("Not verified yet")
+                  // L18N: Chunk status value
                   : (vc_chunk->match ? tsc_gettext("Match")
+                                     // L18N: Chunk status value
                                      : tsc_gettext("Mismatch")),
               (unsigned long long)chunk->offset, chunk->size, chunk->comp_size);
     }
@@ -733,6 +788,8 @@ static void tscl_dump_vcache_dir(const tek_sc_verification_cache *_Nonnull vc,
 [[gnu::nonnull(1, 2), gnu::access(read_only, 1), gnu::access(read_write, 2)]]
 static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
                                 tscl_dump_ctx *_Nonnull ctx, int indent) {
+  // L18N: First part of directory entry string, which is followed by a
+  //    whitespace and directory name
   fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("Directory"),
           dir->dir->name ? dir->dir->name : TEK_SC_OS_STR("[ROOT]"));
   char flags_str[256];
@@ -740,6 +797,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
   bool first_flag = true;
   if (dir->flags & TEK_SC_DD_DIR_FLAG_new) {
     first_flag = false;
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("New"), sizeof flags_str);
   }
   if (dir->flags & TEK_SC_DD_DIR_FLAG_delete) {
@@ -748,6 +806,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
     } else {
       tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
     }
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("Delete"), sizeof flags_str);
   }
   if (dir->flags & TEK_SC_DD_DIR_FLAG_children_new) {
@@ -756,6 +815,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
     } else {
       tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
     }
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("Children new"),
                          sizeof flags_str);
   }
@@ -765,6 +825,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
     } else {
       tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
     }
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("Children download"),
                          sizeof flags_str);
   }
@@ -774,6 +835,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
     } else {
       tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
     }
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("Children patch"),
                          sizeof flags_str);
   }
@@ -783,9 +845,12 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
     } else {
       tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
     }
+    // L18N: Directory flag value
     tscl_os_strlcat_utf8(flags_str, tsc_gettext("Children delete"),
                          sizeof flags_str);
   }
+  // L18N: First %s is a job entry status value, second %s is comma-separated
+  //    list of directory flags, %u are respective numbers
   fprintf(ctx->file, tsc_gettext("(%s; [%s]; %u files; %u subdirectories)\n"),
           tscl_get_dd_status_str(dir->status), flags_str, dir->num_files,
           dir->num_subdirs);
@@ -806,12 +871,15 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       file_indent = indent + 2;
     }
     auto const file = &dir->files[i];
+    // L18N: First part of file entry string, which is followed by a whitespace
+    //    and file name
     fprintf(ctx->file, "%s \"%" TSCL_OS_PRI_str "\" ", tsc_gettext("File"),
             file->file->name);
     flags_str[0] = '\0';
     first_flag = true;
     if (file->flags & TEK_SC_DD_FILE_FLAG_new) {
       first_flag = false;
+      // L18N: File flag value
       tscl_os_strlcat_utf8(flags_str, tsc_gettext("New"), sizeof flags_str);
     }
     if (file->flags & TEK_SC_DD_FILE_FLAG_download) {
@@ -820,6 +888,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       } else {
         tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
       }
+      // L18N: File flag value
       tscl_os_strlcat_utf8(flags_str, tsc_gettext("Download"),
                            sizeof flags_str);
     }
@@ -829,6 +898,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       } else {
         tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
       }
+      // L18N: File flag value
       tscl_os_strlcat_utf8(flags_str, tsc_gettext("Patch"), sizeof flags_str);
     }
     if (file->flags & TEK_SC_DD_FILE_FLAG_truncate) {
@@ -839,6 +909,8 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       }
       tscl_bytes_to_unit(ctx, file->file->size);
       char buf[64];
+      // L18N: %llu is the raw number of bytes representing the expected file
+      //    size, %s may be a string containing number of kibi/mebi/gibibytes
       snprintf(buf, sizeof buf, tsc_gettext("Truncate to %llu B%s"),
                (unsigned long long)file->file->size, ctx->unit_buf);
       tscl_os_strlcat_utf8(flags_str, buf, sizeof flags_str);
@@ -849,10 +921,13 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
       } else {
         tscl_os_strlcat_utf8(flags_str, ", ", sizeof flags_str);
       }
+      // L18N: File flag value
       tscl_os_strlcat_utf8(flags_str, tsc_gettext("Delete"), sizeof flags_str);
     }
     fprintf(
         ctx->file,
+        // L18N: First %s is a job entry status value, second %s is
+        //    comma-separated list of file flags, %u are respective numbers
         tsc_gettext("(%s; [%s]; %u chunks; %u transfer operation groups)\n"),
         tscl_get_dd_status_str(file->status), flags_str, file->num_chunks,
         file->num_trans_op_grps);
@@ -873,10 +948,16 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
         cb_str[0] = '\0';
       } else {
         snprintf(cb_str, sizeof cb_str,
+                 // %llu is the offset number for chunk inside the chunk buffer
+                 //    file
                  tsc_gettext("; Chunk buffer file offset: %llu"),
                  (unsigned long long)chunk->chunk_buf_offset);
       }
       fprintf(ctx->file,
+              // L18N: First %s is the indentation string, which should stay
+              //    there, second %s is chunk's SHA-1 hash, third %s is a job
+              //    entry status value, %llu is chunk's offset number, %u are
+              //    respective numbers of bytes
               tsc_gettext("%sChunk %s (%s; Offset: %llu; Size: %u B; "
                           "Compressed size: %u B%s)\n"),
               ctx->indent_buf, sha, tscl_get_dd_status_str(chunk->status),
@@ -900,6 +981,7 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
         grp_indent = file_indent + 2;
       }
       auto const grp = &file->trans_op_grps[j];
+      // L18N: %u is transfer operation group index
       fprintf(ctx->file, tsc_gettext("Transfer operation group %u\n"), j + 1);
       for (int k = 0; k < grp->num_transfer_ops; ++k) {
         if ((k + 1) < grp->num_transfer_ops) {
@@ -915,6 +997,8 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
           tb_str[0] = '\0';
         } else {
           snprintf(tb_str, sizeof tb_str,
+                   // %llu is the offset number for transfer operation inside
+                   //    the transfer buffer file
                    tsc_gettext("; Transfer buffer file offset: %llu"),
                    (unsigned long long)transfer_op->transfer_buf_offset);
         }
@@ -923,6 +1007,11 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
           tscl_bytes_to_unit(ctx, transfer_op->data.relocation.size);
           fprintf(
               ctx->file,
+              // L18N: First %s is the indentation string, which should stay
+              //    there, second %s is a job entry status value, %llu are
+              //    respective offset numbers, %u is raw size in bytes, third %s
+              //    may be a string containing number of kibi/mebi/gibibytes,
+              //    fourth %s may a transfer buffer file offset string
               tsc_gettext("%sRelocation (%s; Source offset: %llu; Target "
                           "offset: %llu; Size: %u B%s%s)\n"),
               ctx->indent_buf, tscl_get_dd_status_str(transfer_op->status),
@@ -950,6 +1039,11 @@ static void tscl_dump_delta_dir(const tek_sc_dd_dir *_Nonnull dir,
           }
           fprintf(
               ctx->file,
+              // L18N: First %s is the indentation string, which should stay
+              //    there, second %s is source chunk's SHA-1 hash, third %s is
+              //    target chunk's SHA-1 hash, fourth %s is a job entry status
+              //    value, fifth %s is a patch chunk type string, %u is size in
+              //    bytes, sixth %s may a transfer buffer file offset string
               tsc_gettext(
                   "%sPatch %s->%s (%s; Type: %s; Delta chunk size: %u B%s)\n"),
               ctx->indent_buf, src_sha, tgt_sha,
@@ -998,6 +1092,7 @@ bool tscl_dump_manifest(const tek_sc_item_id *item_id, uint64_t manifest_id) {
            item_id_str, manifest_id);
   auto const file = fopen(file_name, "w");
   if (!file) {
+    // L18N: %s is the file name
     fprintf(stderr, tsc_gettext("Error: failed to open/create file \"%s\"\n"),
             file_name);
     tek_sc_dm_free(&manifest);
@@ -1015,6 +1110,9 @@ bool tscl_dump_manifest(const tek_sc_item_id *item_id, uint64_t manifest_id) {
   }
   tscl_bytes_to_unit(&ctx, manifest.data_size);
   fprintf(file,
+          // L18N: First %llu is manifest ID, first %s is item ID, %u are
+          //    respective numbers, second %llu is the raw size in bytes, second
+          //    %s may be a string containing number of kibi/mebi/gibibytes
           tsc_gettext("Manifest %llu for %s\n"
                       "Total chunks: %u\n"
                       "Total files: %u\n"
@@ -1040,6 +1138,7 @@ bool tscl_dump_patch(const tek_sc_item_id *item_id) {
   auto const desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, item_id);
   if (!desc) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id_str);
@@ -1047,12 +1146,14 @@ bool tscl_dump_patch(const tek_sc_item_id *item_id) {
   }
   if (!(desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext("Error: There is no unfinished job for item %s\n"),
             item_id_str);
     return false;
   }
   if (desc->job.patch_status != TEK_SC_AM_JOB_PATCH_STATUS_used) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext("Error: There is no patch used for item %s's job\n"),
             item_id_str);
     return false;
@@ -1078,12 +1179,17 @@ bool tscl_dump_patch(const tek_sc_item_id *item_id) {
   tscl_dump_ctx ctx;
   ctx.file = fopen(file_name, "w");
   if (!ctx.file) {
+    // L18N: %s is the file name
     fprintf(stderr, tsc_gettext("Error: failed to open/create file \"%s\"\n"),
             file_name);
     goto cleanup_patch;
   }
   tscl_bytes_to_unit(&ctx, patch.delta_size);
   fprintf(ctx.file,
+          // L18N: First %llu is source manifest ID, second %llu is target
+          //    manifest ID, first %s is item ID, %u is the number of chunks,
+          //    %llu is the raw size in bytes, second %s may be a string
+          //    containing number of kibi/mebi/gibibytes
           tsc_gettext("Patch from manifest %llu to manifest %llu for %s\n"
                       "Total chunks: %u\n"
                       "Total size of delta chunks: %llu B%s\n\n"
@@ -1108,6 +1214,8 @@ bool tscl_dump_patch(const tek_sc_item_id *item_id) {
     default:
       type = "Unknown";
     }
+    // L18N: First %s is source chunk's SHA-1 hash, second %s is target chunk's
+    //    SHA-1 hash, third %s is a patch chunk type string, %u is size in bytes
     fprintf(ctx.file,
             tsc_gettext("%s->%s (Type: %s; Delta chunk size: %u B)\n"), src_sha,
             tgt_sha, type, chunk->delta_chunk_size);
@@ -1135,6 +1243,7 @@ bool tscl_dump_vcache(const tek_sc_item_id *item_id) {
   auto const desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, item_id);
   if (!desc) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id_str);
@@ -1142,6 +1251,7 @@ bool tscl_dump_vcache(const tek_sc_item_id *item_id) {
   }
   if (!(desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext("Error: There is no unfinished job for item %s\n"),
             item_id_str);
     return false;
@@ -1160,6 +1270,7 @@ bool tscl_dump_vcache(const tek_sc_item_id *item_id) {
            item_id_str, manifest.id);
   auto const file = fopen(file_name, "w");
   if (!file) {
+    // L18N: %s is the file name
     fprintf(stderr, tsc_gettext("Error: failed to open/create file \"%s\"\n"),
             file_name);
     tek_sc_vc_free(&vcache);
@@ -1178,6 +1289,8 @@ bool tscl_dump_vcache(const tek_sc_item_id *item_id) {
     return false;
   }
   fprintf(file,
+          // L18N: %llu is the manifest ID, %s is item ID, %u are respective
+          //    numbers
           tsc_gettext("Verification cache for manifest %llu for %s\n"
                       "Total chunks in manifest: %u\n"
                       "Total files in manifest: %u\n"
@@ -1202,6 +1315,7 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   auto const desc = tek_sc_am_get_item_desc(tscl_g_ctx.am, item_id);
   if (!desc) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id_str);
@@ -1209,6 +1323,7 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   }
   if (!(desc->status & TEK_SC_AM_ITEM_STATUS_job)) {
     fprintf(stderr,
+            // L18N: %s is an item ID
             tsc_gettext("Error: There is no unfinished job for item %s\n"),
             item_id_str);
     return false;
@@ -1255,6 +1370,7 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   }
   auto const file = fopen(file_name, "w");
   if (!file) {
+    // L18N: %s is the file name
     fprintf(stderr, tsc_gettext("Error: failed to open/create file \"%s\"\n"),
             file_name);
     goto cleanup_delta;
@@ -1269,32 +1385,41 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
   }
   if (src_man_ptr) {
     fprintf(file,
+            // L18N: First %llu is source manifest ID, second %llu is target
+            //    manifest ID, first %s is item ID, second %s is a yes/no string
             tsc_gettext("Delta from manifest %llu to manifest %llu for %s\n"
                         "Depot patch used: %s\n"),
             (unsigned long long)source_manifest.id,
             (unsigned long long)target_manifest.id, item_id_str,
             patch_ptr ? tsc_gettext("Yes") : tsc_gettext("No"));
   } else {
+    // L18N: %llu is manifest ID, %s is item ID
     fprintf(file, tsc_gettext("Verification delta for manifest %llu for %s\n"),
             (unsigned long long)target_manifest.id, item_id_str);
   }
   const char *stage_str;
   switch (delta.stage) {
   case TEK_SC_DD_STAGE_downloading:
+    // L18N: Delta stage value
     stage_str = tsc_gettext("Downloading");
     break;
   case TEK_SC_DD_STAGE_patching:
+    // L18N: Delta stage value
     stage_str = tsc_gettext("Patching");
     break;
   case TEK_SC_DD_STAGE_installing:
+    // L18N: Delta stage value
     stage_str = tsc_gettext("Installing");
     break;
   case TEK_SC_DD_STAGE_deleting:
+    // L18N: Delta stage value
     stage_str = tsc_gettext("Deleting");
     break;
   default:
+    // L18N: Delta stage value
     stage_str = tsc_gettext("Unknown stage");
   }
+  // L18N: %u are respective numbers, %s is a delta stage value
   fprintf(file,
           tsc_gettext("Total chunks: %u\n"
                       "Total transfer operations: %u\n"
@@ -1306,19 +1431,29 @@ bool tscl_dump_delta(const tek_sc_item_id *item_id) {
           delta.num_chunks, delta.num_transfer_ops, delta.num_trans_op_grps,
           delta.num_files, delta.num_dirs, stage_str, delta.num_deletions);
   tscl_bytes_to_unit(&ctx, delta.transfer_buf_size);
+  // L18N: %u is raw size in bytes, %s may be a string containing number of
+  //    kibi/mebi/gibibytes
   fprintf(file, tsc_gettext("RAM transfer buffer size: %u B%s\n"),
           delta.transfer_buf_size, ctx.unit_buf);
   tscl_bytes_to_unit(&ctx, delta.download_size);
+  // L18N: %llu is raw size in bytes, %s may be a string containing number of
+  //    kibi/mebi/gibibytes
   fprintf(file, tsc_gettext("Total download size: %llu B%s\n"),
           (unsigned long long)delta.download_size, ctx.unit_buf);
   tscl_bytes_to_unit(&ctx, delta.patching_size);
+  // L18N: %llu is raw size in bytes, %s may be a string containing number of
+  //    kibi/mebi/gibibytes
   fprintf(file, tsc_gettext("Total patching read/write size: %llu B%s\n"),
           (unsigned long long)delta.patching_size, ctx.unit_buf);
   tscl_bytes_to_unit(&ctx, delta.total_file_growth);
+  // L18N: %llu is raw size in bytes, %s may be a string containing number of
+  //    kibi/mebi/gibibytes
   fprintf(file, tsc_gettext("Total file growth: %llu B%s\n"),
           (unsigned long long)delta.total_file_growth, ctx.unit_buf);
   auto const disk_space = tek_sc_dd_estimate_disk_space(&delta);
   tscl_bytes_to_unit(&ctx, disk_space);
+  // L18N: %llu is raw amount in bytes, %s may be a string containing number of
+  //    kibi/mebi/gibibytes
   fprintf(file, tsc_gettext("Estimated required disk space: %llu B%s\n"),
           (unsigned long long)disk_space, ctx.unit_buf);
   tscl_dump_delta_dir(delta.dirs, &ctx, 0);
