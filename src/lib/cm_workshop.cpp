@@ -209,7 +209,11 @@ static bool handle_qf(cm_client &client, const MessageHeader &,
 
 } // namespace
 
+} // namespace tek::steamclient::cm
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
 
 extern "C" {
 
@@ -328,5 +332,3 @@ void tek_sc_cm_ws_query_items(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm

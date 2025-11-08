@@ -1361,7 +1361,11 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
 
 } // namespace
 
+} // namespace tek::steamclient::content
+
 //===-- Public function ---------------------------------------------------===//
+
+using namespace tek::steamclient::content;
 
 extern "C" tek_sc_depot_delta
 tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
@@ -1460,5 +1464,3 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
   }
   return res;
 }
-
-} // namespace tek::steamclient::content

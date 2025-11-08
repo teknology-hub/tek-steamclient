@@ -313,7 +313,11 @@ static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
 
 } // namespace
 
+} // namespace tek::steamclient::cm
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
 
 extern "C" {
 
@@ -536,5 +540,3 @@ void tek_sc_cm_get_sp_servers(tek_sc_cm_client *client,
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm

@@ -659,7 +659,12 @@ std::uint64_t gen_job_id() noexcept {
   return job_id_mask | counter.fetch_add(1, std::memory_order::relaxed);
 }
 
+} // namespace tek::steamclient::cm
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient;
+using namespace tek::steamclient::cm;
 
 extern "C" {
 
@@ -765,5 +770,3 @@ void tek_sc_cm_disconnect(tek_sc_cm_client *client) {
 }
 
 } // extern "C"
-
-} // namespace tek::steamclient::cm
