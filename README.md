@@ -17,7 +17,7 @@ This repository also provides tek-sc-cli, simple command-line interface on top o
 
 ### Windows
 
-There are statically linked binaries for libtek-steamclient-1.dll and tek-sc-cli.exe in [releases](https://github.com/teknology-hub/tek-steamclient/releases), in archives marked as win-x86_64-static. They do not have any external dependencies other than Windows system DLLs, and are recommended for regular use. These binaries are built in MSYS2 CLANG64 environment with some of the packages rebuilt with customized build options to enable missing features and building static libraries where they weren't being built. The binaries are signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
+There are statically linked binaries for libtek-steamclient-X.dll and tek-sc-cli.exe in [releases](https://github.com/teknology-hub/tek-steamclient/releases), in archives marked as win-x86_64-static. They do not have any external dependencies other than Windows system DLLs, and are recommended for regular use. These binaries are built in MSYS2 CLANG64 environment with some of the packages rebuilt with customized build options to enable missing features and building static libraries where they weren't being built. The binaries are signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
 
 ### Linux
 
