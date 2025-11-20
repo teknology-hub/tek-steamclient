@@ -901,7 +901,7 @@ void tek_sc_cm_auth_renew_token(tek_sc_cm_client *client, const char *token,
   msg.header.set_source_job_id(job_id);
   msg.header.set_target_job_name("Authentication.GenerateAccessTokenForApp#1");
   msg.payload.set_token(token);
-  msg.payload.set_steam_id(0);
+  msg.payload.set_steam_id(token_info.steam_id);
   msg.payload.set_renewal_type(
       msg_payloads::TokenRenewalType::TOKEN_RENEWAL_TYPE_ALLOW);
   // Setup the await entry
