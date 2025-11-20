@@ -1453,7 +1453,9 @@ tek_sc_dd_compute(const tek_sc_depot_manifest *source_manifest,
   write_dir(write_ctx, *source_manifest->dirs, *target_manifest->dirs, nullptr,
             *res.dirs);
   // Set the correct initial stage
-  if (!res.num_chunks) {
+  if (!(res.dirs[0].flags &
+        (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new |
+         TEK_SC_DD_DIR_FLAG_children_download))) {
     if (res.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch) {
       res.stage = TEK_SC_DD_STAGE_patching;
     } else {

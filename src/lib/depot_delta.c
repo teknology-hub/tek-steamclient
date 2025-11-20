@@ -570,7 +570,9 @@ tek_sc_dd_compute_from_vc(const tek_sc_verification_cache *vcache) {
                                          .next_file = res.files,
                                          .next_dir = res.dirs + 1},
                     vcache, vcache->manifest->dirs, nullptr, res.dirs);
-  if (!res.num_chunks) {
+  if (!(res.dirs[0].flags &
+        (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new |
+         TEK_SC_DD_DIR_FLAG_children_download))) {
     res.stage = (res.dirs[0].flags & TEK_SC_DD_DIR_FLAG_children_patch)
                     ? TEK_SC_DD_STAGE_patching
                     : TEK_SC_DD_STAGE_installing;
