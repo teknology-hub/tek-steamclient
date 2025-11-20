@@ -171,7 +171,8 @@ static bool tscp_amjdw_process_dir(tscp_amjdw_ctx *_Nonnull ctx,
   // Iterate files
   for (int i = 0; i < dir->num_files; ++i) {
     auto const file = &dir->files[i];
-    if (!(file->flags & TEK_SC_DD_FILE_FLAG_download)) {
+    if (!(file->flags &
+          (TEK_SC_DD_FILE_FLAG_new | TEK_SC_DD_FILE_FLAG_download))) {
       continue;
     }
     const bool is_new = file->flags & TEK_SC_DD_FILE_FLAG_new;
@@ -200,11 +201,25 @@ static bool tscp_amjdw_process_dir(tscp_amjdw_ctx *_Nonnull ctx,
           tsci_os_close_handle(dir->handle);
           dir->handle = TSCI_OS_INVALID_HANDLE;
         }
-        // Finalize entry setup and mark it as active, notifying other threads
-        file->handle = handle;
-        atomic_store_explicit(&file->status_a, TEK_SC_JOB_ENTRY_STATUS_active,
-                              memory_order_release);
-        tsci_os_futex_wake((_Atomic(uint32_t) *)&file->status_a);
+        // Finalize entry setup and mark it as either active or done, notifying
+        //    other threads
+        if (file->num_rem_children) {
+          file->handle = handle;
+          atomic_store_explicit(&file->status_a, TEK_SC_JOB_ENTRY_STATUS_active,
+                                memory_order_release);
+          tsci_os_futex_wake((_Atomic(uint32_t) *)&file->status_a);
+        } else {
+          atomic_store_explicit(&file->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
+                                memory_order_release);
+          tsci_os_futex_wake((_Atomic(uint32_t) *)&file->status_a);
+          tsci_os_close_handle(handle);
+          if (atomic_fetch_sub_explicit(&dir->num_rem_children_a, 1,
+                                        memory_order_relaxed) == 1) {
+            tsci_am_job_finish_dir(dir);
+            return true;
+          }
+          continue;
+        }
       } else { // if (file->status_a changed to TEK_SC_JOB_ENTRY_STATUS_setup)
         switch (expected) {
         case TEK_SC_JOB_ENTRY_STATUS_setup:
@@ -433,11 +448,13 @@ static bool tscp_amjdw_process_dir(tscp_amjdw_ctx *_Nonnull ctx,
   // Iterate subdirectories
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];
-    if (!(subdir->flags & TEK_SC_DD_DIR_FLAG_children_download)) {
+    if (!(subdir->flags &
+          (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new |
+           TEK_SC_DD_DIR_FLAG_children_download))) {
       continue;
     }
-    const bool has_new = subdir->flags & TEK_SC_DD_DIR_FLAG_children_new;
-    if (has_new) {
+    if (subdir->flags &
+        (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new)) {
       // Attempt to claim the entry for subdirectory setup
       tek_sc_job_entry_status expected = TEK_SC_JOB_ENTRY_STATUS_pending;
       if (atomic_compare_exchange_strong_explicit(
@@ -461,11 +478,26 @@ static bool tscp_amjdw_process_dir(tscp_amjdw_ctx *_Nonnull ctx,
           tsci_os_close_handle(dir->handle);
           dir->handle = TSCI_OS_INVALID_HANDLE;
         }
-        // Finalize entry setup and mark it as active, notifying other threads
-        subdir->handle = handle;
-        atomic_store_explicit(&subdir->status_a, TEK_SC_JOB_ENTRY_STATUS_active,
-                              memory_order_release);
-        tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
+        // Finalize entry setup and mark it as either active or done, notifying
+        //    other threads
+        if (subdir->num_rem_children) {
+          subdir->handle = handle;
+          atomic_store_explicit(&subdir->status_a,
+                                TEK_SC_JOB_ENTRY_STATUS_active,
+                                memory_order_release);
+          tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
+        } else {
+          atomic_store_explicit(&subdir->status_a, TEK_SC_JOB_ENTRY_STATUS_done,
+                                memory_order_release);
+          tsci_os_futex_wake((_Atomic(uint32_t) *)&subdir->status_a);
+          tsci_os_close_handle(handle);
+          if (atomic_fetch_sub_explicit(&dir->num_rem_children_a, 1,
+                                        memory_order_relaxed) == 1) {
+            tsci_am_job_finish_dir(dir);
+            return true;
+          }
+          continue;
+        }
       } else { // if (subdir->status_a changed to TEK_SC_JOB_ENTRY_STATUS_setup)
         switch (expected) {
         case TEK_SC_JOB_ENTRY_STATUS_setup:
@@ -617,7 +649,8 @@ static int64_t tscp_amjdw_init_dir(tek_sc_dd_dir *_Nonnull dir) {
   int ref_count = 0;
   for (int i = 0; i < dir->num_files; ++i) {
     auto const file = &dir->files[i];
-    if (!(file->flags & TEK_SC_DD_FILE_FLAG_download)) {
+    if (!(file->flags &
+          (TEK_SC_DD_FILE_FLAG_new | TEK_SC_DD_FILE_FLAG_download))) {
       continue;
     }
     for (int j = 0; j < file->num_chunks; ++j) {
@@ -637,12 +670,15 @@ static int64_t tscp_amjdw_init_dir(tek_sc_dd_dir *_Nonnull dir) {
   }
   for (int i = 0; i < dir->num_subdirs; ++i) {
     auto const subdir = &dir->subdirs[i];
-    if (!(subdir->flags & TEK_SC_DD_DIR_FLAG_children_download)) {
+    if (!(subdir->flags &
+          (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new |
+           TEK_SC_DD_DIR_FLAG_children_download))) {
       continue;
     }
     progress += tscp_amjdw_init_dir(subdir);
     if (subdir->status == TEK_SC_JOB_ENTRY_STATUS_pending) {
-      if (subdir->flags & TEK_SC_DD_DIR_FLAG_children_new) {
+      if (subdir->flags &
+          (TEK_SC_DD_DIR_FLAG_new | TEK_SC_DD_DIR_FLAG_children_new)) {
         ++ref_count;
       }
       ++dir->num_rem_children;
