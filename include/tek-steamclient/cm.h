@@ -165,7 +165,7 @@ typedef enum tek_sc_cm_eresult tek_sc_cm_eresult;
 
 /// CM authentication session status values.
 enum tek_sc_cm_auth_status {
-  /// Authentication session has been completed, `err` and `token` can be
+  /// Authentication session has been completed, `result` and `token` can be
   ///    inspected for result.
   TEK_SC_CM_AUTH_STATUS_completed,
   /// New URL for QR code has been generated, speicifed in `url`.
