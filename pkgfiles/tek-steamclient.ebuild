@@ -42,7 +42,8 @@ COMMON_DEPEND="
 	steampipe? (
 		app-arch/xz-utils
 		app-arch/zstd
-		dev-libs/libzip
+		minizip-ng? ( sys-libs/minizip-ng )
+		!minizip-ng? ( virtual/minizip )
 	)
 	zlib-ng? ( sys-libs/zlib-ng )
 	!zlib-ng? ( virtual/zlib )
