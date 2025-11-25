@@ -146,8 +146,9 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 16000L);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEDATA, &curl_ctx);
-  constexpr std::string_view url{"https://api.steampowered.com/ISteamDirectory/"
-                                 "GetCMListForConnect/v1?cmtype=websockets"};
+  constexpr std::string_view url{
+      "https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/"
+      "v1?cmtype=websockets&realm=steamglobal"};
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, url.data());
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");

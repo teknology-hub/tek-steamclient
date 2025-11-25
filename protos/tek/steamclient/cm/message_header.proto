@@ -27,4 +27,6 @@ message MessageHeader {
   optional string target_job_name = 12;
   // Result code of the incoming message.
   optional int32 eresult = 13;
+  // Steam Realm to use.
+  optional uint32 realm = 32;
 }

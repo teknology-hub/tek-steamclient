@@ -191,10 +191,11 @@ struct status_request {
 
 } // namespace tek::steamclient::cm
 
+using namespace tek::steamclient;
+using namespace tek::steamclient::cm;
+
 /// @copydoc tek_sc_cm_client
 struct [[gnu::visibility("internal")]] tek_sc_cm_client {
-  using msg_await_entry_reduced = tek::steamclient::cm::msg_await_entry_reduced;
-
   /// WebSocket instance pointer.
   lws *_Nullable wsi;
   /// Value indicating whether the libwebsockets event loop processing thread
@@ -214,16 +215,15 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   /// User data pointer which will be passed to all callbacks.
   void *_Nullable user_data;
   /// Active response message await entires by job ID.
-  std::unordered_map<std::uint64_t, tek::steamclient::cm::msg_await_entry>
-      a_entries;
+  std::unordered_map<std::uint64_t, msg_await_entry> a_entries;
   /// Mutex locking concurrent access to @ref a_entries.
   std::recursive_mutex a_entries_mtx;
   /// Pending message queue.
-  std::deque<tek::steamclient::cm::pending_msg_entry> pending_msgs;
+  std::deque<pending_msg_entry> pending_msgs;
   /// Mutex locking concurrent access to @ref pending_msgs.
   std::mutex pending_msgs_mtx;
   /// Current connection state.
-  std::atomic<tek::steamclient::cm::conn_state> conn_state;
+  std::atomic<conn_state> conn_state;
   /// Buffer for temporary storage of partially received WebSocket messages.
   std::vector<unsigned char> pending_recv_buf;
   /// GZip inflate stream.
@@ -244,9 +244,9 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   ///    credentials-based authentication sessions.
   std::uint64_t auth_steam_id;
   /// Pointer to the context for credentials-based authentication.
-  std::unique_ptr<tek::steamclient::cm::cred_auth_ctx> cred_auth_ctx;
+  std::unique_ptr<cred_auth_ctx> cred_auth_ctx;
   /// Poiunter to the status request context for current auth session.
-  std::unique_ptr<tek::steamclient::cm::status_request> status_req;
+  std::unique_ptr<status_request> status_req;
   /// Number of consecutive connection retry attempts.
   /// Connection retry counter. Reset when successfully established a
   ///    connection. When reaches 5, the connection fails.
@@ -261,7 +261,7 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   /// Mutex locking concurrent access to @ref num_lics and @ref lics_a_entries.
   std::recursive_mutex lics_mtx;
   /// Pointer to currently used CM server.
-  const tek::steamclient::cm_server *_Nullable cur_server;
+  const cm_server *_Nullable cur_server;
 
   [[using gnu: nonnull(2), access(none, 2), access(none, 3)]]
   tek_sc_cm_client(tek_sc_lib_ctx *_Nonnull lib_ctx, void *_Nullable user_data)
@@ -280,8 +280,8 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   /// @param size
   ///    Size of the message payload, in bytes.
   [[using gnu: nonnull(3), access(read_only, 3, 4)]]
-  void handle_logon(const tek::steamclient::cm::MessageHeader &header,
-                    const void *_Nonnull data, int size);
+  void handle_logon(const MessageHeader &header, const void *_Nonnull data,
+                    int size);
 
   /// Handle a `EMSG_CLIENT_LICENSE_LIST` message.
   ///
@@ -306,9 +306,9 @@ struct [[gnu::visibility("internal")]] tek_sc_cm_client {
   template <tek_sc_errc errc, typename T>
     requires std::derived_from<T, google::protobuf::MessageLite>
   [[gnu::access(none, 3)]]
-  tek_sc_err send_message(tek::steamclient::cm::message<T> &msg,
+  tek_sc_err send_message(message<T> &msg,
                           lws_sorted_usec_list_t *_Nullable sul) {
-    using serialized_msg_hdr = tek::steamclient::cm::serialized_msg_hdr;
+    msg.header.set_realm(1); // SteamGlobal
     // Set header's Steam and sesion IDs if available
     if (steam_id) {
       msg.header.set_steam_id(steam_id);
