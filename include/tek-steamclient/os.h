@@ -100,8 +100,20 @@ typedef int tek_sc_os_handle;
 /// Make a string literal for @ref tek_sc_os_char string.
 #define TEK_SC_OS_STR(str) str
 
-#else // def _WIN32 elifdef __linux__
+#elifdef __APPLE__ // def _WIN32 elifdef __linux__
 
-#error Unsupported target OS. Only Windows (_WIN32) and Linux (__linux__) are supported.
+/// OS type for pathname characters.
+typedef char tek_sc_os_char;
+/// OS error code type.
+typedef int tek_sc_os_errc;
+/// OS type for handles for files or other system resources.
+typedef int tek_sc_os_handle;
+/// @def TEK_SC_OS_STR
+/// Make a string literal for @ref tek_sc_os_char string.
+#define TEK_SC_OS_STR(str) str
+
+#else
+
+#error Unsupported target OS. Only Windows (_WIN32), Linux (__linux__) and MacOS (__APPLE__) are supported.
 
 #endif // def _WIN32 elifdef __linux__ else

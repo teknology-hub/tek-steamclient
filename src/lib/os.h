@@ -153,7 +153,74 @@ struct tsci_os_aio_ctx {
 #endif // def TEK_SCB_IO_URING
 };
 
-#endif // def _WIN32 elifdef __linux__
+#elifdef __APPLE__
+
+#include "config.h" // IWYU pragma: keep
+
+#include <errno.h> // IWYU pragma: keep
+#include <fcntl.h>
+#ifdef TEK_SCB_IO_URING
+#include <liburing.h>
+#endif // def TEK_SCB_IO_URING
+
+/// @def TSCI_OS_ERR_ALREADY_EXISTS
+/// @ref tek_sc_os_errc value indicating that target file/directory already
+///    exists.
+#define TSCI_OS_ERR_ALREADY_EXISTS EEXIST
+/// @def TSCI_OS_ERR_DIR_NOT_EMPTY
+/// @ref tek_sc_os_errc value indicating that target directory is not empty.
+#define TSCI_OS_ERR_DIR_NOT_EMPTY ENOTEMPTY
+/// @def TSCI_OS_ERR_FILE_NOT_FOUND
+/// @ref tek_sc_os_errc value indicating that a file was not found.
+#define TSCI_OS_ERR_FILE_NOT_FOUND ENOENT
+/// @def TSCI_OS_ERR_NOT_SAME_DEV
+/// @ref tek_sc_os_errc value indicating that target location is on a different
+///    device/filesystem.
+#define TSCI_OS_ERR_NOT_SAME_DEV EXDEV
+/// @def TSCI_OS_INVALID_HANDLE
+/// Invalid value for @ref tek_sc_os_handle.
+#define TSCI_OS_INVALID_HANDLE -1
+/// @def TSCI_OS_PATH_SEP_CHAR_STR
+/// Path separator character for current operating system as a string literal.
+#define TSCI_OS_PATH_SEP_CHAR_STR "/"
+/// @def TSCI_OS_SNPRINTF
+/// snprintf-like function for @ref tek_sc_os_char string.
+#define TSCI_OS_SNPRINTF snprintf
+
+/// File access modes.
+enum tsci_os_file_access {
+  TSCI_OS_FILE_ACCESS_read = O_RDONLY,
+  TSCI_OS_FILE_ACCESS_write = O_WRONLY,
+  TSCI_OS_FILE_ACCESS_rdwr = O_RDWR
+};
+
+/// GNU/Linux asynchronous I/O context implementation.
+struct tsci_os_aio_ctx {
+  /// When not using io_uring, the capacity of @ref reqs, otherwise `-1`.
+  int num_reqs;
+  /// Last registered file descriptor.
+  int reg_fd;
+  union {
+    /// When io_uring is not used, pointer to the array of "submitted" request
+    ///    pointers.
+    struct tsci_os_aio_req *_Nullable *_Nonnull reqs;
+    /// On kernels supporting `IORING_SETUP_NO_MMAP`, pointer to the buffer
+    ///    allocated for the ring, otherwise `MAP_FAILED`.
+    void *_Nullable buf;
+  };
+  union {
+    /// When io_uring is not used, number of currently "submitted" requests.
+    int num_submitted;
+    /// Value indicating whether the ring has registered buffer.
+    bool buf_registered;
+  };
+#ifdef TEK_SCB_IO_URING
+  /// io_uring instance.
+  struct io_uring ring;
+#endif // def TEK_SCB_IO_URING
+};
+
+#endif // def _WIN32 elifdef __linux__ elifdef __APPLE__
 
 //===-- OS-independent types ----------------------------------------------===//
 
