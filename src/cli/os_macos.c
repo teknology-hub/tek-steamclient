@@ -1,6 +1,6 @@
 //===-- os_linux.c - GNU/Linux OS functions implementation ----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -16,6 +16,8 @@
 
 #include "common.h"
 #include "tek-steamclient/os.h"
+#include "common/ulock.h"
+
 
 #include <errno.h>
 #include <fcntl.h>
@@ -32,7 +34,6 @@
 #include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
-#include "ulock.h"
 
 
 /// Currently registered signal handler.

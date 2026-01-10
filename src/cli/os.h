@@ -1,6 +1,6 @@
 //===-- os.h - OS-specific code -------------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
