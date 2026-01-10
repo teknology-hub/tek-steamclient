@@ -5,9 +5,15 @@ cli_src = [
   'src/cli/cmd_parser.c',
   'src/cli/cmd_runner.c',
   'src/cli/main.c',
-  'src/cli' / (is_windows ? 'os_windows.c' : 'os_linux.c'),
   'src/cli/print_err.c'
 ]
+if is_windows
+  cli_src += 'src/cli/os_windows.c'
+elif host_machine.system() == 'darwin'
+  cli_src += 'src/cli/os_macos.c'
+else
+  cli_src += 'src/cli/os_linux.c'
+endif
 if get_option('cli_dump')
   cli_src += 'src/cli/dump.c'
 endif # get_option('cli_dump')

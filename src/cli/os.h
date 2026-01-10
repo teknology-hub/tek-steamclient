@@ -58,7 +58,23 @@
 /// snprintf-like function for @ref tek_sc_os_char string.
 #define TSCL_OS_SNPRINTF snprintf
 
-#endif // def _WIN32 elifdef __linux__
+#elifdef __APPLE__
+
+/// @def TSCL_OS_PRI_str
+/// Format specifier for printing @ref tek_sc_os_char strings via printf family
+///     of functions.
+#define TSCL_OS_PRI_str "s"
+/// @def TSCL_OS_INVALID_HANDLE
+/// Invalid value for @ref tek_sc_os_handle.
+#define TSCL_OS_INVALID_HANDLE -1
+/// @def TSCL_OS_PATH_SEP_CHAR_STR
+/// Path separator character for current operating system as a string literal.
+#define TSCL_OS_PATH_SEP_CHAR_STR "/"
+/// @def TSCL_OS_SNPRINTF
+/// snprintf-like function for @ref tek_sc_os_char string.
+#define TSCL_OS_SNPRINTF snprintf
+
+#endif // def _WIN32 elifdef __linux__ elifdef __APPLE__
 
 //===-- Functions ---------------------------------------------------------===//
 

@@ -9,9 +9,16 @@ lib_src = [
   'src/lib/cm_workshop.cpp',
   'src/lib/error_msgs.c',
   'src/lib/lib_ctx.cpp',
-  'src/lib' / (is_windows ? 'os_windows.c' : 'os_linux.c'),
   'src/lib/utils.c'
 ]
+
+if is_windows
+  lib_src += 'src/lib/os_windows.c'
+elif host_machine.system() == 'darwin'
+  lib_src += 'src/lib/os_macos.c'
+else
+  lib_src += 'src/lib/os_linux.c'
+endif
 if get_option('s3_client')
   lib_src += 'src/lib/s3c.cpp'
 endif # get_option('s3_client')

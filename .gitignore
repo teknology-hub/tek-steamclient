@@ -4,3 +4,4 @@
 /subprojects/*
 !/subprojects/packagefiles/
 !/subprojects/*.wrap
+.DS_Store
