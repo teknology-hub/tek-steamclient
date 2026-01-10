@@ -51,6 +51,9 @@ add_project_arguments(
     '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'),
   language: ['c', 'cpp']
 )
+if host_machine.system() == 'darwin'
+  add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
+endif
 if is_windows
   # These libraries aren't linked automatically in MSYS2 environment
   win_deps = [

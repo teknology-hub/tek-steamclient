@@ -1,6 +1,6 @@
 //===-- os_macos.c - GNU/Linux OS functions implementation ----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -16,10 +16,11 @@
 
 #include "common/error.h"
 #include "config.h" // IWYU pragma: keep
-#include "lib/ulock.h"
 #include "tek-steamclient/content.h"
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
+#include "common/ulock.h"
+
 
 #include <stdlib.h>
 #include <dirent.h>
@@ -42,13 +43,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <wordexp.h>
-#include "ulock.h"
-
-/// @def TSCP_IO_URING_MMAP_SIZE
-/// Size of the mapping allocated for io_uring when `IORING_SETUP_NO_MMAP` is
-///    available. In tek-steamclient's use cases, neither of the queues should
-///    ever exceed page size.
-#define TSCP_IO_URING_MMAP_SIZE 0x2000
 
 //===-- General functions -------------------------------------------------===//
 
@@ -617,79 +611,6 @@ bool tsci_os_symlink_at(const tek_sc_os_char *target,
 tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, int num_reqs,
                                     [[maybe_unused]] void *buffer,
                                     [[maybe_unused]] size_t buffer_size) {
-#ifdef TEK_SCB_IO_URING
-  auto const version = tsci_os_get_version();
-  const int ver_num = version.major * 1000 + version.minor;
-  if (ver_num < 5005) {
-    // Kernels before 5.5 do not support IORING_REGISTER_FILES_UPDATE
-    goto skip_uring;
-  }
-  unsigned flags = 0;
-  // Set flags supported by current kernel version
-  if (ver_num >= 5018) {
-    flags |= IORING_SETUP_SUBMIT_ALL;
-  }
-  if (ver_num >= 5019) {
-    flags |= IORING_SETUP_COOP_TASKRUN | IORING_SETUP_TASKRUN_FLAG;
-  }
-  if (ver_num >= 6000) {
-    flags |= IORING_SETUP_SINGLE_ISSUER;
-  }
-  if (ver_num >= 6001) {
-    flags |= IORING_SETUP_DEFER_TASKRUN;
-  }
-  if (ver_num >= 6006) {
-    flags |= IORING_SETUP_NO_SQARRAY;
-  }
-  int res;
-  if (ver_num >= 6005) {
-    flags |= IORING_SETUP_NO_MMAP | IORING_SETUP_REGISTERED_FD_ONLY;
-    ctx->buf = mmap(nullptr, TSCP_IO_URING_MMAP_SIZE, PROT_READ | PROT_WRITE,
-                    MAP_SHARED | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-    if (ctx->buf == MAP_FAILED) {
-      return errno;
-    }
-    res = io_uring_queue_init_mem(num_reqs, &ctx->ring,
-                                  &(struct io_uring_params){.flags = flags},
-                                  ctx->buf, TSCP_IO_URING_MMAP_SIZE);
-  } else {
-    ctx->buf = MAP_FAILED;
-    res = io_uring_queue_init(num_reqs, &ctx->ring, flags);
-  }
-  if (res < 0) {
-    if (-res == ENOSYS) {
-      goto skip_uring;
-    } else {
-      return -res;
-    }
-  }
-  res = io_uring_register_buffers(
-      &ctx->ring,
-      &(const struct iovec){.iov_base = buffer, .iov_len = buffer_size}, 1);
-  switch (res) {
-  case 0:
-    ctx->buf_registered = true;
-    break;
-  case -ENOMEM:
-    ctx->buf_registered = false;
-    break;
-  default:
-    goto fail;
-  }
-  res = io_uring_register_files_sparse(&ctx->ring, 1);
-  if (res < 0) {
-    goto fail;
-  }
-  ctx->num_reqs = -1;
-  return 0;
-fail:
-  io_uring_queue_exit(&ctx->ring);
-  if (ctx->buf != MAP_FAILED) {
-    munmap(ctx->buf, TSCP_IO_URING_MMAP_SIZE);
-  }
-  return -res;
-skip_uring:
-#endif // def TEK_SCB_IO_URING
   ctx->num_reqs = num_reqs;
   ctx->num_submitted = 0;
   ctx->reqs = malloc(sizeof *ctx->reqs * num_reqs);
@@ -697,27 +618,12 @@ skip_uring:
 }
 
 void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) {
-#ifdef TEK_SCB_IO_URING
-  if (ctx->num_reqs < 0) {
-    io_uring_queue_exit(&ctx->ring);
-    if (ctx->buf != MAP_FAILED) {
-      munmap(ctx->buf, TSCP_IO_URING_MMAP_SIZE);
-    }
-    return;
-  }
-#endif // def TEK_SCB_IO_URING
   free(ctx->reqs);
 }
 
 tek_sc_os_errc tsci_os_aio_register_file(tsci_os_aio_ctx *ctx,
                                          tek_sc_os_handle handle) {
   ctx->reg_fd = handle;
-#ifdef TEK_SCB_IO_URING
-  if (ctx->num_reqs < 0) {
-    const int res = io_uring_register_files_update(&ctx->ring, 0, &handle, 1);
-    return res < 0 ? -res : 0;
-  }
-#endif // def TEK_SCB_IO_URING
   return 0;
 }
 
@@ -726,28 +632,6 @@ tek_sc_os_errc tsci_os_aio_submit_read(tsci_os_aio_ctx *ctx,
                                        size_t n, int64_t offset,
                                        [[maybe_unused]] bool submit) {
   req->handle = ctx->reg_fd;
-#ifdef TEK_SCB_IO_URING
-  if (ctx->num_reqs < 0) {
-    auto const sqe = io_uring_get_sqe(&ctx->ring);
-    if (!sqe) {
-      return EBUSY;
-    }
-    if (ctx->buf_registered) {
-      io_uring_prep_read_fixed(sqe, 0, buf, n, offset, 0);
-    } else {
-      io_uring_prep_read(sqe, 0, buf, n, offset);
-    }
-    io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
-    io_uring_sqe_set_data(sqe, req);
-    if (submit) {
-      const int res = io_uring_submit_and_get_events(&ctx->ring);
-      if (res < 0) {
-        return -res;
-      }
-    }
-    return 0;
-  }
-#endif // def TEK_SCB_IO_URING
   if (ctx->num_submitted >= ctx->num_reqs) {
     return EBUSY;
   }
@@ -768,28 +652,6 @@ tek_sc_os_errc tsci_os_aio_submit_write(tsci_os_aio_ctx *ctx,
                                         size_t n, int64_t offset,
                                         [[maybe_unused]] bool submit) {
   req->handle = ctx->reg_fd;
-#ifdef TEK_SCB_IO_URING
-  if (ctx->num_reqs < 0) {
-    auto const sqe = io_uring_get_sqe(&ctx->ring);
-    if (!sqe) {
-      return EBUSY;
-    }
-    if (ctx->buf_registered) {
-      io_uring_prep_write_fixed(sqe, 0, buf, n, offset, 0);
-    } else {
-      io_uring_prep_write(sqe, 0, buf, n, offset);
-    }
-    io_uring_sqe_set_flags(sqe, IOSQE_FIXED_FILE);
-    io_uring_sqe_set_data(sqe, req);
-    if (submit) {
-      const int res = io_uring_submit_and_get_events(&ctx->ring);
-      if (res < 0) {
-        return -res;
-      }
-    }
-    return 0;
-  }
-#endif // def TEK_SCB_IO_URING
   if (ctx->num_submitted >= ctx->num_reqs) {
     return EBUSY;
   }
@@ -807,35 +669,6 @@ tek_sc_os_errc tsci_os_aio_submit_write(tsci_os_aio_ctx *ctx,
 
 int tsci_os_aio_get_compls(tsci_os_aio_ctx *ctx, tsci_os_aio_req **reqs,
                            int num_reqs, [[maybe_unused]] int num_wait) {
-#ifdef TEK_SCB_IO_URING
-  if (ctx->num_reqs < 0) {
-    if (!num_reqs) {
-      return 0;
-    }
-    if (num_wait && (int)io_uring_cq_ready(&ctx->ring) < num_wait) {
-      const int res = io_uring_submit_and_wait(&ctx->ring, num_wait);
-      if (res < 0) {
-        errno = -res;
-        return -1;
-      }
-    }
-    unsigned head;
-    struct io_uring_cqe *cqe;
-    int i = 0;
-    io_uring_for_each_cqe(&ctx->ring, head, cqe) {
-      const int res = cqe->res;
-      tsci_os_aio_req *req = io_uring_cqe_get_data(cqe);
-      req->result = res < 0 ? -res : 0;
-      req->bytes_transferred = res < 0 ? 0 : res;
-      reqs[i] = req;
-      if (++i == num_reqs) {
-        break;
-      }
-    }
-    io_uring_cq_advance(&ctx->ring, i);
-    return i;
-  }
-#endif // def TEK_SCB_IO_URING
   int num_reqs_out = num_reqs;
   if (num_reqs_out > ctx->num_submitted) {
     num_reqs_out = ctx->num_submitted;

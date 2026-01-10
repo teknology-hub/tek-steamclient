@@ -1,6 +1,6 @@
 //===-- os.h - OS-specific code -------------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -159,9 +159,6 @@ struct tsci_os_aio_ctx {
 
 #include <errno.h> // IWYU pragma: keep
 #include <fcntl.h>
-#ifdef TEK_SCB_IO_URING
-#include <liburing.h>
-#endif // def TEK_SCB_IO_URING
 
 /// @def TSCI_OS_ERR_ALREADY_EXISTS
 /// @ref tek_sc_os_errc value indicating that target file/directory already
@@ -214,10 +211,6 @@ struct tsci_os_aio_ctx {
     /// Value indicating whether the ring has registered buffer.
     bool buf_registered;
   };
-#ifdef TEK_SCB_IO_URING
-  /// io_uring instance.
-  struct io_uring ring;
-#endif // def TEK_SCB_IO_URING
 };
 
 #endif // def _WIN32 elifdef __linux__ elifdef __APPLE__
