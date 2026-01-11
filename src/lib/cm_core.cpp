@@ -235,9 +235,36 @@ void cm_conn::handle_connection(CURLcode code) {
                 .data{}});
     }
   } else { // if (code == CURLE_OK)
+    bool retry{!delete_pending.load(std::memory_order::relaxed)};
+    if (retry && code == CURLE_OPERATION_TIMEDOUT) {
+      if (!num_conn_retries) {
+        // Perhaps the server is dead, request a new list from web API
+        std::unique_lock lock{ctx.cm_servers_mtx};
+        ctx.cm_servers.clear();
+        auto res{fetch_server_list(ctx.cm_servers, 5000)};
+        if (!tek_sc_err_success(&res)) {
+          lock.unlock();
+          connection_cb(&*this, &res, user_data);
+          return;
+        }
+        ++num_conn_retries;
+        ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::cm_servers),
+                                 std::memory_order::relaxed);
+        ctx.cm_servers_iter = ctx.cm_servers.cbegin();
+        cur_server = std::to_address(ctx.cm_servers_iter);
+        auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
+                             cur_server->hostname.data(), cur_server->port)};
+        const std::scoped_lock conn_lock{ctx.conn_mtx};
+        ctx.conn_queue.emplace_back(ws_conn_request{
+            .conn{*this}, .url{std::move(url)}, .timeout_ms = 5000});
+        return;
+      }
+      if (num_conn_retries >= 3) {
+        retry = false;
+      }
+    }
     // If retry counter is below 5, retry with another server
-    if (!delete_pending.load(std::memory_order::relaxed) &&
-        ++num_conn_retries < 5) {
+    if (retry && ++num_conn_retries < 5) {
       {
         const std::scoped_lock lock{ctx.cm_servers_mtx};
         if (++ctx.cm_servers_iter == ctx.cm_servers.cend()) {
