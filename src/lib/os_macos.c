@@ -1,6 +1,7 @@
-//===-- os_macos.c - GNU/Linux OS functions implementation ----------------===//
+//===-- os_macos.c - MacOS functions implementation -----------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
+// Copyright (c) 2026 Nuclearist <nuclearist@teknology-hub.com>,
+//    ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -9,35 +10,30 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file
-/// GNU/Linux implementation of @ref os.h.
+/// MacOS implementation of @ref os.h.
 ///
 //===----------------------------------------------------------------------===//
 #include "os.h"
 
 #include "common/error.h"
-#include "config.h" // IWYU pragma: keep
+#include "common/ulock.h"
 #include "tek-steamclient/content.h"
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
-#include "common/ulock.h"
 
-
-#include <stdlib.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#ifdef TEK_SCB_IO_URING
-#include <liburing.h>
-#endif // def TEK_SCB_IO_URING
 #include <limits.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <stdatomic.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <time.h>
@@ -133,8 +129,11 @@ char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
   if (!buf) {
     abort();
   }
-  auto const res = strerror_r(errc, buf, 256);
-  if (!res) return buf; else abort();
+  if (strerror_r(errc, buf, 256)) {
+    static const char unk_msg[] = "Unknown error";
+    memcpy(buf, unk_msg, sizeof unk_msg);
+  }
+  return buf;
 }
 
 tek_sc_os_errc tsci_os_get_last_error(void) { return errno; }
@@ -165,11 +164,11 @@ tsci_os_version tsci_os_get_version(void) {
   return version;
 }
 
-time_t tsci_os_get_process_start_time(void) { 
-    //There's no good way to get the process creation time without objective-c
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return ts.tv_sec;
+time_t tsci_os_get_process_start_time(void) {
+  // There's no good way to get the process creation time without objective-c
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return ts.tv_sec;
 }
 
 void tsci_os_set_thread_name(const tek_sc_os_char *name) {
@@ -230,7 +229,7 @@ tek_sc_os_errc tsci_os_path_exists_at(tek_sc_os_handle parent_dir_handle,
 //===--- Diectory create/open ---------------------------------------------===//
 
 tek_sc_os_handle tsci_os_dir_create(const tek_sc_os_char *path) {
-  const int fd = open(path, O_DIRECTORY | O_CLOEXEC | O_RDONLY );
+  const int fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (fd >= 0) {
     return fd;
   }
@@ -240,13 +239,13 @@ tek_sc_os_handle tsci_os_dir_create(const tek_sc_os_char *path) {
   if (mkdir(path, 0755) < 0) {
     return -1;
   }
-  return open(path, O_DIRECTORY | O_CLOEXEC | O_RDONLY );
+  return open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 }
 
 tek_sc_os_handle tsci_os_dir_create_at(tek_sc_os_handle parent_dir_handle,
                                        const tek_sc_os_char *name) {
   const int fd =
-      openat(parent_dir_handle, name, O_DIRECTORY | O_CLOEXEC | O_RDONLY);
+      openat(parent_dir_handle, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (fd >= 0) {
     return fd;
   }
@@ -256,12 +255,12 @@ tek_sc_os_handle tsci_os_dir_create_at(tek_sc_os_handle parent_dir_handle,
   if (mkdirat(parent_dir_handle, name, 0755) < 0) {
     return -1;
   }
-  return openat(parent_dir_handle, name, O_DIRECTORY | O_CLOEXEC | O_RDONLY);
+  return openat(parent_dir_handle, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 }
 
 tek_sc_os_handle tsci_os_dir_open_at(tek_sc_os_handle parent_dir_handle,
                                      const tek_sc_os_char *name) {
-  return openat(parent_dir_handle, name, O_DIRECTORY | O_CLOEXEC | O_RDONLY);
+  return openat(parent_dir_handle, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 }
 
 //===--- Directory move/delete --------------------------------------------===//
@@ -269,8 +268,7 @@ tek_sc_os_handle tsci_os_dir_open_at(tek_sc_os_handle parent_dir_handle,
 bool tsci_os_dir_move(tek_sc_os_handle src_dir_handle,
                       tek_sc_os_handle tgt_dir_handle,
                       const tek_sc_os_char *name) {
-  return !renameatx_np(src_dir_handle, name, tgt_dir_handle, name,
-                    RENAME_EXCL);
+  return !renameatx_np(src_dir_handle, name, tgt_dir_handle, name, RENAME_EXCL);
 }
 
 bool tsci_os_dir_delete_at(tek_sc_os_handle parent_dir_handle,
@@ -306,13 +304,13 @@ tek_sc_err tsci_os_dir_delete_at_rec(tek_sc_os_handle parent_dir_handle,
     }
     if (ent->d_type == DT_UNKNOWN) {
       // Determine file type
-      struct stat stx;
-      if (fstatat(fd, ent->d_name, &stx, AT_SYMLINK_NOFOLLOW) < 0) {
+      struct stat st;
+      if (fstatat(fd, ent->d_name, &st, AT_SYMLINK_NOFOLLOW) < 0) {
         res = tsci_os_io_err_at(fd, ent->d_name, errc, errno,
                                 TEK_SC_ERR_IO_TYPE_get_type);
         goto close_dir;
       }
-      ent->d_type = S_ISDIR(stx.st_mode) ? DT_DIR : DT_REG;
+      ent->d_type = S_ISDIR(st.st_mode) ? DT_DIR : DT_REG;
     }
     if (ent->d_type == DT_DIR) {
       res = tsci_os_dir_delete_at_rec(fd, ent->d_name, errc);
@@ -448,20 +446,20 @@ bool tsci_os_file_write_at(tek_sc_os_handle handle, const void *buf, size_t n,
 //===--- File get/set size ------------------------------------------------===//
 
 size_t tsci_os_file_get_size(tek_sc_os_handle handle) {
-  struct stat stx;
-  if (fstat(handle, &stx) < 0) {
+  struct stat st;
+  if (fstat(handle, &st) < 0) {
     return SIZE_MAX;
   }
-  return stx.st_size;
+  return st.st_size;
 }
 
 size_t tsci_os_file_get_size_at(tek_sc_os_handle parent_dir_handle,
                                 const tek_sc_os_char *name) {
-  struct stat stx;
-  if (fstatat(parent_dir_handle, name, &stx, 0) < 0) {
+  struct stat st;
+  if (fstatat(parent_dir_handle, name, &st, 0) < 0) {
     return SIZE_MAX;
   }
-  return stx.st_size;
+  return st.st_size;
 }
 
 bool tsci_os_file_truncate(tek_sc_os_handle handle, int64_t new_size) {
@@ -472,11 +470,11 @@ bool tsci_os_file_truncate(tek_sc_os_handle handle, int64_t new_size) {
 
 bool tsci_os_file_apply_flags(tek_sc_os_handle handle,
                               tek_sc_dm_file_flag flags) {
-  struct stat stx;
-  if (fstat(handle, &stx) < 0) {
+  struct stat st;
+  if (fstat(handle, &st) < 0) {
     return false;
   }
-  const int perms = stx.st_mode & ACCESSPERMS;
+  const int perms = st.st_mode & ACCESSPERMS;
   if (flags & TEK_SC_DM_FILE_FLAG_executable) {
     if (perms & 0100) {
       return true;
@@ -493,11 +491,11 @@ bool tsci_os_file_apply_flags(tek_sc_os_handle handle,
 bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
                                  const tek_sc_os_char *name,
                                  tek_sc_dm_file_flag flags) {
-  struct stat stx;
-  if (fstatat(parent_dir_handle, name, &stx, 0) < 0) {
+  struct stat st;
+  if (fstatat(parent_dir_handle, name, &st, 0) < 0) {
     return false;
   }
-  const int perms = stx.st_mode & ACCESSPERMS;
+  const int perms = st.st_mode & ACCESSPERMS;
   if (flags & TEK_SC_DM_FILE_FLAG_executable) {
     if (perms & 0100) {
       return true;
@@ -520,19 +518,23 @@ bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
   auto const buf = args->buf;
   auto const buf_size = args->buf_size;
   while (size) {
-    ssize_t bytes_copied;
-      auto const bytes_read =
-          pread(src_fd, buf, size > buf_size ? buf_size : size, src_offset);
-      if (bytes_read < 0) {
-        return false;
+    auto const bytes_read =
+        pread(src_fd, buf, size > buf_size ? buf_size : size, src_offset);
+    if (bytes_read <= 0) {
+      if (!bytes_read) {
+        // Intentionally picked an errno value unused by pread(), this branch
+        //    helps avoiding a deadlock if early EOF is encountered
+        errno = ERANGE;
       }
-      bytes_copied = pwrite(tgt_fd, buf, bytes_read, tgt_offset);
-      if (bytes_copied < 0) {
-        return false;
-      }
-      src_offset += bytes_copied;
-      tgt_offset += bytes_copied;
-    size -= bytes_copied;
+      return false;
+    }
+    auto const bytes_written = pwrite(tgt_fd, buf, bytes_read, tgt_offset);
+    if (bytes_written < 0) {
+      return false;
+    }
+    src_offset += bytes_written;
+    tgt_offset += bytes_written;
+    size -= bytes_written;
   } // while (size)
   return true;
 }
@@ -553,33 +555,28 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
     close(src_fd);
     return false;
   }
-  bool xdev = args->not_same_dev;
+  auto const buf = args->buf;
+  auto const buf_size = args->buf_size;
   bool res = true;
-  while (size) {
-    auto const bytes_copied =
-        sendfile(src_fd, tgt_fd, 0, &size, nullptr, 0);
-    if (bytes_copied < 0) {
-      auto const err = errno;
-      if (err == EXDEV) {
-        xdev = true;
-        args->not_same_dev = true;
-        continue;
-      }
-      args->error = tsci_os_io_err(src_fd, errc, err, TEK_SC_ERR_IO_TYPE_copy);
+  for (int64_t offset = 0; size;) {
+    auto const bytes_read =
+        pread(src_fd, buf, (size_t)size > buf_size ? buf_size : size, offset);
+    if (bytes_read <= 0) {
+      args->error = tsci_os_io_err(src_fd, errc, bytes_read ? errno : ERANGE,
+                                   TEK_SC_ERR_IO_TYPE_read);
       res = false;
       break;
     }
-    if (!bytes_copied) {
-      // Intentionally picked an errno value unused by copy_file_range() and
-      //    sendfile(), this branch helps avoiding a deadlock if early EOF is
-      //    encountered
+    auto const bytes_written = pwrite(tgt_fd, buf, bytes_read, offset);
+    if (bytes_written < 0) {
       args->error =
-          tsci_os_io_err(src_fd, errc, ERANGE, TEK_SC_ERR_IO_TYPE_copy);
+          tsci_os_io_err(tgt_fd, errc, errno, TEK_SC_ERR_IO_TYPE_write);
       res = false;
       break;
     }
-    size -= bytes_copied;
-  } // while (size)
+    offset += bytes_written;
+    size -= bytes_written;
+  } // for (int64_t offset = 0; size;)
   close(tgt_fd);
   close(src_fd);
   return res;
@@ -617,9 +614,7 @@ tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, int num_reqs,
   return ctx->reqs ? 0 : ENOMEM;
 }
 
-void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) {
-  free(ctx->reqs);
-}
+void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) { free(ctx->reqs); }
 
 tek_sc_os_errc tsci_os_aio_register_file(tsci_os_aio_ctx *ctx,
                                          tek_sc_os_handle handle) {
@@ -697,13 +692,14 @@ void tsci_os_mem_free(const void *addr, size_t size) {
 
 bool tsci_os_futex_wait(const _Atomic(uint32_t) *addr, uint32_t old,
                         uint32_t timeout_ms) {
-  uint32_t timeout_us = timeout_ms * 1000;
-  if (timeout_ms == UINT32_MAX) timeout_us = 0;
+  if (timeout_ms == UINT32_MAX) {
+    timeout_ms = 0;
+  }
   do {
-    if (__ulock_wait(UL_COMPARE_AND_WAIT, addr, old, timeout_us) < 0) {
-        return errno == EAGAIN;
+    if (__ulock_wait(UL_COMPARE_AND_WAIT, (void *)addr, old,
+                     timeout_ms * 1000) < 0) {
+      return errno == EAGAIN;
     }
-
   } while (atomic_load_explicit(addr, memory_order_relaxed) == old);
   return true;
 }
@@ -714,10 +710,7 @@ void tsci_os_futex_wake(_Atomic(uint32_t) *addr) {
 
 //===-- Pathname string functions -----------------------------------------===//
 
-int tsci_os_pstr_strlen(const tek_sc_os_char *pstr) {
-  // Modern Linux filesystems already use UTF-8 or implicitly convert to it
-  return strlen(pstr);
-}
+int tsci_os_pstr_strlen(const tek_sc_os_char *pstr) { return strlen(pstr); }
 
 int tsci_os_pstr_to_str(const tek_sc_os_char *restrict pstr,
                         char *restrict str) {
@@ -726,10 +719,7 @@ int tsci_os_pstr_to_str(const tek_sc_os_char *restrict pstr,
   return len;
 }
 
-int tsci_os_str_pstrlen(const char *, int len) {
-  // Modern Linux filesystems already use UTF-8 or implicitly convert from it
-  return len;
-}
+int tsci_os_str_pstrlen(const char *, int len) { return len; }
 
 int tsci_os_str_to_pstr(const char *restrict str, int len,
                         tek_sc_os_char *restrict pstr) {

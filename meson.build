@@ -18,6 +18,7 @@ if get_option('cli_dump') and not get_option('app_manager')
 endif
 add_project_arguments('-DTEK_SC_IMPL', language: ['c', 'cpp'])
 is_windows = host_machine.system() == 'windows'
+is_macos = host_machine.system() == 'darwin'
 if is_windows
   add_project_arguments('-DUNICODE', '-D_UNICODE', language: ['c', 'cpp'])
   add_project_link_arguments('-municode', language: ['c', 'cpp'])
@@ -51,7 +52,7 @@ add_project_arguments(
     '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'),
   language: ['c', 'cpp']
 )
-if host_machine.system() == 'darwin'
+if is_macos
   add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
 endif
 if is_windows

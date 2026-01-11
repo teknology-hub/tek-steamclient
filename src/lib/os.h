@@ -1,6 +1,7 @@
 //===-- os.h - OS-specific code -------------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>,
+//    ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -153,9 +154,7 @@ struct tsci_os_aio_ctx {
 #endif // def TEK_SCB_IO_URING
 };
 
-#elifdef __APPLE__
-
-#include "config.h" // IWYU pragma: keep
+#elifdef __APPLE__ // def _WIN32 elifdef __linux__
 
 #include <errno.h> // IWYU pragma: keep
 #include <fcntl.h>
@@ -191,26 +190,16 @@ enum tsci_os_file_access {
   TSCI_OS_FILE_ACCESS_rdwr = O_RDWR
 };
 
-/// GNU/Linux asynchronous I/O context implementation.
+/// MacOS asynchronous I/O context implementation.
 struct tsci_os_aio_ctx {
-  /// When not using io_uring, the capacity of @ref reqs, otherwise `-1`.
+  /// The capacity of @ref reqs.
   int num_reqs;
   /// Last registered file descriptor.
   int reg_fd;
-  union {
-    /// When io_uring is not used, pointer to the array of "submitted" request
-    ///    pointers.
-    struct tsci_os_aio_req *_Nullable *_Nonnull reqs;
-    /// On kernels supporting `IORING_SETUP_NO_MMAP`, pointer to the buffer
-    ///    allocated for the ring, otherwise `MAP_FAILED`.
-    void *_Nullable buf;
-  };
-  union {
-    /// When io_uring is not used, number of currently "submitted" requests.
-    int num_submitted;
-    /// Value indicating whether the ring has registered buffer.
-    bool buf_registered;
-  };
+  /// Pointer to the array of "submitted" request pointers.
+  struct tsci_os_aio_req *_Nullable *_Nonnull reqs;
+  /// Number of currently "submitted" requests.
+  int num_submitted;
 };
 
 #endif // def _WIN32 elifdef __linux__ elifdef __APPLE__

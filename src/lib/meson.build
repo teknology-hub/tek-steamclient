@@ -14,7 +14,7 @@ lib_src = [
 
 if is_windows
   lib_src += 'src/lib/os_windows.c'
-elif host_machine.system() == 'darwin'
+elif is_macos
   lib_src += 'src/lib/os_macos.c'
 else
   lib_src += 'src/lib/os_linux.c'

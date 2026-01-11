@@ -1,6 +1,7 @@
 //===-- os.h - OS-specific types ------------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>,
+//    ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -101,6 +102,7 @@ typedef int tek_sc_os_handle;
 #define TEK_SC_OS_STR(str) str
 
 #elifdef __APPLE__ // def _WIN32 elifdef __linux__
+// MacOS-specific declarations
 
 /// OS type for pathname characters.
 typedef char tek_sc_os_char;
@@ -112,8 +114,9 @@ typedef int tek_sc_os_handle;
 /// Make a string literal for @ref tek_sc_os_char string.
 #define TEK_SC_OS_STR(str) str
 
-#else
+#else // def _WIN32 elifdef __linux__ elifdef __APPLE__
 
-#error Unsupported target OS. Only Windows (_WIN32), Linux (__linux__) and MacOS (__APPLE__) are supported.
+#error Unsupported target OS. Only Windows (_WIN32), Linux (__linux__) and \
+  MacOS (__APPLE__) are supported.
 
-#endif // def _WIN32 elifdef __linux__ else
+#endif // def _WIN32 elifdef __linux__ elifdef __APPLE__ else

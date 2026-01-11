@@ -73,7 +73,7 @@ static OsType get_os_type() noexcept {
   default:
     return OsType::OS_TYPE_WIN_UNKNOWN;
   }
-#elifdef __linux__
+#elifdef __linux__ // def _WIN32
   switch (version.major) {
   case 4:
     switch (version.minor) {
@@ -98,7 +98,18 @@ static OsType get_os_type() noexcept {
   default:
     return OsType::OS_TYPE_LINUX_UNKNOWN;
   }
-#endif // ifdef _WIN32 elifdef __linux__
+#elifdef __APPLE__ // def _WIN32 elifdef __linux__
+  switch (version.major) {
+  case 22:
+    return OsType::OS_TYPE_MAC_OS_13;
+  case 23:
+    return OsType::OS_TYPE_MAC_OS_14;
+  case 24:
+    return OsType::OS_TYPE_MAC_OS_15;
+  default:
+    return OsType::OS_TYPE_MAC_OS_UNKNOWN;
+  }
+#endif             // def _WIN32 elifdef __linux__ elifdef __APPLE__
 }
 
 /// Initialize libwebsockets and run its event loop.

@@ -1,6 +1,7 @@
 //===-- os.h - OS-specific code -------------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>,
+//    ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -42,7 +43,7 @@
 /// snprintf-like function for @ref tek_sc_os_char string.
 #define TSCL_OS_SNPRINTF snwprintf
 
-#elifdef __linux__ // def _WIN32
+#elif defined(__linux__) || defined(__APPLE__) // def _WIN32
 
 /// @def TSCL_OS_PRI_str
 /// Format specifier for printing @ref tek_sc_os_char strings via printf family
@@ -58,23 +59,7 @@
 /// snprintf-like function for @ref tek_sc_os_char string.
 #define TSCL_OS_SNPRINTF snprintf
 
-#elifdef __APPLE__
-
-/// @def TSCL_OS_PRI_str
-/// Format specifier for printing @ref tek_sc_os_char strings via printf family
-///     of functions.
-#define TSCL_OS_PRI_str "s"
-/// @def TSCL_OS_INVALID_HANDLE
-/// Invalid value for @ref tek_sc_os_handle.
-#define TSCL_OS_INVALID_HANDLE -1
-/// @def TSCL_OS_PATH_SEP_CHAR_STR
-/// Path separator character for current operating system as a string literal.
-#define TSCL_OS_PATH_SEP_CHAR_STR "/"
-/// @def TSCL_OS_SNPRINTF
-/// snprintf-like function for @ref tek_sc_os_char string.
-#define TSCL_OS_SNPRINTF snprintf
-
-#endif // def _WIN32 elifdef __linux__ elifdef __APPLE__
+#endif // def _WIN32 elif defined(__linux__) || defined(__APPLE__)
 
 //===-- Functions ---------------------------------------------------------===//
 

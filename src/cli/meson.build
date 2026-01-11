@@ -9,7 +9,7 @@ cli_src = [
 ]
 if is_windows
   cli_src += 'src/cli/os_windows.c'
-elif host_machine.system() == 'darwin'
+elif is_macos
   cli_src += 'src/cli/os_macos.c'
 else
   cli_src += 'src/cli/os_linux.c'

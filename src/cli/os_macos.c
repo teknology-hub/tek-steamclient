@@ -1,6 +1,7 @@
-//===-- os_linux.c - GNU/Linux OS functions implementation ----------------===//
+//===-- os_macos.c - MacOS functions implementation -----------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com> & ksagameng2 <fordealisbad@gmail.com>
+// Copyright (c) 2026 Nuclearist <nuclearist@teknology-hub.com>,
+//    ksagameng2 <fordealisbad@gmail.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -9,15 +10,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file
-/// GNU/Linux implementation of @ref os.h.
+/// MacOS implementation of @ref os.h.
 ///
 //===----------------------------------------------------------------------===//
 #include "os.h"
 
 #include "common.h"
-#include "tek-steamclient/os.h"
 #include "common/ulock.h"
-
+#include "tek-steamclient/os.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -34,7 +34,6 @@
 #include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
-
 
 /// Currently registered signal handler.
 void (*_Nullable tscl_cur_sig_handler)(void);
@@ -59,10 +58,12 @@ static void tscl_sig_handler(int sig) {
 void tscl_os_close_handle(tek_sc_os_handle handle) { close(handle); }
 
 tek_sc_os_char *tscl_os_get_cwd(void) {
-  tek_sc_os_char *cwd = malloc(PATH_MAX);
-
-  getcwd(cwd, sizeof(cwd));
-
+  char *const cwd = malloc(PATH_MAX);
+  if (cwd) {
+    getcwd(cwd, PATH_MAX);
+  } else {
+    errno = ENOMEM;
+  }
   return cwd;
 }
 int64_t tscl_os_get_disk_free_space(const tek_sc_os_char *path) {
@@ -78,8 +79,11 @@ char *tscl_os_get_err_msg(tek_sc_os_errc errc) {
   if (!buf) {
     abort();
   }
-  auto const res = strerror_r(errc, buf, 256);
-  if (!res) return buf; else abort();
+  if (strerror_r(errc, buf, 256)) {
+    static const char unk_msg[] = "Unknown error";
+    memcpy(buf, unk_msg, sizeof unk_msg);
+  }
+  return buf;
 }
 
 tek_sc_os_errc tscl_os_get_last_error(void) { return errno; }
@@ -176,15 +180,11 @@ bool tscl_os_file_read(tek_sc_os_handle handle, void *buf, size_t n) {
 }
 
 size_t tscl_os_file_get_size(tek_sc_os_handle handle) {
-  struct stat stx;
-  if (fstat(handle, &stx) < 0) {
+  struct stat st;
+  if (fstat(handle, &st) < 0) {
     return SIZE_MAX;
   }
-  /*if (!(stx.stx_mask & STATX_SIZE)) {
-    errno = EINVAL;
-    return SIZE_MAX;
-  }*/
-  return stx.st_size;
+  return st.st_size;
 }
 
 //===-- Virtual memory functions ------------------------------------------===//
@@ -195,10 +195,6 @@ void *tscl_os_mem_alloc(size_t size) {
   if (addr == MAP_FAILED) {
     return nullptr;
   }
-  /*if (size >= 0x200000) {
-    // 2 MiB is usually the smallest supported hugepage size
-    madvise(addr, size, MADV_HUGEPAGE);
-  }*/
   return addr;
 }
 
@@ -210,18 +206,20 @@ void tscl_os_mem_free(const void *addr, size_t size) {
 
 bool tscl_os_futex_wait(const _Atomic(uint32_t) *addr, uint32_t old,
                         uint32_t timeout_ms) {
-  uint32_t timeout_us = timeout_ms * 1000;
+  if (timeout_ms == UINT32_MAX) {
+    timeout_ms = 0;
+  }
   do {
-    if (__ulock_wait(UL_COMPARE_AND_WAIT, addr, old, timeout_us) < 0) {
-        return errno == EAGAIN;
+    if (__ulock_wait(UL_COMPARE_AND_WAIT, (void *)addr, old,
+                     timeout_ms * 1000) < 0) {
+      return errno == EAGAIN;
     }
-
   } while (atomic_load_explicit(addr, memory_order_relaxed) == old);
   return true;
 }
 
 void tscl_os_futex_wake(_Atomic(uint32_t) *addr) {
-  __ulock_wake(UL_COMPARE_AND_WAIT | ULF_WAKE_ALL, addr, 0);
+  __ulock_wake(UL_COMPARE_AND_WAIT, addr, 0);
 }
 
 //===-- OS string functions -----------------------------------------------===//
