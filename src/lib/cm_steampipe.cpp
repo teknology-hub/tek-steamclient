@@ -1,6 +1,6 @@
 //===-- cm_steampipe.cpp - Steam CM client SteamPipe subsystem impl. ------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -31,8 +31,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
-#include <libwebsockets.h>
+#include <mutex>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace tek::steamclient::cm {
@@ -42,87 +43,39 @@ namespace {
 //===-- Private functions -------------------------------------------------===//
 
 /// Handle a depot decryption key response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_ddk(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
+static void timeout_ddk(cm_conn &conn, msg_await_entry &entry) {
   const auto data{
-      reinterpret_cast<tek_sc_cm_data_depot_key *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
+      reinterpret_cast<tek_sc_cm_data_depot_key *>(entry.inout_data)};
   data->result = tsc_err_sub(TEK_SC_ERRC_cm_depot_key, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+  entry.cb(&conn, data, conn.user_data);
 }
 
 /// Handle a depot patch info response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_dpi(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
+static void timeout_dpi(cm_conn &conn, msg_await_entry &entry) {
   tek_sc_cm_data_dp_info data;
   data.result =
       tsc_err_sub(TEK_SC_ERRC_cm_depot_patch_info, TEK_SC_ERRC_cm_timeout);
-  cb(&client, &data, client.user_data);
+  entry.cb(&conn, &data, conn.user_data);
 }
 
 /// Handle a manifest request code response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_mrc(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  const auto data{reinterpret_cast<tek_sc_cm_data_mrc *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
+static void timeout_mrc(cm_conn &conn, msg_await_entry &entry) {
+  const auto data{reinterpret_cast<tek_sc_cm_data_mrc *>(entry.inout_data)};
   data->result = tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+  entry.cb(&conn, data, conn.user_data);
 }
 
 /// Handle a SteamPipe server list response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_gss(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
+static void timeout_gss(cm_conn &conn, msg_await_entry &entry) {
   tek_sc_cm_data_sp_servers data;
   data.result = tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_timeout);
-  cb(&client, &data, client.user_data);
+  entry.cb(&conn, &data, conn.user_data);
 }
 
 /// Handle `EMSG_CLIENT_GET_DEPOT_DECRYPTION_KEY_RESPONSE` response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -134,7 +87,7 @@ static void timeout_gss(lws_sorted_usec_list_t *_Nonnull sul) {
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_gddk(cm_client &client, const MessageHeader &,
+static bool handle_gddk(cm_conn &conn, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
   auto &data_dk{*reinterpret_cast<tek_sc_cm_data_depot_key *>(inout_data)};
@@ -142,13 +95,13 @@ static bool handle_gddk(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_dk.result =
         tsc_err_sub(TEK_SC_ERRC_cm_depot_key, TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_dk, client.user_data);
+    cb(&conn, &data_dk, conn.user_data);
     return true;
   }
   if (const auto eresult{static_cast<tek_sc_cm_eresult>(payload.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_dk.result = err(TEK_SC_ERRC_cm_depot_key, eresult);
-    cb(&client, &data_dk, client.user_data);
+    cb(&conn, &data_dk, conn.user_data);
     return true;
   }
   data_dk.result = tsc_err_ok();
@@ -156,20 +109,21 @@ static bool handle_gddk(cm_client &client, const MessageHeader &,
       std::string_view{payload.decryption_key().data(), sizeof data_dk.key},
       data_dk.key);
   // Store the key into the cache
-  client.lib_ctx.depot_keys_mtx.lock();
-  std::ranges::copy(data_dk.key, client.lib_ctx.depot_keys[payload.depot_id()]);
-  client.lib_ctx.depot_keys_mtx.unlock();
-  client.lib_ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::depot_keys),
-                                      std::memory_order::relaxed);
+  {
+    const std::scoped_lock lock{conn.ctx.depot_keys_mtx};
+    std::ranges::copy(data_dk.key, conn.ctx.depot_keys[payload.depot_id()]);
+  }
+  conn.ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::depot_keys),
+                                std::memory_order::relaxed);
   //  Report results via callback
-  cb(&client, &data_dk, client.user_data);
+  cb(&conn, &data_dk, conn.user_data);
   return true;
 }
 
 /// Handle "ContentServerDirectory.GetDepotPatchInfo#1" response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -179,7 +133,7 @@ static bool handle_gddk(cm_client &client, const MessageHeader &,
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
   clang::callback(cb, __, __, __)]]
-static bool handle_gdpi(cm_client &client, const MessageHeader &,
+static bool handle_gdpi(cm_conn &conn, const MessageHeader &,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *) {
   tek_sc_cm_data_dp_info data_dpi;
@@ -187,19 +141,19 @@ static bool handle_gdpi(cm_client &client, const MessageHeader &,
       payload.ParseFromArray(data, size)) {
     data_dpi = {.available = payload.is_available(),
                 .size = static_cast<std::int64_t>(payload.size()),
-                .result = tsc_err_ok()};
+                .result{tsc_err_ok()}};
   } else {
     data_dpi.result = tsc_err_sub(TEK_SC_ERRC_cm_depot_patch_info,
                                   TEK_SC_ERRC_protobuf_deserialize);
   }
-  cb(&client, &data_dpi, client.user_data);
+  cb(&conn, &data_dpi, conn.user_data);
   return true;
 }
 
 /// Handle "ContentServerDirectory.GetManifestRequestCode#1" response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] header
 ///    Header of the received message.
 /// @param [in] data
@@ -213,7 +167,7 @@ static bool handle_gdpi(cm_client &client, const MessageHeader &,
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_gmrc(cm_client &client, const MessageHeader &header,
+static bool handle_gmrc(cm_conn &conn, const MessageHeader &header,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
   auto &data_mrc{*reinterpret_cast<tek_sc_cm_data_mrc *>(inout_data)};
@@ -221,26 +175,26 @@ static bool handle_gmrc(cm_client &client, const MessageHeader &header,
   if (!payload.ParseFromArray(data, size)) {
     data_mrc.result =
         tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_mrc, client.user_data);
+    cb(&conn, &data_mrc, conn.user_data);
     return true;
   }
   if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_mrc.result = err(TEK_SC_ERRC_cm_mrc, eresult);
-    cb(&client, &data_mrc, client.user_data);
+    cb(&conn, &data_mrc, conn.user_data);
     return true;
   }
   data_mrc.request_code = payload.manifest_request_code();
   data_mrc.result = tsc_err_ok();
   //  Report results via callback
-  cb(&client, &data_mrc, client.user_data);
+  cb(&conn, &data_mrc, conn.user_data);
   return true;
 }
 
 /// Handle "ContentServerDirectory.GetServersForSteamPipe#1" response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] header
 ///    Header of the received message.
 /// @param [in] data
@@ -252,7 +206,7 @@ static bool handle_gmrc(cm_client &client, const MessageHeader &header,
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
   clang::callback(cb, __, __, __)]]
-static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
+static bool handle_gsfsp(cm_conn &conn, const MessageHeader &header,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
   msg_payloads::GetServersForSteamPipeResponse payload;
@@ -260,13 +214,13 @@ static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
   if (!payload.ParseFromArray(data, size)) {
     data_sp.result = tsc_err_sub(TEK_SC_ERRC_cm_sp_servers,
                                  TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_sp, client.user_data);
+    cb(&conn, &data_sp, conn.user_data);
     return true;
   }
   if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_sp.result = err(TEK_SC_ERRC_cm_sp_servers, eresult);
-    cb(&client, &data_sp, client.user_data);
+    cb(&conn, &data_sp, conn.user_data);
     return true;
   }
   std::vector<const msg_payloads::SteamPipeServer *> srvs;
@@ -281,7 +235,7 @@ static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
   if (srvs.empty()) {
     data_sp.result =
         tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_sp_servers_empty);
-    cb(&client, &data_sp, client.user_data);
+    cb(&conn, &data_sp, conn.user_data);
     return true;
   }
   const auto buf{
@@ -291,7 +245,7 @@ static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
   if (!buf) {
     data_sp.result =
         tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_mem_alloc);
-    cb(&client, &data_sp, client.user_data);
+    cb(&conn, &data_sp, conn.user_data);
     return true;
   }
   auto cur_entry{reinterpret_cast<tek_sc_cm_sp_srv_entry *>(buf)};
@@ -305,9 +259,9 @@ static bool handle_gsfsp(cm_client &client, const MessageHeader &header,
   }
   data_sp = {.entries = reinterpret_cast<tek_sc_cm_sp_srv_entry *>(buf),
              .num_entries = static_cast<int>(srvs.size()),
-             .result = tsc_err_ok()};
+             .result{tsc_err_ok()}};
   //  Report results via callback
-  cb(&client, &data_sp, client.user_data);
+  cb(&conn, &data_sp, conn.user_data);
   return true;
 }
 
@@ -324,23 +278,25 @@ extern "C" {
 void tek_sc_cm_get_depot_key(tek_sc_cm_client *client,
                              tek_sc_cm_data_depot_key *data,
                              tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Check if the key is present in the cache first
-  client->lib_ctx.depot_keys_mtx.lock();
-  if (const auto it{client->lib_ctx.depot_keys.find(data->depot_id)};
-      it != client->lib_ctx.depot_keys.cend()) {
-    std::ranges::copy(it->second, data->key);
-    client->lib_ctx.depot_keys_mtx.unlock();
-    data->result = tsc_err_ok();
-    cb(client, data, client->user_data);
-    return;
+  {
+    std::unique_lock lock{conn.ctx.depot_keys_mtx};
+    if (const auto it{conn.ctx.depot_keys.find(data->depot_id)};
+        it != conn.ctx.depot_keys.cend()) {
+      std::ranges::copy(it->second, data->key);
+      lock.unlock();
+      data->result = tsc_err_ok();
+      cb(&conn, data, conn.user_data);
+      return;
+    }
   }
-  client->lib_ctx.depot_keys_mtx.unlock();
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_depot_key, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -350,34 +306,19 @@ void tek_sc_cm_get_depot_key(tek_sc_cm_client *client,
   msg.header.set_source_job_id(job_id);
   msg.payload.set_depot_id(data->depot_id);
   msg.payload.set_app_id(data->app_id);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_ddk,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_gddk,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_depot_key>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_gddk, cb, timeout_ddk, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_depot_key>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 
@@ -386,13 +327,14 @@ void tek_sc_cm_get_dp_info(tek_sc_cm_client *client,
                            uint64_t source_manifest_id,
                            uint64_t target_manifest_id,
                            tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     tek_sc_cm_data_dp_info data;
     data.result = tsc_err_sub(TEK_SC_ERRC_cm_depot_patch_info,
                               TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -405,46 +347,32 @@ void tek_sc_cm_get_dp_info(tek_sc_cm_client *client,
   msg.payload.set_depot_id(item_id->depot_id);
   msg.payload.set_source_manifest_id(source_manifest_id);
   msg.payload.set_target_manifest_id(target_manifest_id);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_dpi,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_gdpi,
-                                           .cb = cb,
-                                           .inout_data = nullptr})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{client->send_message<TEK_SC_ERRC_cm_depot_patch_info>(
-          msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_gdpi, cb, timeout_dpi)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_depot_patch_info>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     tek_sc_cm_data_dp_info data;
     data.result = res;
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
   }
 }
 
 void tek_sc_cm_get_mrc(tek_sc_cm_client *client, tek_sc_cm_data_mrc *data,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -458,46 +386,32 @@ void tek_sc_cm_get_mrc(tek_sc_cm_client *client, tek_sc_cm_data_mrc *data,
   msg.payload.set_depot_id(data->depot_id);
   msg.payload.set_manifest_id(data->manifest_id);
   msg.payload.set_app_branch("public");
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_mrc,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_gmrc,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_mrc>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_gmrc, cb, timeout_mrc, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_mrc>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 
 void tek_sc_cm_get_sp_servers(tek_sc_cm_client *client,
                               tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     tek_sc_cm_data_sp_servers data;
     data.result =
         tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -507,35 +421,20 @@ void tek_sc_cm_get_sp_servers(tek_sc_cm_client *client,
   msg.header.set_source_job_id(job_id);
   msg.header.set_target_job_name(
       "ContentServerDirectory.GetServersForSteamPipe#1");
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_gss,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_gsfsp,
-                                           .cb = cb,
-                                           .inout_data = nullptr})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_sp_servers>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_gsfsp, cb, timeout_gss)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_sp_servers>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     tek_sc_cm_data_sp_servers data;
     data.result = res;
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
   }
 }
 

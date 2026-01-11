@@ -1,6 +1,6 @@
 //===-- cmd_runner.c - command runner -------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -38,17 +38,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifdef TEK_SCB_AM
 /// Pointer to the state descriptor of the item that current job is operating
 /// on.
 static tek_sc_am_item_desc *_Nullable tscl_job_desc;
 #endif // def TEK_SCB_AM
-#ifdef TEK_SCB_S3C
-/// tek-s3 authentication session result.
-static tek_sc_err tscl_s3c_res;
-#endif // def TEK_SCB_S3C
 
 //===-- Private functions -------------------------------------------------===//
 
@@ -344,124 +339,6 @@ static void tscl_upd_handler(tek_sc_am_item_desc *_Nonnull desc,
 static void tscl_job_sig_handler() { tek_sc_am_pause_job(tscl_job_desc); }
 #endif // def TEK_SCB_AM
 
-#ifdef TEK_SCB_S3C
-/// tek-s3 sign-in callback.
-///
-/// @param [in] data
-///    Pointer to the @ref tek_sc_cm_data_auth_polling.
-static void tscl_signin_cb(tek_sc_cm_client *, void *_Nonnull data,
-                           void *_Nonnull user_data) {
-  const tek_sc_cm_data_auth_polling *const data_ap = data;
-  _Atomic(uint32_t) *const ftx = user_data;
-  switch (data_ap->status) {
-  case TEK_SC_CM_AUTH_STATUS_completed:
-    tscl_s3c_res = data_ap->result;
-    atomic_store_explicit(ftx, 1, memory_order_release);
-    tscl_os_futex_wake(ftx);
-    break;
-  case TEK_SC_CM_AUTH_STATUS_new_url: {
-#ifdef TEK_SCB_QR
-    auto const qr =
-        QRcode_encodeString(data_ap->url, 0, QR_ECLEVEL_L, QR_MODE_8, 1);
-    if (!qr) {
-      fputs(tsc_gettext("Failed to generate QR code\n"), stderr);
-      break;
-    }
-    const int line_len = qr->width + 2;
-    char *const line_buf = malloc(7 * (line_len + 1));
-    if (!line_buf) {
-      QRcode_free(qr);
-      fputs(tsc_gettext("Failed to allocate memory for printing the QR code\n"),
-            stderr);
-      break;
-    }
-    puts(tsc_gettext("Scan this QR code in Steam mobile app:"));
-    memcpy(line_buf, "\033[47m", 5);
-    // Print top border
-    memset(&line_buf[5], ' ', line_len * 2);
-    memcpy(&line_buf[5 + line_len * 2], "\033[0m", 5);
-    puts(line_buf);
-    // Print rows
-    for (int i = 0; i < qr->width; ++i) {
-      auto cur = &line_buf[7];
-      bool is_black = false;
-      for (int j = 0; j < qr->width; ++j) {
-        if ((qr->data[i * qr->width + j] & 1) ^ is_black) {
-          // Flip backgound color
-          is_black = !is_black;
-          memcpy(cur, is_black ? "\033[40m" : "\033[47m", 5);
-          cur += 5;
-        }
-        memcpy(cur, "  ", 2);
-        cur += 2;
-      }
-      if (is_black) {
-        memcpy(cur, "\033[47m", 5);
-        cur += 5;
-      }
-      memcpy(cur, "  \033[0m", 7);
-      puts(line_buf);
-    }
-    // Print bottom border
-    memset(&line_buf[5], ' ', line_len * 2);
-    memcpy(&line_buf[5 + line_len * 2], "\033[0m", 5);
-    puts(line_buf);
-    free(line_buf);
-    QRcode_free(qr);
-#endif
-    break;
-  } // case TEK_SC_CM_AUTH_STATUS_new_url
-  case TEK_SC_CM_AUTH_STATUS_awaiting_confirmation: {
-    if (data_ap->confirmation_types & TEK_SC_CM_AUTH_CONFIRMATION_TYPE_device) {
-      puts(tsc_gettext("Awaiting confirmation from Steam mobile app..."));
-    } else if (data_ap->confirmation_types &
-               TEK_SC_CM_AUTH_CONFIRMATION_TYPE_guard_code) {
-      fputs(tsc_gettext("Enter Steam Guard code from your mobile device: "),
-            stdout);
-      char buf[24];
-      if (fgets(buf, sizeof buf, stdin)) {
-        auto const lf = strrchr(buf, '\n');
-        if (lf) {
-          *lf = '\0';
-#ifdef _WIN32
-          if (lf > buf && lf[-1] == '\r') {
-            lf[-1] = '\0';
-          }
-#endif // def _WIN32
-        }
-        tek_sc_s3c_auth_submit_code(tscl_g_ctx.lib_ctx,
-                                    TEK_SC_CM_AUTH_CONFIRMATION_TYPE_guard_code,
-                                    buf);
-      }
-    } else if (data_ap->confirmation_types &
-               TEK_SC_CM_AUTH_CONFIRMATION_TYPE_email) {
-      fputs(tsc_gettext("Enter confirmation code sent to your email: "),
-            stdout);
-      char buf[24];
-      if (fgets(buf, sizeof buf, stdin)) {
-        auto const lf = strrchr(buf, '\n');
-        if (lf) {
-          *lf = '\0';
-#ifdef _WIN32
-          if (lf > buf && lf[-1] == '\r') {
-            lf[-1] = '\0';
-          }
-#endif // def _WIN32
-        }
-        tek_sc_s3c_auth_submit_code(
-            tscl_g_ctx.lib_ctx, TEK_SC_CM_AUTH_CONFIRMATION_TYPE_email, buf);
-      }
-    }
-  } // case TEK_SC_CM_AUTH_STATUS_awaiting_confirmation
-  } // switch (data_ap->status)
-}
-
-/// Signal handler for tek-s3 sign-in session.
-static void tscl_signin_sig_handler() {
-  tek_sc_s3c_auth_cancel(tscl_g_ctx.lib_ctx);
-}
-#endif // def TEK_SCB_S3C
-
 //===-- Internal function -------------------------------------------------===//
 
 bool tscl_run_cmd(const tscl_command *cmd) {
@@ -529,20 +406,6 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "  s3c sync-manifest <url> - Synchronize manifest of tek-s3 server at "
         "specified URL, i.e. fetch its depot decryption keys and update list "
         "of apps/depots that it can provide manifest request codes for"));
-    puts(
-#ifdef TEK_SCB_QR
-        // L18N: output of tek-sc-cli's "help" command ("s3c signin" command
-        //    with QR support)
-        tsc_gettext("  s3c signin <type> <url> - Submit a Steam account to a "
-                    "tek-s3 server at specified URL. <type> must be either "
-                    "\"credentials\" or \"qr\"")
-#else  // def TEK_SCB_QR
-       // L18N: output of tek-sc-cli's "help" command ("s3c signin" command
-       //    without QR support)
-        tsc_gettext("  s3c signin <url> - Submit a Steam account to a tek-s3 "
-                    "server at specified URL")
-#endif // def TEK_SCB_QR else
-    );
 #endif // def TEK_SCB_S3C
     return true;
 #ifdef TEK_SCB_AM
@@ -793,124 +656,6 @@ bool tscl_run_cmd(const tscl_command *cmd) {
     }
     return true;
   }
-  case TSCL_CMD_TYPE_s3c_signin:
-    // L18N: %s is the tek-s3 server URL entered by the user
-    printf(tsc_gettext(
-               "IMPORTANT NOTES\n"
-               "You are about to sign tek-s3 server at %s into your Steam "
-               "account.\n"
-               "What it WILL do:\n"
-               "- Get decryption keys (that are not present in the server's "
-               "cache yet) for all Steam depots that your account has access "
-               "to. This is a one-time operation\n"
-               "- Get manifest request codes for Steam depots that your "
-               "account has access to, on demand\n"
-               "That is, it will essentially allow all tek-steamclient users "
-               "to download and update apps owned on your account, without "
-               "exposing any account information to them\n"
-               "What it CAN do (but WON'T unless the server is maliciously "
-               "modified):\n"
-               "- Access most of your account information\n"
-               "- Do most of the stuff that is not protected by Steam Guard\n"
-               "What it CANNOT do under any circumstances (as long as you have "
-               "Steam Guard enabled):\n"
-               "- Change your email, password, make purchases\n"
-               "- Gain any further access to your account after the token "
-               "expires or you revoke it\n"),
-           cmd->s3c_signin.url);
-    if (cmd->s3c_signin.type == TSCL_S3_AUTH_TYPE_qr) {
-      puts(tsc_gettext("Since you're using QR code-based authentication, the "
-                       "server will never know your password"));
-    }
-    puts(
-        tsc_gettext("If you use Steam mobile app for sign-in confirmation and "
-                    "tick \"Remember my password on this device\", the server "
-                    "will be able to renew access to your account indefinitely "
-                    "until you revoke it, otherwise it'll gain access only for "
-                    "a limited amount of time (usually around a month)\n"
-                    "You can revoke server's access to your account anytime "
-                    "you want via Steam mobile app: on Steam Guard tab tap on "
-                    "the gear > Authorized Devices, the server will be listed "
-                    "there as a device with name starting with \"tek-s3\"\n\n"
-                    "Press Enter to proceed"));
-    getchar();
-    _Atomic(uint32_t) ftx = 0;
-    switch (cmd->s3c_signin.type) {
-    case TSCL_S3_AUTH_TYPE_credentials:
-      if (strstr(cmd->s3c_signin.url, "https://") != cmd->s3c_signin.url) {
-        puts(tsc_gettext(
-            "WARNING: Connection to specified server is not encrypted, "
-            "credentials sent to it are vulnerable to eavesdropping!"));
-      }
-      fputs(tsc_gettext("Enter your account name: "), stdout);
-      char account_name[128];
-      if (!fgets(account_name, sizeof account_name, stdin)) {
-        fputs(tsc_gettext("Failed to read input string\n"), stderr);
-        return false;
-      }
-      auto lf = strrchr(account_name, '\n');
-      if (lf) {
-        *lf = '\0';
-#ifdef _WIN32
-        if (lf > account_name && lf[-1] == '\r') {
-          lf[-1] = '\0';
-        }
-#endif // def _WIN32
-      }
-      fputs(tsc_gettext("Enter your account password: "), stdout);
-      char password[128];
-      if (!fgets(password, sizeof password, stdin)) {
-        fputs(tsc_gettext("Failed to read input string\n"), stderr);
-        return false;
-      }
-      lf = strrchr(password, '\n');
-      if (lf) {
-        *lf = '\0';
-#ifdef _WIN32
-        if (lf > password && lf[-1] == '\r') {
-          lf[-1] = '\0';
-        }
-#endif // def _WIN32
-      }
-      tek_sc_s3c_auth_credentials(tscl_g_ctx.lib_ctx, cmd->s3c_signin.url,
-                                  account_name, password, tscl_signin_cb, &ftx,
-                                  600000);
-      break;
-    case TSCL_S3_AUTH_TYPE_qr:
-      tek_sc_s3c_auth_qr(tscl_g_ctx.lib_ctx, cmd->s3c_signin.url,
-                         tscl_signin_cb, &ftx, 60000);
-    }
-    tscl_os_reg_sig_handler(tscl_signin_sig_handler);
-    while (!atomic_load_explicit(&ftx, memory_order_acquire)) {
-      tscl_os_futex_wait(&ftx, 0, 605000);
-    }
-    tscl_os_unreg_sig_handler();
-    if (tek_sc_err_success(&tscl_s3c_res)) {
-      const time_t exp_time = ((uint64_t)tscl_s3c_res.auxiliary |
-                               ((uint64_t)tscl_s3c_res.extra << 32));
-      if (exp_time) {
-        struct tm tm;
-#ifdef _WIN32
-        gmtime_s(&tm, &exp_time);
-#else
-        gmtime_r(&exp_time, &tm);
-#endif
-        char buf[256];
-        strftime(buf, sizeof buf, "%x %X", &tm);
-        // L18N: %s is the date and time string
-        printf(tsc_gettext("Authentication succeeded, server got non-renewable "
-                           "token that will expire at %s\n"),
-               buf);
-      } else {
-        puts(tsc_gettext("Authentication succeeded, server got persistent "
-                         "token that will be renewed automatically"));
-      }
-    } else if (tscl_s3c_res.primary == TEK_SC_ERRC_paused) {
-      puts(tsc_gettext("The authentication session has been interrupted"));
-    } else {
-      tscl_print_err(&tscl_s3c_res);
-    }
-    return true;
 #endif // def TEK_SCB_S3C
   default:
     return false;

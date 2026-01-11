@@ -41,6 +41,7 @@ endif # is_windows else
 compiler = meson.get_compiler('c')
 # -Wno-attributes: Project code uses many attributes that are supported only by
 #    specific compilers or even specific compiler versions
+# -Wno-invalid-offsetof: There's no good enough alternative to this trick yet
 # -Wno-nullability-extension: Fallbacks for these attributes are provided by
 #    base.h anyway
 # -Wno-pointer-arith: provided by GNU extensions (gcc)
@@ -48,8 +49,9 @@ compiler = meson.get_compiler('c')
 # -Wno-gnu-pointer-arith: provided by GNU extensions (clang)
 add_project_arguments(
   compiler.get_supported_arguments(
-    '-Wno-attributes','-Wno-nullability-extension', '-Wno-pointer-arith',
-    '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'),
+    '-Wno-attributes', '-Wno-invalid-offsetof','-Wno-nullability-extension',
+    '-Wno-pointer-arith', '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'
+  ),
   language: ['c', 'cpp']
 )
 if is_macos
@@ -83,7 +85,6 @@ liburing_valid = get_option('app_manager') and not is_windows
 if liburing_valid
   liburing_dep = dependency('liburing', required: get_option('io_uring'))
 endif # liburing_valid
-libqrencode_dep = dependency('libqrencode', required: get_option('qr'))
 soversion = meson.project_version().split('.')[0]
 configure_file(
   output: 'config.h',
@@ -99,8 +100,7 @@ configure_file(
     'TEK_SCB_CHUNKS_PER_SRV': get_option('chunks_per_srv'),
     'TEK_SCB_AM': get_option('app_manager'),
     'TEK_SCB_IO_URING': liburing_valid and liburing_dep.found(),
-    'TEK_SCB_CLI_DUMP': get_option('cli_dump'),
-    'TEK_SCB_QR': libqrencode_dep.found()
+    'TEK_SCB_CLI_DUMP': get_option('cli_dump')
   }
 )
 subdir('include')
@@ -123,7 +123,7 @@ lib_deps = [
   dependency('RapidJSON'),
   dependency('libcrypto'),
   dependency('libcurl'),
-  dependency('libwebsockets'),
+  dependency('libuv'),
   dependency('protobuf-lite'),
   dependency('sqlite3'),
   dependency('threads'),
@@ -216,7 +216,7 @@ import('pkgconfig').generate(
 )
 
 ### tek-sc-cli
-cli_deps = [libqrencode_dep]
+cli_deps = []
 subdir('src/cli')
 if is_windows
   cli_deps += win_deps

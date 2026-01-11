@@ -1,6 +1,6 @@
 //===-- lib_ctx.cpp - library context implementation ----------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -14,14 +14,11 @@
 //===----------------------------------------------------------------------===//
 #include "lib_ctx.hpp"
 
-#include "cm.hpp"
 #include "config.h"
 #include "os.h"
-#ifdef TEK_SCB_S3C
-#include "s3c.hpp"
-#endif // def TEK_SCB_S3C
 #include "tek-steamclient/base.h"
 #include "tek/steamclient/cm/msg_payloads/os_type.pb.h"
+#include "ws_conn.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -31,14 +28,16 @@
 #include <cstring>
 #include <curl/curl.h>
 #include <functional>
-#include <libwebsockets.h>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <ranges>
 #include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <uv.h>
 
 namespace tek::steamclient {
 
@@ -46,20 +45,302 @@ namespace {
 
 using cm::msg_payloads::OsType;
 
-/// Path to the library cache file relative to the OS user cache directory.
-static constexpr std::string_view cache_file_rel_path{
-    TSCI_OS_PATH_SEP_CHAR_STR "tek-steamclient" TSCI_OS_PATH_SEP_CHAR_STR
-                              "cache.sqlite3"};
+class scope_exit {
+  std::function<void()> func;
 
-/// permessage-deflate WebSocket extension object.
-static constexpr lws_extension ws_pm_ext[]{
-    {.name = "permessage-deflate",
-     .callback = lws_extension_callback_pm_deflate,
-     .client_offer = "client_no_context_takeover; server_no_context_takeover; "
-                     "client_max_window_bits"},
-    {}};
+public:
+  constexpr scope_exit(std::function<void()> &&func) noexcept : func{func} {}
+  constexpr ~scope_exit() { func(); }
+  constexpr void release() noexcept {
+    func = {[] {}};
+  }
+};
 
 //===-- Private functions -------------------------------------------------===//
+
+/// WebSocket connection poll callback.
+[[using gnu: nonnull(1), access(read_write, 1)]]
+static void ws_poll_cb(uv_poll_t *_Nonnull poll, int status, int events) {
+  auto &conn{*reinterpret_cast<ws_conn *>(
+      uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(poll)))};
+  if (status < 0) {
+    if (status == UV_EBADF) {
+      conn.handle_disconnection(TSCI_WS_CLOSE_CODE_ABNORMAL);
+    }
+    return;
+  }
+  if (events & (UV_READABLE | UV_DISCONNECT)) {
+    if (conn.recv() != CURLE_OK) {
+      conn.handle_disconnection(TSCI_WS_CLOSE_CODE_ABNORMAL);
+      return;
+    }
+    if (!conn.connected || (events & UV_DISCONNECT)) {
+      return;
+    }
+  }
+  if (events & UV_WRITABLE) {
+    if (conn.send() != CURLE_OK) {
+      conn.handle_disconnection(TSCI_WS_CLOSE_CODE_ABNORMAL);
+    } else if (!(events & UV_WRITABLE)) {
+      uv_poll_start(poll, conn.poll_events, ws_poll_cb);
+    }
+  }
+}
+
+/// Process pending curl multi completion messages.
+static void process_curl_msgs(lib_ctx &ctx) {
+  int num_queued;
+  do {
+    const auto msg{curl_multi_info_read(ctx.curlm.get(), &num_queued)};
+    if (!msg) {
+      break;
+    }
+    ws_conn *conn;
+    curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &conn);
+    scope_exit rm_handle{[curlm{ctx.curlm.get()}, curl{msg->easy_handle}] {
+      curl_multi_remove_handle(curlm, curl);
+    }};
+    if (msg->data.result != CURLE_OK) {
+      conn->handle_connection(msg->data.result);
+      continue;
+    }
+    curl_socket_t sock;
+    curl_easy_getinfo(msg->easy_handle, CURLINFO_ACTIVESOCKET, &sock);
+    const auto [it, emplaced]{ctx.poll_handles.try_emplace(sock)};
+    if (emplaced) {
+      if (uv_poll_init_socket(&ctx.loop, &it->second, sock) != 0) {
+        conn->handle_connection(CURLE_OUT_OF_MEMORY);
+        continue;
+      }
+    }
+    uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&it->second), conn);
+    conn->poll_events = UV_READABLE | UV_DISCONNECT;
+    if (uv_poll_start(&it->second, conn->poll_events, ws_poll_cb) != 0) {
+      conn->handle_connection(CURLE_OUT_OF_MEMORY);
+      continue;
+    }
+    rm_handle.release();
+    ++conn->ref_count;
+    conn->connected = true;
+    conn->handle_connection(CURLE_OK);
+  } while (num_queued);
+}
+
+/// Libuv event loop async callback.
+[[using gnu: nonnull(1), access(read_write, 1)]]
+static void async_cb(uv_async_t *_Nonnull async) {
+  auto &ctx{*reinterpret_cast<lib_ctx *>(
+      uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(async)))};
+  if (ctx.loop_state.load(std::memory_order::relaxed) == loop_state::stopped) {
+    uv_stop(&ctx.loop);
+    return;
+  }
+  const std::scoped_lock lock{ctx.conn_mtx};
+  while (!ctx.writable_queue.empty()) {
+    auto &conn{*ctx.writable_queue.front()};
+    for (const std::scoped_lock msg_lock{conn.pending_msgs_mtx};
+         auto &msg : conn.pending_msgs) {
+      if (msg.timer && !*msg.timer_active) {
+        if (uv_timer_init(&ctx.loop, msg.timer) == 0) {
+          uv_handle_set_data(reinterpret_cast<uv_handle_t *>(msg.timer),
+                             msg.data);
+          uv_timer_start(msg.timer, msg.timer_cb, msg.timeout, 0);
+          *msg.timer_active = true;
+          ++conn.ref_count;
+        }
+      }
+    }
+    if (conn.send_expected.load(std::memory_order::relaxed) &&
+        !(conn.poll_events & UV_WRITABLE)) {
+      conn.poll_events |= UV_WRITABLE;
+      curl_socket_t sock;
+      curl_easy_getinfo(conn.curl.get(), CURLINFO_ACTIVESOCKET, &sock);
+      const auto it{ctx.poll_handles.find(sock)};
+      if (it != ctx.poll_handles.end()) {
+        uv_poll_start(&it->second, conn.poll_events, ws_poll_cb);
+      }
+    }
+    ctx.writable_queue.pop_front();
+  }
+  if (ctx.conn_queue.empty()) {
+    return;
+  }
+  while (!ctx.conn_queue.empty()) {
+    const scope_exit pop{[&queue{ctx.conn_queue}] { queue.pop_front(); }};
+    auto &req{ctx.conn_queue.front()};
+    auto &conn{req.conn};
+    conn.url = std::move(req.url);
+    if (!conn.curl) {
+      conn.curl.reset(curl_easy_init());
+      if (!conn.curl) {
+        conn.handle_connection(CURLE_OUT_OF_MEMORY);
+        continue;
+      }
+      curl_easy_setopt(conn.curl.get(), CURLOPT_PRIVATE, &conn);
+      curl_easy_setopt(conn.curl.get(), CURLOPT_CONNECT_ONLY, 2L);
+      curl_easy_setopt(conn.curl.get(), CURLOPT_FAILONERROR, 1L);
+      curl_easy_setopt(conn.curl.get(), CURLOPT_NOSIGNAL, 1L);
+      curl_easy_setopt(conn.curl.get(), CURLOPT_TIMEOUT_MS, req.timeout_ms);
+      curl_easy_setopt(conn.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
+    }
+    curl_easy_setopt(conn.curl.get(), CURLOPT_URL, conn.url.data());
+    if (curl_multi_add_handle(ctx.curlm.get(), conn.curl.get()) != CURLM_OK) {
+      conn.curl.reset();
+      conn.handle_connection(CURLE_FAILED_INIT);
+    }
+  }
+  int running_handles;
+  curl_multi_socket_action(ctx.curlm.get(), CURL_SOCKET_TIMEOUT, 0,
+                           &running_handles);
+  process_curl_msgs(ctx);
+}
+
+/// Libuv callback for poll handles used by curl multi.
+[[using gnu: nonnull(1), access(read_write, 1)]]
+static void poll_cb(uv_poll_t *_Nonnull poll, int status, int events) {
+  auto &ctx{*reinterpret_cast<lib_ctx *>(
+      uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(poll)))};
+  using val_type = decltype(ctx.poll_handles)::value_type;
+  const auto sock{reinterpret_cast<const val_type *>(
+                      reinterpret_cast<const unsigned char *>(poll) -
+                      offsetof(val_type, second))
+                      ->first};
+  if (status < 0) {
+    int running_handles;
+    curl_multi_socket_action(ctx.curlm.get(), sock, CURL_CSELECT_ERR,
+                             &running_handles);
+    if (status == UV_EBADF) {
+      uv_close(reinterpret_cast<uv_handle_t *>(poll), [](auto poll) {
+        auto &ctx{*reinterpret_cast<lib_ctx *>(uv_handle_get_data(poll))};
+        ctx.poll_handles.erase(
+            reinterpret_cast<const val_type *>(
+                reinterpret_cast<const unsigned char *>(poll) -
+                offsetof(val_type, second))
+                ->first);
+      });
+    }
+    return;
+  }
+  int bitmask{};
+  if (events & UV_READABLE) {
+    bitmask |= CURL_CSELECT_IN;
+  }
+  if (events & UV_WRITABLE) {
+    bitmask |= CURL_CSELECT_OUT;
+  }
+  int running_handles;
+  curl_multi_socket_action(ctx.curlm.get(), sock, bitmask, &running_handles);
+  process_curl_msgs(ctx);
+}
+
+/// Libuv callback for timer handle used by curl multi.
+[[using gnu: nonnull(1), access(read_write, 1)]]
+static void timer_cb(uv_timer_t *_Nonnull timer) {
+  auto &ctx{*reinterpret_cast<lib_ctx *>(
+      uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(timer)))};
+  int running_handles;
+  curl_multi_socket_action(ctx.curlm.get(), CURL_SOCKET_TIMEOUT, 0,
+                           &running_handles);
+  process_curl_msgs(ctx);
+}
+
+/// curl multi timer callback.
+[[using gnu: nonnull(3), access(read_write, 3)]]
+static int curltimer_cb(CURLM *, long timeout_ms, void *_Nonnull clientp) {
+  auto &ctx{*reinterpret_cast<lib_ctx *>(clientp)};
+  const int res{timeout_ms < 0 ? uv_timer_stop(&ctx.curlm_timer)
+                               : uv_timer_start(&ctx.curlm_timer, timer_cb,
+                                                timeout_ms, 0)};
+  return res == 0 ? 0 : -1;
+}
+
+/// curl multi socket callback.
+[[using gnu: nonnull(4), access(read_write, 4)]]
+static int curlsocket_cb(CURL *, curl_socket_t sock, int what,
+                         void *_Nonnull clientp, void *) {
+  auto &ctx{*reinterpret_cast<lib_ctx *>(clientp)};
+  if (what == CURL_POLL_REMOVE) {
+    const auto it{ctx.poll_handles.find(sock)};
+    if (it != ctx.poll_handles.end()) {
+      const auto data{uv_handle_get_data(
+          reinterpret_cast<const uv_handle_t *>(&it->second))};
+      if (data == &ctx) {
+        uv_poll_stop(&it->second);
+      }
+      // Otherwise the socket is managed by a ws_conn
+    }
+    return 0;
+  }
+  const auto [it, emplaced]{ctx.poll_handles.try_emplace(sock)};
+  if (emplaced) {
+    if (uv_poll_init_socket(&ctx.loop, &it->second, sock) != 0) {
+      return -1;
+    }
+    uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&it->second), &ctx);
+  }
+  int events;
+  switch (what) {
+  case CURL_POLL_IN:
+    events = UV_READABLE;
+    break;
+  case CURL_POLL_OUT:
+    events = UV_WRITABLE;
+    break;
+  case CURL_POLL_INOUT:
+    events = UV_READABLE | UV_WRITABLE;
+    break;
+  default:
+    events = 0;
+  }
+  return uv_poll_start(&it->second, events, poll_cb) == 0 ? 0 : -1;
+}
+
+/// Initialize libuv event loop and run it.
+///
+/// @param [in, out] arg
+///    Pointer to the library context to run event loop for.
+[[using gnu: nonnull(1), access(read_write, 1)]]
+static void event_loop(void *_Nonnull arg) noexcept {
+  uv_thread_setname("tsc event loop");
+  auto &ctx{*reinterpret_cast<lib_ctx *>(arg)};
+  scope_exit fail{[&loop_state{ctx.loop_state}] {
+    loop_state.store(loop_state::error, std::memory_order::relaxed);
+    tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&loop_state));
+  }};
+  if (uv_loop_init(&ctx.loop) != 0) {
+    return;
+  }
+  const scope_exit loop_close{[&loop{ctx.loop}] {
+    uv_run(&loop, UV_RUN_NOWAIT);
+    uv_loop_close(&loop);
+  }};
+  if (uv_async_init(&ctx.loop, &ctx.loop_async, async_cb) != 0) {
+    return;
+  }
+  const scope_exit async_close{[&async{ctx.loop_async}] {
+    uv_close(reinterpret_cast<uv_handle_t *>(&async), nullptr);
+  }};
+  uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&ctx.loop_async), &ctx);
+  if (uv_timer_init(&ctx.loop, &ctx.curlm_timer) != 0) {
+    return;
+  }
+  const scope_exit timer_close{[&timer{ctx.curlm_timer}] {
+    uv_close(reinterpret_cast<uv_handle_t *>(&timer), nullptr);
+  }};
+  uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&ctx.curlm_timer), &ctx);
+  ctx.curlm.reset(curl_multi_init());
+  if (!ctx.curlm) {
+    return;
+  }
+  curl_multi_setopt(ctx.curlm.get(), CURLMOPT_SOCKETDATA, &ctx);
+  curl_multi_setopt(ctx.curlm.get(), CURLMOPT_TIMERDATA, &ctx);
+  curl_multi_setopt(ctx.curlm.get(), CURLMOPT_SOCKETFUNCTION, curlsocket_cb);
+  curl_multi_setopt(ctx.curlm.get(), CURLMOPT_TIMERFUNCTION, curltimer_cb);
+  fail.release();
+  ctx.loop_state.store(loop_state::running, std::memory_order::relaxed);
+  tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&ctx.loop_state));
+  uv_run(&ctx.loop, UV_RUN_DEFAULT);
+}
 
 /// Determine Steam's OS type value based on fetched OS version.
 /// @return An OS type value.
@@ -112,42 +393,6 @@ static OsType get_os_type() noexcept {
 #endif             // def _WIN32 elifdef __linux__ elifdef __APPLE__
 }
 
-/// Initialize libwebsockets and run its event loop.
-///
-/// @param [in, out] lib_ctx
-///    Library context owning the libwebsockets context.
-static void tsc_lws_loop(tek_sc_lib_ctx &lib_ctx) noexcept {
-  tsci_os_set_thread_name(TEK_SC_OS_STR("tsc lws loop"));
-  lws_context_creation_info info{};
-  info.extensions = ws_pm_ext;
-  info.port = CONTEXT_PORT_NO_LISTEN;
-  info.timeout_secs = 10;
-  info.connect_timeout_secs = 5;
-  // Try to use libuv for better event loop performance
-  info.options = LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-  info.user = &lib_ctx;
-#ifdef TEK_SCB_S3C
-  const lws_protocols *pprotocols[]{&cm::protocol, &s3c::protocol, nullptr};
-#else  // #def TEK_SCB_S3C
-  const lws_protocols *pprotocols[]{&cm::protocol, nullptr};
-#endif // #def TEK_SCB_S3C else
-  info.pprotocols = pprotocols;
-  lib_ctx.lws_ctx = lws_create_context(&info);
-  if (!lib_ctx.lws_ctx) {
-    // Probably libwebsockets was compiled without libuv support, try
-    //    disabling it
-    info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-    lib_ctx.lws_ctx = lws_create_context(&info);
-  }
-  lib_ctx.lws_init.store(1, std::memory_order::release);
-  tsci_os_futex_wake(&lib_ctx.lws_init);
-  if (!lib_ctx.lws_ctx) {
-    return;
-  }
-  while (!lws_service(lib_ctx.lws_ctx, 0))
-    ;
-}
-
 } // namespace
 
 } // namespace tek::steamclient
@@ -158,41 +403,42 @@ using namespace tek::steamclient;
 
 extern "C" {
 
-tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
-  // Initialize libcurl, libwebsockets, and allocate the context
+tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
+  // Initialize libcurl and allocate the context
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
     return nullptr;
   }
-  if (disable_lws_logs) {
-    lws_set_log_level(0, nullptr);
-  }
-  const auto ctx{new (std::nothrow) tek_sc_lib_ctx()};
+  scope_exit curl_cleanup{curl_global_cleanup};
+  std::unique_ptr<tek_sc_lib_ctx> ctx{new (std::nothrow) tek_sc_lib_ctx()};
   if (!ctx) {
-    curl_global_cleanup();
     return nullptr;
   }
-  ctx->lws_thread = std::thread{&tsc_lws_loop, std::ref(*ctx)};
-  tsci_os_futex_wait(&ctx->lws_init, 0, 3000);
-  if (!ctx->lws_ctx) {
-    if (ctx->lws_thread.joinable()) {
-      ctx->lws_thread.join();
-    }
-    delete ctx;
-    curl_global_cleanup();
+  // Create the event loop thread
+  if (uv_thread_create(&ctx->loop_thread, event_loop, ctx.get()) != 0) {
+    return nullptr;
+  }
+  tsci_os_futex_wait(reinterpret_cast<std::atomic_uint32_t *>(&ctx->loop_state),
+                     static_cast<std::uint32_t>(loop_state::stopped), 3000);
+  if (ctx->loop_state.load(std::memory_order::relaxed) == loop_state::error) {
+    uv_thread_join(&ctx->loop_thread);
     return nullptr;
   }
   ctx->os_type = get_os_type();
+  curl_cleanup.release();
   if (!use_file_cache) {
-    return ctx;
+    return ctx.release();
   }
   // Get cache file path
   std::unique_ptr<tek_sc_os_char, decltype(&std::free)> cache_dir{
       tsci_os_get_cache_dir(), std::free};
   if (!cache_dir) {
-    return ctx;
+    return ctx.release();
   }
   const int cache_dir_len{tsci_os_pstr_strlen(cache_dir.get())};
   std::string cache_file_path;
+  constexpr std::string_view cache_file_rel_path{
+      TSCI_OS_PATH_SEP_CHAR_STR "tek-steamclient" TSCI_OS_PATH_SEP_CHAR_STR
+                                "cache.sqlite3"};
   cache_file_path.reserve(cache_dir_len + cache_file_rel_path.length());
   cache_file_path.resize(cache_dir_len);
   tsci_os_pstr_to_str(cache_dir.get(), cache_file_path.data());
@@ -206,19 +452,19 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
       sqlite3_close_v2(db_ptr);
     }
     if (res != SQLITE_CANTOPEN) {
-      return ctx;
+      return ctx.release();
     }
     // Most likely the parent directory doesn't exist yet, create the cache
     //    directory and its tek-steamclient subdirectory if they are missing
     const auto cache_dir_handle{tsci_os_dir_create(cache_dir.get())};
     if (cache_dir_handle == TSCI_OS_INVALID_HANDLE) {
-      return ctx;
+      return ctx.release();
     }
     const auto tsc_subdir_handle{tsci_os_dir_create_at(
         cache_dir_handle, TEK_SC_OS_STR("tek-steamclient"))};
     tsci_os_close_handle(cache_dir_handle);
     if (tsc_subdir_handle == TSCI_OS_INVALID_HANDLE) {
-      return ctx;
+      return ctx.release();
     }
     tsci_os_close_handle(tsc_subdir_handle);
     // Try opening the database connection again
@@ -228,14 +474,14 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
       if (db_ptr) {
         sqlite3_close_v2(db_ptr);
       }
-      return ctx;
+      return ctx.release();
     }
   }
   cache_dir.reset();
   ctx->cache.reset(db_ptr);
   const auto db{ctx->cache.get()};
   if (sqlite3_exec(db, "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK) {
-    return ctx;
+    return ctx.release();
   }
   sqlite3_stmt *stmt_ptr;
   // Get CM server list
@@ -308,15 +554,13 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool disable_lws_logs) {
   }
 #endif // def TEK_SCB_S3C
   sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
-  return ctx;
+  return ctx.release();
 }
 
 void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
-  ctx->cleanup_requested.store(true, std::memory_order::relaxed);
-  lws_cancel_service(ctx->lws_ctx);
-  if (ctx->lws_thread.joinable()) {
-    ctx->lws_thread.join();
-  }
+  ctx->loop_state.store(loop_state::stopped, std::memory_order::relaxed);
+  uv_async_send(&ctx->loop_async);
+  uv_thread_join(&ctx->loop_thread);
   const auto dirty_flags{static_cast<dirty_flag>(
       ctx->dirty_flags.load(std::memory_order::relaxed))};
   if (ctx->cache && dirty_flags != dirty_flag::none) {

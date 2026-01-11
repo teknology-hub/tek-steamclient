@@ -1,6 +1,6 @@
 //===-- cmd_parser.c - command parser -------------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -342,37 +342,6 @@ int tscl_parse_cmd(int argc, tek_sc_os_char **argv, int ind,
         return 0;
       }
       cmd->s3c_sync_manifest.url = tscl_os_str_to_utf8(argv[ind]);
-      return ind + 1;
-    } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("signin"))) {
-      cmd->type = TSCL_CMD_TYPE_s3c_signin;
-#ifdef TEK_SCB_QR
-      if (++ind == argc) {
-        fputs(tsc_gettext("Error: <type> not provided for \"signin\"\n"),
-              stderr);
-        return 0;
-      }
-      if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("credentials"))) {
-        cmd->s3c_signin.type = TSCL_S3_AUTH_TYPE_credentials;
-      } else if (!tscl_os_strcmp(argv[ind], TEK_SC_OS_STR("qr"))) {
-        cmd->s3c_signin.type = TSCL_S3_AUTH_TYPE_qr;
-      } else {
-        auto const str = tscl_os_str_to_utf8(argv[ind]);
-        fprintf(stderr,
-                // L18N: %s is the value of <type> provied by the user
-                tsc_gettext("Error: unknown <type> \"%s\" for \"signin\"\n"),
-                str);
-        free(str);
-        return 0;
-      }
-#else  // def TEK_SCB_QR
-      cmd->s3c_signin.type = TSCL_S3_AUTH_TYPE_credentials;
-#endif // def TEK_SCB_QR else
-      if (++ind == argc) {
-        fputs(tsc_gettext("Error: <url> not provided for \"signin\"\n"),
-              stderr);
-        return 0;
-      }
-      cmd->s3c_signin.url = tscl_os_str_to_utf8(argv[ind]);
       return ind + 1;
     } else {
       auto const str = tscl_os_str_to_utf8(argv[ind]);

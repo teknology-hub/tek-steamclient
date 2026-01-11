@@ -21,11 +21,11 @@ Here's the list of libraries that tek-steamclient depends on:
 |Library|Usage|
 |-|-|
 |libcrypto from [OpenSSL](https://www.openssl.org)|AES-256 CBC and ECB decryption, SHA-1 hashing, RSA encryption|
-|[libcurl](https://curl.se)|HTTP(S) downloads|
+|[libcurl](https://curl.se)|HTTP(S) downloads and WebSocket connections|
+|[libuv](https://libuv.org/)|CM event loop and synchronization primitives|
 |[libwebsockets](https://libwebsockets.org)|WebSocket connections for Steam CM client|
 |protobuf-lite from [Protobuf](https://protobuf.dev)|Serialization and deserialization of Protobuf messages used by Steam|
-|pthreads|Threading and synchronization primitives. Most systems provide it by default|
-|[RapidJSON](https://rapidjson.org/)|JSON serialization and parsing|
+|[RapidJSON](https://rapidjson.org/)|JSON parsing|
 |[SQLite3](https://sqlite.org/index.html)|Cache and state storage in database files|
 |[zlib](https://www.zlib.net) or [zlib-ng](https://github.com/zlib-ng/zlib-ng)|GZip decompression, CRC32 checksums|
 |[GNU gettext](https://www.gnu.org/software/gettext/gettext.html) (optional)|Localization|
@@ -34,15 +34,15 @@ Here's the list of libraries that tek-steamclient depends on:
 
 |Library|Usage|
 |-|-|
-|[libzip](https://libzip.org)|Zip archive extraction|
+|[minizip](https://github.com/madler/zlib/tree/master/contrib/minizip) or [minizip-ng](https://github.com/zlib-ng/minizip-ng)|Zip manifest extraction|
 
 ### SteamPipe API dependencies
 
 |Library|Usage|
 |-|-|
-|liblzma from [XZ Utils](https://tukaani.org/xz)|LZMA decompression|
-|[minizip](https://github.com/madler/zlib/tree/master/contrib/minizip) or [minizip-ng](https://github.com/zlib-ng/minizip-ng)|Zip archive extraction|
-|[libzstd](https://github.com/facebook/zstd)|Zstandard decompression|
+|liblzma from [XZ Utils](https://tukaani.org/xz)|LZMA chunk (VZ) decompression|
+|[minizip](https://github.com/madler/zlib/tree/master/contrib/minizip) or [minizip-ng](https://github.com/zlib-ng/minizip-ng)|Zip chunk extraction|
+|[libzstd](https://github.com/facebook/zstd)|Zstandard chunk (VSZ) decompression|
 
 ### Application manager API dependencies
 
@@ -50,12 +50,6 @@ Here's the list of libraries that tek-steamclient depends on:
 |-|-|
 |[ValveFileVDF](https://github.com/TinyTinni/ValveFileVDF)|Valve Data File parsing. Provided via Meson wrap file in the repository, doesn't need to be installed separately|
 |[liburing](https://github.com/axboe/liburing) (Linux-only, optional)|Slightly improves file read/write performance on kernels supporting io_uring|
-
-### tek-sc-cli dependencies
-
-|Library|Usage|
-|-|-|
-|[libqrencode](https://github.com/fukuchi/libqrencode) (optional)|QR code generation for QR code-based Steam sign-in|
 
 ## 2. Get source code
 

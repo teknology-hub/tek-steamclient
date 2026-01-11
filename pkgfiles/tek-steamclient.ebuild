@@ -1,4 +1,4 @@
-# Copyright 2025 Gentoo Authors
+# Copyright 2025-2026 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=8
@@ -16,7 +16,7 @@ LICENSE="GPL-3+"
 SLOT="2"
 KEYWORDS="amd64"
 
-IUSE="+app-manager +cli +cli-dump +content io-uring +minizip-ng +nls +qr +s3-client +steampipe zlib-ng"
+IUSE="+app-manager +cli +cli-dump +content io-uring +minizip-ng +nls +s3-client +steampipe zlib-ng"
 REQUIRED_USE="
 	app-manager? ( content steampipe )
 	cli-dump? ( app-manager )
@@ -24,16 +24,13 @@ REQUIRED_USE="
 
 COMMON_DEPEND="
 	dev-db/sqlite
+	dev-libs/libuv
 	dev-libs/openssl
 	dev-libs/protobuf:=[protobuf(+)]
 	!games-util/tek-steamclient:*
-	net-libs/libwebsockets[client,extensions,ssl]
-	net-misc/curl[ssl]
+	net-misc/curl[ssl,websockets(-)]
 	app-manager? (
 		io-uring? ( sys-libs/liburing )
-	)
-	cli? (
-		qr? ( media-gfx/qrencode )
 	)
 	content? (
 		minizip-ng? ( sys-libs/minizip-ng )
@@ -74,7 +71,6 @@ src_configure() {
 		$(meson_feature io-uring io_uring)
 		$(meson_feature minizip-ng minizip_ng)
 		$(meson_use nls gettext)
-		$(meson_feature qr)
 		$(meson_use s3-client s3_client)
 		$(meson_use steampipe)
 		$(meson_feature zlib-ng zlib_ng)
