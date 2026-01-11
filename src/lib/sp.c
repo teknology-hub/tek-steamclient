@@ -1231,6 +1231,7 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
     bool change_srv = false;
     switch (status) {
     case 404:
+    case 502:
     case 503:
       change_srv = true;
       break;
@@ -1250,7 +1251,6 @@ tek_sc_sp_multi_dlr_process(const tek_sc_sp_multi_dlr *dlr, int thrd_index,
     }
     switch (status) {
     case 429:
-    case 502:
     case 504:
       if (!timestamp) {
         timestamp = tsci_os_get_ticks() + TSCP_TIMEOUT_MS;
