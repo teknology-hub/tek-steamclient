@@ -35,7 +35,7 @@
 #include "error.h"
 #include "os.h"
 
-#include <stdatomic.h>
+#include <stdatomic.h> // IWYU pragma: keep
 #include <stdint.h>
 
 //===-- Types -------------------------------------------------------------===//

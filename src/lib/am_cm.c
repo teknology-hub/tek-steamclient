@@ -803,6 +803,12 @@ tek_sc_err tsci_am_get_patch_info(tek_sc_am *am, const tek_sc_item_id *item_id,
 //===-- Public function ---------------------------------------------------===//
 
 tek_sc_err tek_sc_am_check_for_upds(tek_sc_am *am, long timeout_ms) {
+  pthread_mutex_lock(&am->item_descs_mtx);
+  const bool empty = am->item_descs == nullptr;
+  pthread_mutex_unlock(&am->item_descs_mtx);
+  if (empty) {
+    return tsc_err_ok();
+  }
   auto const cm_ctx = &am->cm_ctx;
   pthread_mutex_lock(&cm_ctx->mtx);
   cm_ctx->pending_req = TSCI_AM_PENDING_CM_REQ_changes;
