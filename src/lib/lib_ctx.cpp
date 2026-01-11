@@ -573,7 +573,9 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
         sqlite3_exec(db,
                      "CREATE TABLE IF NOT EXISTS cm_servers (hostname TEXT NOT "
                      "NULL, port INTEGER, UNIQUE(hostname, port))",
-                     nullptr, nullptr, nullptr) == SQLITE_OK) {
+                     nullptr, nullptr, nullptr) == SQLITE_OK &&
+        sqlite3_exec(db, "DELETE FROM cm_servers", nullptr, nullptr, nullptr) ==
+            SQLITE_OK) {
       // Write CM server list
       constexpr std::string_view query{
           "INSERT INTO cm_servers (hostname, port) VALUES (?, ?)"};
