@@ -1,9 +1,10 @@
 project(
   'tek-steamclient',
   'c', 'cpp',
-  version: files('meson.version'), meson_version: '>=1.3.2',
+  version: files('meson.version'), meson_version: '>=1.6.0',
   license: 'GPL-3.0-or-later', license_files: 'COPYING',
   default_options: {
+    'c_std': 'gnu23',
     'cpp_std': 'gnu++23',
     'warning_level': '3'
   }
@@ -105,10 +106,6 @@ configure_file(
 )
 subdir('include')
 common_includes = include_directories('include', 'src')
-override_options = {
-  # Meson supports c23/gnu23 only since 1.4.0
-  'c_std': meson.version().version_compare('<1.4.0') ? 'gnu2x' : 'gnu23'
-}
 
 if get_option('gettext')
   subdir('po')
@@ -197,14 +194,12 @@ libtek_steamclient = library(
   gnu_symbol_visibility: 'hidden',
   include_directories: common_includes,
   install: true,
-  override_options: override_options,
   soversion: soversion
 )
 static_arg_arr = (
   get_option('default_library') == 'static'
   or (
     get_option('default_library') == 'both'
-    and meson.version().version_compare('>=1.6.0')
     and get_option('default_both_libraries') == 'static'
   )
 ) ? '-DTEK_SC_STATIC' : []
@@ -258,6 +253,5 @@ tek_sc_cli = executable(
   gnu_symbol_visibility: 'hidden',
   include_directories: common_includes,
   install: get_option('cli'),
-  link_with: libtek_steamclient,
-  override_options: override_options
+  link_with: libtek_steamclient
 )
