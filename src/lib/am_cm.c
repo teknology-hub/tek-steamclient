@@ -692,7 +692,7 @@ tek_sc_err tsci_am_get_latest_man_id(tek_sc_am *am,
     tek_sc_cm_get_access_token(am->cm_client, data_pics,
                                tscp_am_cb_access_tokens, cm_ctx->timeout);
   }
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 5)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 5 + 28000)) {
     cm_ctx->result =
         tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_cm_timeout);
   }
@@ -710,7 +710,7 @@ tek_sc_err tsci_am_get_sp_servers(tek_sc_am *am, tsci_am_job_ctx *ctx) {
   cm_ctx->job_ctx = ctx;
   tek_sc_cm_get_sp_servers(am->cm_client, tscp_am_cb_sp_servers,
                            cm_ctx->timeout);
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 1000)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 29000)) {
     cm_ctx->result =
         tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_timeout);
   }
@@ -735,7 +735,7 @@ tek_sc_err tsci_am_get_depot_key(tek_sc_am *am, const tek_sc_item_id *item_id) {
   data_dk->depot_id = item_id->depot_id;
   tek_sc_cm_get_depot_key(am->cm_client, data_dk, tscp_am_cb_depot_key,
                           cm_ctx->timeout);
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 1000)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 29000)) {
     cm_ctx->result =
         tsc_err_sub(TEK_SC_ERRC_cm_depot_key, TEK_SC_ERRC_cm_timeout);
   }
@@ -762,7 +762,7 @@ tek_sc_err tsci_am_get_mrc(tek_sc_am *am, const tek_sc_item_id *item_id,
   data_mrc->depot_id = item_id->depot_id;
   data_mrc->manifest_id = manifest_id;
   tek_sc_cm_get_mrc(am->cm_client, data_mrc, tscp_am_cb_mrc, cm_ctx->timeout);
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 1000)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 29000)) {
     cm_ctx->result = tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_cm_timeout);
   }
   auto const res = cm_ctx->result;
@@ -788,7 +788,7 @@ tek_sc_err tsci_am_get_patch_info(tek_sc_am *am, const tek_sc_item_id *item_id,
   tek_sc_cm_get_dp_info(am->cm_client, item_id, source_manifest_id,
                         target_manifest_id, tscp_am_cb_patch_info,
                         cm_ctx->timeout);
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 1000)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 3 + 29000)) {
     cm_ctx->result =
         tsc_err_sub(TEK_SC_ERRC_cm_depot_patch_info, TEK_SC_ERRC_cm_timeout);
   }
@@ -810,7 +810,7 @@ tek_sc_err tek_sc_am_check_for_upds(tek_sc_am *am, long timeout_ms) {
   atomic_init(&cm_ctx->completed, 0);
   tek_sc_cm_get_changes(am->cm_client, am->changenum, tscp_am_cb_changes,
                         timeout_ms);
-  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, timeout_ms * 5)) {
+  if (!tsci_os_futex_wait(&cm_ctx->completed, 0, timeout_ms * 5 + 28000)) {
     cm_ctx->result =
         tsc_err_sub(TEK_SC_ERRC_cm_changes, TEK_SC_ERRC_cm_timeout);
   }
