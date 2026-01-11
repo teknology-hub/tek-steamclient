@@ -1,6 +1,6 @@
 //===-- lib_ctx.hpp - internal library context definitions ----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -18,28 +18,37 @@
 #include "tek-steamclient/base.h"
 
 #include "config.h" // IWYU pragma: keep
-#include "tek-steamclient/cm.h"
 #include "tek/steamclient/cm/msg_payloads/os_type.pb.h"
-
-#include "os.h" // IWYU pragma: keep
+#include "ws_conn.hpp"
 
 #include <atomic>
 #include <cstdint>
 #ifdef TEK_SCB_S3C
 #include <ctime>
 #endif // def TEK_SCB_S3C
-#include <forward_list>
-#include <libwebsockets.h>
+#include <curl/curl.h>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
-#include <thread>
+#include <uv.h>
 #include <vector>
 
 namespace tek::steamclient {
+
+using lib_ctx = tek_sc_lib_ctx;
+
+/// libuv event loop state values.
+enum class loop_state : std::uint32_t {
+  /// The event loop hasn't been started yet, or should be stopped ASAP.
+  stopped,
+  /// The event loop is currently running.
+  running,
+  /// An error has occurred when setting up the event loop.
+  error
+};
 
 /// Flags indicating which cache fields have changed and should be written back
 ///    to the cache file.
@@ -68,29 +77,18 @@ struct cm_server {
   int port;
 };
 
+/// WebSocket connection request.
+struct ws_conn_request {
+  /// Instance to connect.
+  ws_conn &conn;
+  /// UTF-8 URL of the WebSocket server to connect to.
+  std::string url;
+  /// Timeout for the connection attempt, in milliseconds.
+  long timeout_ms;
+};
+
 #ifdef TEK_SCB_S3C
 namespace s3c {
-
-/// tek-s3 authentication types.
-enum class auth_type {
-  /// Credentials-based authentication.
-  credentials,
-  /// QR code-based authentication.
-  qr
-};
-
-/// Types of pedning outgoing messages.
-enum class pending_msg_type {
-  /// No messages are pending.
-  none,
-  /// Initial message specifying authentication type, and credentials for
-  ///    credentials-based sessions.
-  init,
-  /// Confirmation code message.
-  code,
-  /// Disconnect from the server.
-  disconnect
-};
 
 /// tek-s3 server entry.
 struct server {
@@ -103,54 +101,10 @@ struct server {
 /// tek-s3 cache entry.
 struct cache_entry {
   /// Servers that can provide manifest request codes for given app and depot
-  /// ID.
+  ///    ID.
   std::vector<server *> servers;
   /// Current interator into @ref servers.
   decltype(servers)::const_iterator it;
-};
-
-/// tek-s3 authentication WebSocket connection context.
-struct ws_ctx {
-  /// Doubly linked list element for libwebsockets timeout scheduling.
-  lws_sorted_usec_list_t sul;
-  /// Value indicating whether @ref sul has been scheduled yet.
-  bool sul_scheduled;
-  /// Value indicating whether there is ongoing auth session.
-  std::atomic_bool busy;
-  /// Value indicating whether the connection parameters are ready for
-  ///    submission.
-  std::atomic_bool ready;
-  /// Value indicating whether to use TLS security.
-  bool use_tls;
-  /// Authentication type to request.
-  auth_type type;
-  /// Hostname of the server to connect to, as a null-terminated UTF-8 string.
-  char *_Nonnull host;
-  /// URL path part, as a null-terminated UTF-8 string.
-  char *_Nonnull path;
-  /// Port number at which the server listens for WebSocket connections.
-  int port;
-  /// Type of currently pending message.
-  std::atomic<pending_msg_type> pending;
-  /// Steam account name (login), as a UTF-8 string.
-  std::string account_name;
-  /// Steam account password, as a UTF-8 string.
-  std::string password;
-  /// Steam Guard code to submit, as a UTF-8 string.
-  std::string code;
-  /// Steam Guard confirmation type that @ref code belongs to.
-  tek_sc_cm_auth_confirmation_type code_type;
-  /// The maximum amount of time the session is allowed to take, in
-  ///     milliseconds.
-  long timeout_ms;
-  /// Pointer to the callback function.
-  tek_sc_cm_callback_func *_Nullable cb;
-  /// Pointer that will be passed to @p cb.
-  void *_Nullable user_data;
-  /// WebSocket instance pointer.
-  lws *_Nullable wsi;
-  /// Result codes of the auth session.
-  tek_sc_err result;
 };
 
 } // namespace s3c
@@ -158,22 +112,29 @@ struct ws_ctx {
 
 } // namespace tek::steamclient
 
+using namespace tek::steamclient;
+
 /// @copydoc tek_sc_lib_ctx
 struct tek_sc_lib_ctx {
-  /// libwebsockets context, responsible for all WebSocket connections related
-  ///    to the library context.
-  lws_context *_Nonnull lws_ctx;
-  /// Value indicating whether @ref lws_thread should destroy @ref lws_ctx and
-  ///    exit as soon as it can.
-  std::atomic_bool cleanup_requested;
-  /// Futex that is set to 1 after @ref lws_ctx is initialized.
-  std::atomic_uint32_t lws_init;
-  /// CM client instances assinged to the context.
-  std::forward_list<tek_sc_cm_client *> cm_clients;
-  /// Mutex locking concurrent access to @ref cm_clients.
-  std::mutex cm_clients_mtx;
+  /// Futex indicating current libuv event loop state.
+  std::atomic<loop_state> loop_state{loop_state::stopped};
+  /// Cached OS type value.
+  cm::msg_payloads::OsType os_type;
+  /// curl multi handle used for establishing WebSocket connections.
+  std::unique_ptr<CURLM, decltype(&curl_multi_cleanup)> curlm{
+      nullptr, curl_multi_cleanup};
+  /// Map of per-socket libuv poll handles.
+  std::map<uv_os_sock_t, uv_poll_t> poll_handles;
+  /// WebSocket connection request queue.
+  std::deque<ws_conn_request> conn_queue;
+  /// Queue of WebSocket connections that need to enable polling for writable
+  ///    event
+  std::deque<ws_conn *> writable_queue;
+  /// Mutex locking concurrent access to @ref conn_queue and
+  ///    @ref writable_queue.
+  std::mutex conn_mtx;
   /// Cached list of Steam CM servers.
-  std::vector<tek::steamclient::cm_server> cm_servers;
+  std::vector<cm_server> cm_servers;
   /// Iterator pointing to the next CM server to use for connection
   decltype(cm_servers)::const_iterator cm_servers_iter;
   /// Mutex locking concurrent access to @ref cm_servers and
@@ -188,23 +149,24 @@ struct tek_sc_lib_ctx {
                                                               sqlite3_close_v2};
 #ifdef TEK_SCB_S3C
   /// Known tek-s3 servers.
-  std::vector<tek::steamclient::s3c::server> s3_servers;
+  std::vector<s3c::server> s3_servers;
   /// Map of app and depot IDs to tek-s3 server entries that can provide
   ///    manifest request codes for the depot.
-  std::map<std::uint32_t,
-           std::map<std::uint32_t, tek::steamclient::s3c::cache_entry>>
-      s3_cache;
+  std::map<std::uint32_t, std::map<std::uint32_t, s3c::cache_entry>> s3_cache;
   /// Mutex locking concurrent access to @ref s3_servers and @ref s3_cache.
   std::shared_mutex s3_mtx;
-  /// tek-s3 authentication WebSocket connection context.
-  tek::steamclient::s3c::ws_ctx s3_auth_ctx;
 #endif // def TEK_SCB_S3C
-  /// Cached OS type value.
-  tek::steamclient::cm::msg_payloads::OsType os_type;
   /// Flags indicating which cache fields have changed and should be written
   ///    back to the cache file. Holds a @ref tek::steamclient::dirty_flag
   ///    value.
   std::atomic_int dirty_flags;
-  /// libwebsockets event loop processing thread.
-  std::thread lws_thread;
+  /// libuv event loop running CM clients.
+  uv_loop_t loop;
+  /// Async handle for interrupting @ref loop to stop it or initiate
+  /// connections.
+  uv_async_t loop_async;
+  /// Timer that runs @ref curlm's timeouts.
+  uv_timer_t curlm_timer;
+  /// Thread that creates and runs the libuv event loop.
+  uv_thread_t loop_thread;
 };

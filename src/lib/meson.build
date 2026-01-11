@@ -9,7 +9,8 @@ lib_src = [
   'src/lib/cm_workshop.cpp',
   'src/lib/error_msgs.c',
   'src/lib/lib_ctx.cpp',
-  'src/lib/utils.c'
+  'src/lib/utils.c',
+  'src/lib/ws_conn.cpp'
 ]
 
 if is_windows

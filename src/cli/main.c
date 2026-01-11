@@ -1,6 +1,6 @@
 //===-- main.c - tek-sc-cli entry point -----------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -16,7 +16,9 @@
 
 #include "config.h"
 #include "os.h"
+#ifdef TEK_SCB_AM
 #include "tek-steamclient/am.h"
+#endif // def TEK_SCB_AM
 #include "tek-steamclient/base.h"
 
 #include <locale.h>
@@ -171,15 +173,12 @@ int main(int argc, char *argv[]) {
       case TSCL_CMD_TYPE_s3c_sync_manifest:
         free((void *)cmd.s3c_sync_manifest.url);
         break;
-      case TSCL_CMD_TYPE_s3c_signin:
-        free((void *)cmd.s3c_signin.url);
-        break;
       default:
       }
+#endif // def TEK_SCB_S3C
       if (atomic_load_explicit(&tscl_g_ctx.terminating, memory_order_relaxed)) {
         break;
       }
-#endif // def TEK_SCB_S3C
     } // for (tek_sc_os_char buf[256];;)
   } // if (argc > 1) else
   res = EXIT_SUCCESS;
@@ -191,9 +190,6 @@ cleanup:
       switch (cmd->type) {
       case TSCL_CMD_TYPE_s3c_sync_manifest:
         free((void *)cmd->s3c_sync_manifest.url);
-        break;
-      case TSCL_CMD_TYPE_s3c_signin:
-        free((void *)cmd->s3c_signin.url);
         break;
       default:
       }

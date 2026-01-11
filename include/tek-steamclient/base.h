@@ -1,6 +1,6 @@
 //===-- base.h - basic TEK Steam Client declarations ----------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -91,17 +91,16 @@ extern "C" {
 ///    (`/var/cache/tek-steamclient/cache.sqlite3` for root user) on Linux
 ///    systems, and `%appdata%\tek-steamclient\cache.sqlite3` on Windows
 ///    systems.
-/// @param disable_lws_logs
-///    Value indicating whether the function should disable libwebsockets
-///    logging. You should pass `true` here unless you want to diagnose
-///    libwebsockets, or you disable logging earlier in your application, or
-///    it's not the first call of the function.
+/// @param reserved
+///    This parameter was used in earlier versions of tek-steamclient. It
+///    remains for API compatibility and will be removed or changed in the next
+///    major release.
 /// @return Pointer to the created library context that can be passed to other
 ///    functions. It must be cleaned up with @ref tek_sc_lib_cleanup after use.
 ///    `nullptr` may be returned on failure, which may be caused by the
 ///    libraries that tek-steamclient depends on failing to initialize.
 [[gnu::TEK_SC_API]] tek_sc_lib_ctx *_Nullable tek_sc_lib_init(
-    bool use_file_cache, bool disable_lws_logs);
+    bool use_file_cache, bool reserved);
 
 /// Cleanup TEK Steam Client library context.
 ///

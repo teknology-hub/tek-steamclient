@@ -1,6 +1,6 @@
 //===-- error.h - TEK Steam Client error type and function declarations ---===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -25,12 +25,14 @@
 enum tek_sc_err_type {
   /// Library internal error, only `primary` code is set.
   ///    @ref TEK_SC_ERRC_cm_connect also sets `uri` to the URL of the CM
-  ///    server.
+  ///    server. @ref TEK_SC_ERRC_cm_disconnect also sets `extra` to WebSocket
+  ///    close code and `uri` to the URL of the CM server.
   TEK_SC_ERR_TYPE_basic,
   /// Compound library internal error with a sub-operation defined by
   ///    `auxiliary` code, which has type @ref tek_sc_errc.
   ///    @ref TEK_SC_ERRC_cm_connect also sets `uri` to the URL of the CM
-  ///    server.
+  ///    server. @ref TEK_SC_ERRC_cm_disconnect also sets `extra` to WebSocket
+  ///    close code and `uri` to the URL of the CM server.
   TEK_SC_ERR_TYPE_sub,
   /// Error contained in a Steam CM server response, `auxiliary` code is a
   ///    @ref tek_sc_cm_eresult.

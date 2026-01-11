@@ -1,6 +1,6 @@
 //===-- error.h - error creation helpers ----------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -27,9 +27,9 @@ static inline tek_sc_err tsc_err_basic(tek_sc_errc errc) {
 #ifdef __cplusplus
       {.type = TEK_SC_ERR_TYPE_basic,
        .primary = errc,
-       .auxiliary = 0,
-       .extra = 0,
-       .uri = nullptr};
+       .auxiliary{},
+       .extra{},
+       .uri{}};
 #else  // def __cplusplus
       (tek_sc_err){.type = TEK_SC_ERR_TYPE_basic, .primary = errc};
 #endif // def __cplusplus else
@@ -56,8 +56,8 @@ static inline tek_sc_err tsc_err_sub(tek_sc_errc prim, tek_sc_errc aux) {
       {.type = TEK_SC_ERR_TYPE_sub,
        .primary = prim,
        .auxiliary = aux,
-       .extra = 0,
-       .uri = nullptr};
+       .extra{},
+       .uri{}};
 #else  // def __cplusplus
       (tek_sc_err){
           .type = TEK_SC_ERR_TYPE_sub, .primary = prim, .auxiliary = aux};

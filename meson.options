@@ -9,4 +9,3 @@ option('app_manager', description: 'Build application manager API declared in am
 option('io_uring', description: 'Use io_uring (liburing) for improved application manager job I/O performance on Linux', type: 'feature')
 option('cli', description: 'Build tek-sc-cli (command-line interface app)', type: 'boolean', value: true)
 option('cli_dump', description: 'Build dump module of tek-sc-cli (support for dumping tek-steamclient content files in human-readable text format). Requires "app_manager"', type: 'boolean', value: true)
-option('qr', description: 'Enable support for QR code-based authentication in tek-sc-cli', type: 'feature')

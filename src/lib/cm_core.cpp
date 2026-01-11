@@ -1,6 +1,6 @@
 //===-- cm_core.cpp - Steam CM client core implementation -----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -27,18 +27,19 @@
 #include "tek/steamclient/cm/msg_payloads/hello.pb.h"
 #include "tek/steamclient/cm/msg_payloads/logoff.pb.h"
 #include "tek/steamclient/cm/msg_payloads/multi.pb.h"
+#include "ws_close_code.h"
+#include "ws_conn.hpp"
 #include "zlib_api.h"
 
 #include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <curl/curl.h>
 #include <format>
-#include <functional>
-#include <libwebsockets.h>
 #include <locale>
 #include <memory>
 #include <mutex>
@@ -103,28 +104,6 @@ static std::size_t tsc_curl_write(const char *_Nonnull buf, std::size_t,
   }
   ctx.buf.append(buf, size);
   return size;
-}
-
-/// Detach CM client instance from the library context and destroy it.
-///
-/// @param [in, out] client
-///    CM client instance to destroy.
-static void destroy(cm_client &client) {
-  client.lib_ctx.cm_clients_mtx.lock();
-  auto &cm_clients{client.lib_ctx.cm_clients};
-  for (auto it{cm_clients.cbefore_begin()};;) {
-    const auto prev_it{it++};
-    if (it == cm_clients.cend()) {
-      break;
-    }
-    if (*it == &client) {
-      cm_clients.erase_after(prev_it);
-      break;
-    }
-  }
-  client.lib_ctx.cm_clients_mtx.unlock();
-  tsci_z_inflateEnd(&client.zstream);
-  delete &client;
 }
 
 /// Fetch CM server list from the Steam Web API.
@@ -218,29 +197,252 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
   return tsc_err_ok();
 }
 
-/// Process incoming message from the CM server.
-///
-/// @param [in, out] client
-///    CM client that received the message.
-/// @param [in] data
-///    Pointer to serialized message data.
-/// @param size
-///    Size of the message data in bytes.
-[[using gnu: nonnull(2), access(read_only, 2, 3)]]
-static void process_msg(cm_client &client, const void *_Nonnull data,
-                        int size) {
+} // namespace
+
+//===-- cm_conn internal methods ------------------------------------------===//
+
+void cm_conn::handle_connection(CURLcode code) {
+  if (code == CURLE_OK) {
+    conn_state.store(conn_state::connected, std::memory_order::relaxed);
+    // Send hello message
+    msg_payloads::Hello payload;
+    payload.set_protocol_version(protocol_ver);
+    const auto payload_size{payload.ByteSizeLong()};
+    const auto msg_size{sizeof(serialized_msg_hdr) + payload_size};
+    auto msg_buf{std::make_unique_for_overwrite<unsigned char[]>(msg_size)};
+    auto &hdr{*reinterpret_cast<serialized_msg_hdr *>(msg_buf.get())};
+    hdr.set_emsg(EMsg::EMSG_CLIENT_HELLO);
+    hdr.header_size = 0;
+    auto res{tsc_err_ok()};
+    connection_cb(&*this, &res, user_data);
+    if (tsci_z_inflateInit2(&zstream, 16) != Z_OK) {
+      zstream = {};
+      disconnection_reason = TEK_SC_ERRC_gzip;
+      ws_conn::disconnect(TSCI_WS_CLOSE_CODE_NORMAL);
+    } else if (!payload.SerializeToArray(&msg_buf[sizeof hdr], payload_size)) {
+      zstream = {};
+      disconnection_reason = TEK_SC_ERRC_protobuf_serialize;
+      ws_conn::disconnect(TSCI_WS_CLOSE_CODE_NORMAL);
+    } else {
+      disconnection_reason = TEK_SC_ERRC_ok;
+      send_msg({.buf{std::move(msg_buf)},
+                .size = static_cast<int>(msg_size),
+                .frame_type = CURLWS_BINARY,
+                .timer{},
+                .timer_active{},
+                .timer_cb{},
+                .timeout{},
+                .data{}});
+    }
+  } else { // if (code == CURLE_OK)
+    // If retry counter is below 5, retry with another server
+    if (!delete_pending.load(std::memory_order::relaxed) &&
+        ++num_conn_retries < 5) {
+      {
+        const std::scoped_lock lock{ctx.cm_servers_mtx};
+        if (++ctx.cm_servers_iter == ctx.cm_servers.cend()) {
+          ctx.cm_servers_iter = ctx.cm_servers.cbegin();
+        }
+        cur_server = std::to_address(ctx.cm_servers_iter);
+      }
+      auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
+                           cur_server->hostname.data(), cur_server->port)};
+      const std::scoped_lock lock{ctx.conn_mtx};
+      ctx.conn_queue.emplace_back(ws_conn_request{
+          .conn{*this}, .url{std::move(url)}, .timeout_ms = 5000});
+      return;
+    }
+    // Otherwise report the error via callback
+    conn_state.store(conn_state::disconnected, std::memory_order::relaxed);
+    long status{};
+    if (code == CURLE_HTTP_RETURNED_ERROR) {
+      curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status);
+    }
+    const auto url_buf{reinterpret_cast<char *>(std::malloc(url.length() + 1))};
+    if (url_buf) {
+      std::ranges::copy(url.begin(), url.end() + 1, url_buf);
+    }
+    tek_sc_err res{.type = TEK_SC_ERR_TYPE_curle,
+                   .primary = TEK_SC_ERRC_cm_connect,
+                   .auxiliary = code,
+                   .extra = static_cast<int>(status),
+                   .uri = url_buf};
+    connection_cb(&*this, &res, user_data);
+    if (delete_pending.load(std::memory_order::relaxed)) {
+      delete this;
+    }
+  } // if (code == CURLE_OK) else
+}
+
+void cm_conn::handle_disconnection(tsci_ws_close_code code) {
+  ws_conn::handle_disconnection(code);
+  conn_state.store(conn_state::disconnected, std::memory_order::relaxed);
+  steam_id = 0;
+  session_id = 0;
+  tsci_z_inflateEnd(&zstream);
+  // Process all pending timeouts
+  {
+    const std::scoped_lock lock{a_entries_mtx};
+    for (auto it{a_entries.begin()}; it != a_entries.end();) {
+      auto &entry{it->second};
+      entry.timeout_cb(entry.conn, entry);
+      if (entry.timer_active) {
+        uv_close(reinterpret_cast<uv_handle_t *>(&entry.timer), [](auto timer) {
+          auto &entry{
+              *reinterpret_cast<msg_await_entry *>(uv_handle_get_data(timer))};
+          auto &conn{entry.conn};
+          {
+            const std::scoped_lock lock{conn.a_entries_mtx};
+            using val_type = decltype(conn.a_entries)::value_type;
+            conn.a_entries.erase(
+                reinterpret_cast<const val_type *>(
+                    reinterpret_cast<const unsigned char *>(&entry) -
+                    offsetof(val_type, second))
+                    ->first);
+          }
+          if (!--conn.ref_count &&
+              conn.delete_pending.load(std::memory_order::relaxed)) {
+            delete &conn;
+          }
+        });
+        ++it;
+      } else {
+        it = a_entries.erase(it);
+      }
+    }
+  }
+  const auto actx{auth_ctx.exchange(nullptr, std::memory_order::relaxed)};
+  if (actx) {
+    tek_sc_cm_data_auth_polling data{
+        .status = TEK_SC_CM_AUTH_STATUS_completed,
+        .confirmation_types{},
+        .url{},
+        .token{},
+        .result{tsc_err_sub(TEK_SC_ERRC_cm_auth, TEK_SC_ERRC_cm_timeout)}};
+    actx->status_timer.cb(&*this, &data, user_data);
+    if (actx->status_timer.timer_active) {
+      uv_close(reinterpret_cast<uv_handle_t *>(&actx->status_timer.timer),
+               [](auto timer) {
+                 auto &actx{*reinterpret_cast<auth_session_ctx *>(
+                     uv_handle_get_data(timer))};
+                 auto &conn{actx.status_timer.conn};
+                 delete &actx;
+                 if (!--conn.ref_count &&
+                     conn.delete_pending.load(std::memory_order::relaxed)) {
+                   delete &conn;
+                 }
+               });
+    } else {
+      delete actx;
+    }
+  }
+  const auto entry{sign_in_entry.exchange(nullptr, std::memory_order::relaxed)};
+  if (entry) {
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_timeout)};
+    entry->cb(&*this, &res, user_data);
+    if (entry->timer_active) {
+      uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), [](auto timer) {
+        auto &entry{
+            *reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
+        auto &conn{entry.conn};
+        delete &entry;
+        if (!--conn.ref_count &&
+            conn.delete_pending.load(std::memory_order::relaxed)) {
+          delete &conn;
+        }
+      });
+    } else {
+      delete entry;
+    }
+  }
+  {
+    const std::scoped_lock lock{lics_mtx};
+    for (auto it{lics_a_entries.before_begin()};;) {
+      const auto prev_it{it++};
+      if (it == lics_a_entries.end()) {
+        break;
+      }
+      tek_sc_cm_data_lics data{.entries{},
+                               .num_entries{},
+                               .result = tsc_err_sub(TEK_SC_ERRC_cm_licenses,
+                                                     TEK_SC_ERRC_cm_timeout)};
+      it->cb(&*this, &data, user_data);
+      if (it->timer_active) {
+        uv_close(reinterpret_cast<uv_handle_t *>(&it->timer), [](auto timer) {
+          auto &entry{
+              *reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
+          auto &conn{entry.conn};
+          {
+            const std::scoped_lock lock{conn.lics_mtx};
+            for (auto it{conn.lics_a_entries.cbefore_begin()};;) {
+              const auto prev_it{it++};
+              if (it == conn.lics_a_entries.cend()) {
+                break;
+              }
+              if (std::to_address(it) == &entry) {
+                conn.lics_a_entries.erase_after(prev_it);
+                break;
+              }
+            }
+          }
+          if (!--conn.ref_count &&
+              conn.delete_pending.load(std::memory_order::relaxed)) {
+            delete &conn;
+          }
+        });
+      } else {
+        it = lics_a_entries.erase_after(prev_it);
+        if (it == lics_a_entries.end()) {
+          break;
+        }
+      }
+    } // for (auto it{lics_a_entries.before_begin()};;)
+  } // license timeout processing scope
+  tek_sc_err res;
+  if (code == TSCI_WS_CLOSE_CODE_NORMAL &&
+      disconnection_reason == TEK_SC_ERRC_ok) {
+    res = tsc_err_ok();
+  } else {
+    const auto url_buf{reinterpret_cast<char *>(std::malloc(url.length() + 1))};
+    if (url_buf) {
+      std::ranges::copy(url.begin(), url.end() + 1, url_buf);
+    }
+    res = {.type = disconnection_reason == TEK_SC_ERRC_ok
+                       ? TEK_SC_ERR_TYPE_basic
+                       : TEK_SC_ERR_TYPE_sub,
+           .primary = TEK_SC_ERRC_cm_disconnect,
+           .auxiliary = static_cast<int>(disconnection_reason),
+           .extra = static_cast<int>(code),
+           .uri = url_buf};
+  }
+  disconnection_cb(&*this, &res, user_data);
+}
+
+void cm_conn::handle_post_disconnection() {
+  if (!--ref_count && delete_pending.load(std::memory_order::relaxed)) {
+    delete this;
+  }
+}
+
+void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
+                         int frame_type) {
+  if (frame_type != CURLWS_BINARY) {
+    return;
+  }
   serialized_msg_hdr hdr;
-  std::memcpy(&hdr, data, sizeof hdr);
+  std::memcpy(&hdr, data.data(), sizeof hdr);
   if (!hdr.is_proto()) {
     return;
   }
-  auto data_ptr{reinterpret_cast<const unsigned char *>(data) + sizeof hdr};
+  auto data_ptr{reinterpret_cast<const unsigned char *>(data.data()) +
+                sizeof hdr};
   MessageHeader header;
   if (!header.ParseFromArray(data_ptr, hdr.header_size)) {
     return;
   }
   data_ptr += hdr.header_size;
-  const int payload_size{size - static_cast<int>(sizeof hdr) - hdr.header_size};
+  const int payload_size{
+      static_cast<int>(data.size() - sizeof hdr - hdr.header_size)};
   switch (hdr.emsg()) {
   case EMsg::EMSG_MULTI: {
     msg_payloads::Multi payload;
@@ -256,20 +458,20 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
       const auto uncomp_buf{new unsigned char[payload.uncompressed_size()]};
       msg_buf = uncomp_buf;
       msg_buf_end = msg_buf + payload.uncompressed_size();
-      client.zstream.next_in = reinterpret_cast<const unsigned char *>(
+      zstream.next_in = reinterpret_cast<const unsigned char *>(
           payload.inner_messages().data());
-      client.zstream.avail_in = payload.inner_messages().size();
-      client.zstream.total_in = 0;
-      client.zstream.next_out = uncomp_buf;
-      client.zstream.avail_out = payload.uncompressed_size();
-      client.zstream.total_out = 0;
-      auto res{tsci_z_inflate(&client.zstream, Z_FINISH)};
-      if (const auto reset_res{tsci_z_inflateReset2(&client.zstream, 16)};
+      zstream.avail_in = payload.inner_messages().size();
+      zstream.total_in = 0;
+      zstream.next_out = uncomp_buf;
+      zstream.avail_out = payload.uncompressed_size();
+      zstream.total_out = 0;
+      auto res{tsci_z_inflate(&zstream, Z_FINISH)};
+      if (const auto reset_res{tsci_z_inflateReset2(&zstream, 16)};
           res == Z_STREAM_END) {
         res = reset_res;
       }
       if (res != Z_OK) {
-        // Abort processing if inflate fails to avoid further corruption
+        // Abort processing if inflate fails, to avoid further corruption
         return;
       }
     } else {
@@ -284,7 +486,7 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
       std::uint32_t msg_size;
       std::memcpy(&msg_size, i, sizeof msg_size);
       i += sizeof msg_size;
-      process_msg(client, i, msg_size);
+      handle_msg({i, static_cast<std::size_t>(msg_size)}, CURLWS_BINARY);
       i += msg_size;
     }
     if (msg_buf_allocated) {
@@ -293,14 +495,14 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
     break;
   } // case EMsg::EMSG_MULTI
   case EMsg::EMSG_CLIENT_LOG_ON_RESPONSE:
-    client.handle_logon(header, data_ptr, payload_size);
+    handle_logon(header, data_ptr, payload_size);
     break;
   case EMsg::EMSG_CLIENT_LICENSE_LIST:
-    client.handle_license_list(data_ptr, payload_size);
+    handle_license_list(data_ptr, payload_size);
     break;
   case EMsg::EMSG_CLIENT_SERVER_UNAVAILABLE:
-    client.disconnect_reason = TEK_SC_ERRC_cm_server_unavailable;
-    tek_sc_cm_disconnect(&client);
+    disconnection_reason = TEK_SC_ERRC_cm_server_unavailable;
+    disconnect();
     break;
   default: {
     if (!header.has_target_job_id()) {
@@ -308,350 +510,119 @@ static void process_msg(cm_client &client, const void *_Nonnull data,
     }
     // Check if there is an await entry for this message and process it if
     //    there is
-    client.a_entries_mtx.lock();
-    const auto a_entry{client.a_entries.find(header.target_job_id())};
-    if (a_entry == client.a_entries.end()) {
-      client.a_entries_mtx.unlock();
-      break;
+    decltype(a_entries)::iterator it;
+    {
+      const std::scoped_lock lock{a_entries_mtx};
+      it = a_entries.find(header.target_job_id());
+      if (it == a_entries.end()) {
+        break;
+      }
     }
-    client.a_entries_mtx.unlock();
+    auto &entry{it->second};
     // Process the response
-    if (a_entry->second.proc(client, header, data_ptr, payload_size,
-                             a_entry->second.cb, a_entry->second.inout_data)) {
-      // Cancel the timeout and remove the entry
-      lws_sul_cancel(&a_entry->second.sul);
-      client.a_entries_mtx.lock();
-      client.a_entries.erase(a_entry);
-      client.a_entries_mtx.unlock();
+    if (entry.proc(*this, header, data_ptr, payload_size, entry.cb,
+                   entry.inout_data)) {
+      // Cancel the timeout and remove the await entry afterwards
+      if (entry.timer_active) {
+        uv_close(reinterpret_cast<uv_handle_t *>(&entry.timer), [](auto timer) {
+          auto &entry{
+              *reinterpret_cast<msg_await_entry *>(uv_handle_get_data(timer))};
+          auto &conn{entry.conn};
+          --conn.ref_count;
+          const std::scoped_lock lock{conn.a_entries_mtx};
+          using val_type = decltype(conn.a_entries)::value_type;
+          conn.a_entries.erase(
+              reinterpret_cast<const val_type *>(
+                  reinterpret_cast<const unsigned char *>(&entry) -
+                  offsetof(val_type, second))
+                  ->first);
+        });
+      } else {
+        --ref_count;
+        const std::scoped_lock lock{a_entries_mtx};
+        a_entries.erase(it);
+      }
     }
-  }
+  } // default
   } // switch (hdr.emsg())
 }
 
-/// Process a libwebsockets protocol callback.
-///
-/// @param wsi
-///    Pointer to the WebSocket instance that emitted the callback.
-/// @param reason
-///    Reason for the callback.
-/// @param user
-///    For wsi-scoped callbacks, pointer to the associated CM client instance.
-/// @param [in] in
-///    Pointer to the data associated with the callback.
-/// @param len
-///    Size of the data pointed to by @p in, in bytes.
-/// @return `0` on success, or a non-zero value to close connection.
-[[gnu::access(read_only, 4, 5)]]
-static int tsc_lws_cb(lws *_Nullable wsi, lws_callback_reasons reason,
-                      void *_Nullable user, void *_Nullable in,
-                      std::size_t len) {
-  switch (reason) {
-  case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-    auto &client{*reinterpret_cast<cm_client *>(user)};
-    if (client.conn_state.load(std::memory_order::relaxed) !=
-        conn_state::connecting) {
-      return 0;
-    }
-    if (client.destroy_requested.load(std::memory_order::relaxed)) {
-      destroy(client);
-      return 0;
-    }
-    // If there's no error from established callback and retry counter is below
-    //    5, retry with another server
-    auto &lib_ctx = client.lib_ctx;
-    if (!client.disconnect_reason && ++client.num_conn_retries < 5) {
-      {
-        const std::scoped_lock lock{lib_ctx.cm_servers_mtx};
-        if (++lib_ctx.cm_servers_iter == lib_ctx.cm_servers.cend()) {
-          lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
-        }
-        client.cur_server = std::to_address(lib_ctx.cm_servers_iter);
-      }
-      lws_client_connect_info info{};
-      info.context = lib_ctx.lws_ctx;
-      info.address = client.cur_server->hostname.data();
-      info.port = client.cur_server->port;
-      info.ssl_connection = LCCSCF_USE_SSL;
-      info.path = "/cmsocket/";
-      info.host = info.address;
-      info.origin = info.address;
-      info.protocol = "";
-      info.userdata = &client;
-      if (lws_client_connect_via_info(&info)) {
-        return 0;
-      }
-    }
-    // Otherwise report the error via callback
-    client.conn_state.store(conn_state::disconnected,
-                            std::memory_order::relaxed);
-    auto res{client.disconnect_reason
-                 ? tsc_err_sub(TEK_SC_ERRC_cm_connect, client.disconnect_reason)
-                 : tsc_err_basic(TEK_SC_ERRC_cm_connect)};
-    client.disconnect_reason = TEK_SC_ERRC_ok;
-    const auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
-                               client.cur_server->hostname,
-                               client.cur_server->port)};
-    const auto url_buf{reinterpret_cast<char *>(std::malloc(url.length() + 1))};
-    if (url_buf) {
-      std::ranges::move(url.begin(), url.end() + 1, url_buf);
-    }
-    res.uri = url_buf;
-    client.connection_cb(&client, &res, client.user_data);
-    return 0;
-  } // case LWS_CALLBACK_CLIENT_CONNECTION_ERROR
-  case LWS_CALLBACK_CLIENT_ESTABLISHED: {
-    auto &client{*reinterpret_cast<tek_sc_cm_client *>(user)};
-    client.wsi = wsi;
-    if (auto expected{conn_state::connecting};
-        !client.conn_state.compare_exchange_strong(
-            expected, conn_state::connected, std::memory_order::release,
-            std::memory_order::relaxed)) {
-      return 0;
-    }
-    // Send hello message
-    msg_payloads::Hello payload;
-    payload.set_protocol_version(protocol_ver);
-    const auto payload_size{payload.ByteSizeLong()};
-    const auto msg_size{sizeof(serialized_msg_hdr) + payload_size};
-    auto msg_buf{
-        std::make_unique_for_overwrite<unsigned char[]>(LWS_PRE + msg_size)};
-    auto &hdr{*reinterpret_cast<serialized_msg_hdr *>(&msg_buf[LWS_PRE])};
-    hdr.set_emsg(EMsg::EMSG_CLIENT_HELLO);
-    hdr.header_size = 0;
-    if (!payload.SerializeToArray(&msg_buf[LWS_PRE + sizeof hdr],
-                                  payload_size)) {
-      client.wsi = nullptr;
-      client.disconnect_reason = TEK_SC_ERRC_protobuf_serialize;
-      return 1;
-    }
-    client.pending_msgs_mtx.lock();
-    client.pending_msgs.emplace_back(msg_buf, msg_size, nullptr);
-    client.pending_msgs_mtx.unlock();
-    lws_callback_on_writable(wsi);
-    // Call connection callback
-    auto res{tsc_err_ok()};
-    client.connection_cb(&client, &res, client.user_data);
-    return 0;
+//===-- CM API methods ----------------------------------------------------===//
+
+void cm_conn::destroy() {
+  if (conn_state.load(std::memory_order::relaxed) == conn_state::disconnected) {
+    // Client can be destroyed immediately
+    delete this;
+  } else {
+    // Request disconnection and destruction afterwards
+    delete_pending.store(true, std::memory_order::relaxed);
+    disconnect();
   }
-  case LWS_CALLBACK_CLIENT_RECEIVE: {
-    auto &client{*reinterpret_cast<cm_client *>(user)};
-    if (client.conn_state.load(std::memory_order::relaxed) <
-        conn_state::connected) {
-      return 0;
-    }
-    if (!lws_frame_is_binary(wsi)) {
-      // Ignore non-binary frames
-      client.pending_recv_buf.clear();
-      break;
-    }
-    const auto uc_in{reinterpret_cast<const unsigned char *>(in)};
-    const auto rem_payload{lws_remaining_packet_payload(wsi)};
-    if (!rem_payload && lws_is_final_fragment(wsi)) {
-      if (client.pending_recv_buf.empty()) {
-        // Entire message received in one go
-        if (len >= sizeof(serialized_msg_hdr)) {
-          process_msg(client, in, len);
-        }
-      } else {
-        // Receiving last chunk of fragmented message
-        client.pending_recv_buf.insert(client.pending_recv_buf.end(), uc_in,
-                                       &uc_in[len]);
-        if (client.pending_recv_buf.size() >= sizeof(serialized_msg_hdr)) {
-          process_msg(client, client.pending_recv_buf.data(),
-                      client.pending_recv_buf.size());
-        }
-        client.pending_recv_buf.clear();
-      }
-      break;
-    }
-    // Receiving non-last chunk of a fragmented message
-    client.pending_recv_buf.reserve(client.pending_recv_buf.size() + len +
-                                    rem_payload);
-    client.pending_recv_buf.insert(client.pending_recv_buf.end(), uc_in,
-                                   &uc_in[len]);
-    break;
-  }
-  case LWS_CALLBACK_CLIENT_WRITEABLE: {
-    auto &client{*reinterpret_cast<cm_client *>(user)};
-    if (client.conn_state.load(std::memory_order::relaxed) <
-        conn_state::connected) {
-      return 0;
-    }
-    client.pending_msgs_mtx.lock();
-    if (client.pending_msgs.empty()) {
-      client.pending_msgs_mtx.unlock();
-      break;
-    }
-    for (bool remaining{!client.pending_msgs.empty()}; remaining;) {
-      const auto msg{std::move(client.pending_msgs.front())};
-      client.pending_msgs.pop_front();
-      if (!msg.buf) {
-        break;
-      }
-      if (msg.sul && lws_dll2_is_detached(&msg.sul->list)) {
-        lws_sul2_schedule(client.lib_ctx.lws_ctx, 0, LWSSULLI_MISS_IF_SUSPENDED,
-                          msg.sul);
-      }
-      if (lws_write(wsi, &msg.buf[LWS_PRE], msg.size, LWS_WRITE_BINARY) <
-          msg.size) {
-        client.pending_msgs_mtx.unlock();
-        return 1;
-      }
-      remaining = !client.pending_msgs.empty();
-      if (remaining && lws_partial_buffered(wsi)) {
-        lws_callback_on_writable(wsi);
-        break;
-      }
-    }
-    client.pending_msgs_mtx.unlock();
-    return 0;
-  }
-  case LWS_CALLBACK_EVENT_WAIT_CANCELLED: {
-    if (!wsi) {
-      break;
-    }
-    auto &lib_ctx{*reinterpret_cast<tek_sc_lib_ctx *>(
-        lws_context_user(lws_get_context(wsi)))};
-    if (lib_ctx.cleanup_requested.load(std::memory_order::relaxed)) {
-      // Destroy libwebsockets context
-      const auto lws_ctx{lib_ctx.lws_ctx};
-      lib_ctx.lws_ctx = nullptr;
-      lws_context_destroy(lws_ctx);
-      return 0;
-    }
-    // Check for any pending actions in clients
-    for (const std::scoped_lock lock{lib_ctx.cm_clients_mtx};
-         auto client : lib_ctx.cm_clients) {
-      if (bool expected{true}; client->conn_requested.compare_exchange_strong(
-              expected, false, std::memory_order::acquire,
-              std::memory_order::relaxed)) {
-        // Start connecting
-        lws_client_connect_info info{};
-        info.context = client->lib_ctx.lws_ctx;
-        info.address = client->cur_server->hostname.data();
-        info.port = client->cur_server->port;
-        info.ssl_connection = LCCSCF_USE_SSL;
-        info.path = "/cmsocket/";
-        info.host = info.address;
-        info.origin = info.address;
-        info.protocol = "";
-        info.userdata = client;
-        if (!lws_client_connect_via_info(&info) &&
-            client->conn_state.load(std::memory_order::relaxed) ==
-                conn_state::connecting) {
-          auto res{tsc_err_basic(TEK_SC_ERRC_cm_connect)};
-          const auto url{std::format(
-              std::locale::classic(), "wss://{}:{}/cmsocket/",
-              client->cur_server->hostname, client->cur_server->port)};
-          const auto url_buf{
-              reinterpret_cast<char *>(std::malloc(url.length() + 1))};
-          if (url_buf) {
-            std::ranges::move(url.begin(), url.end() + 1, url_buf);
-          }
-          res.uri = url_buf;
-          client->connection_cb(client, &res, client->user_data);
-        }
-        continue;
-      }
-      // Schedule pending timeouts
-      client->pending_msgs_mtx.lock();
-      bool pending_send{client->wsi && !client->pending_msgs.empty()};
-      // Check if there is a disconnection request, don't schedule timeouts if
-      //    there is
-      if (pending_send &&
-          std::ranges::any_of(client->pending_msgs, std::logical_not{},
-                              &pending_msg_entry::buf)) {
-        lws_set_timeout(client->wsi, static_cast<pending_timeout>(1),
-                        LWS_TO_KILL_ASYNC);
-        client->pending_msgs_mtx.unlock();
-        continue;
-      }
-      for (auto &msg : client->pending_msgs) {
-        if (msg.sul && lws_dll2_is_detached(&msg.sul->list)) {
-          lws_sul2_schedule(lib_ctx.lws_ctx, 0, LWSSULLI_MISS_IF_SUSPENDED,
-                            msg.sul);
-        }
-      }
-      client->pending_msgs_mtx.unlock();
-      client->lics_mtx.lock();
-      for (auto &a_entry : client->lics_a_entries) {
-        if (lws_dll2_is_detached(&a_entry.sul.list)) {
-          lws_sul2_schedule(lib_ctx.lws_ctx, 0, LWSSULLI_MISS_IF_SUSPENDED,
-                            &a_entry.sul);
-        }
-      }
-      client->lics_mtx.unlock();
-      if (pending_send) {
-        lws_callback_on_writable(client->wsi);
-      }
-    } // for (auto client : lib_ctx.cm_clients)
-    break;
-  } // case LWS_CALLBACK_EVENT_WAIT_CANCELLED
-  case LWS_CALLBACK_CLIENT_CLOSED: {
-    auto &client{*reinterpret_cast<cm_client *>(user)};
-    if (client.conn_state.exchange(conn_state::disconnected,
-                                   std::memory_order::relaxed) ==
-        conn_state::disconnected) {
-      break;
-    }
-    client.wsi = nullptr;
-    client.steam_id = 0;
-    client.session_id = 0;
-    // Cancel all scheduled suls and run timeout handlers
-    client.a_entries_mtx.lock();
-    while (!client.a_entries.empty()) {
-      auto &a_entry{client.a_entries.begin()->second};
-      lws_sul_cancel(&a_entry.sul);
-      a_entry.sul.cb(&a_entry.sul);
-    }
-    client.a_entries_mtx.unlock();
-    client.pending_msgs_mtx.lock();
-    client.pending_msgs.clear();
-    client.pending_msgs_mtx.unlock();
-    if (!lws_dll2_is_detached(&client.sign_in_entry.sul.list)) {
-      lws_sul_cancel(&client.sign_in_entry.sul);
-      client.sign_in_entry.sul.cb(&client.sign_in_entry.sul);
-    }
-    client.lics_mtx.lock();
-    client.num_lics = -1;
-    client.lics.reset();
-    while (!client.lics_a_entries.empty()) {
-      auto &a_entry{client.lics_a_entries.front()};
-      lws_sul_cancel(&a_entry.sul);
-      a_entry.sul.cb(&a_entry.sul);
-    }
-    client.lics_mtx.unlock();
-    if (client.status_req) {
-      lws_sul_cancel(&client.status_req->sul);
-      client.status_req.reset();
-    }
-    auto res{client.disconnect_reason ? tsc_err_sub(TEK_SC_ERRC_cm_disconnect,
-                                                    client.disconnect_reason)
-                                      : tsc_err_ok()};
-    client.disconnect_reason = TEK_SC_ERRC_ok;
-    client.disconnection_cb(&client, &res, client.user_data);
-    if (client.destroy_requested.load(std::memory_order::relaxed)) {
-      destroy(client);
-    }
-    return 0;
-  }
-  default:
-    break;
-  } // switch (reason)
-  return lws_callback_http_dummy(wsi, reason, user, in, len);
 }
 
-} // namespace
+void cm_conn::connect(cb_func *connection_cb, long fetch_timeout_ms,
+                      cb_func *disconnection_cb) {
+  if (auto expected{conn_state::disconnected};
+      !conn_state.compare_exchange_strong(expected, conn_state::connecting,
+                                          std::memory_order::relaxed,
+                                          std::memory_order::relaxed)) {
+    // Do nothing if there is already another connection
+    return;
+  }
+  // Ensure that server list is not empty
+  if (std::unique_lock lock{ctx.cm_servers_mtx}; ctx.cm_servers.empty()) {
+    auto res{fetch_server_list(ctx.cm_servers, fetch_timeout_ms)};
+    if (!tek_sc_err_success(&res)) {
+      lock.unlock();
+      connection_cb(&*this, &res, user_data);
+      return;
+    }
+    ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::cm_servers),
+                             std::memory_order::relaxed);
+    ctx.cm_servers_iter = ctx.cm_servers.cbegin();
+    cur_server = std::to_address(ctx.cm_servers_iter);
+  } else {
+    if (++ctx.cm_servers_iter == ctx.cm_servers.cend()) {
+      ctx.cm_servers_iter = ctx.cm_servers.cbegin();
+    }
+    cur_server = std::to_address(ctx.cm_servers_iter);
+  }
+  // Prepare and submit the connection request
+  num_conn_retries = 0;
+  this->connection_cb = connection_cb;
+  this->disconnection_cb = disconnection_cb;
+  {
+    auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
+                         cur_server->hostname.data(), cur_server->port)};
+    const std::scoped_lock lock{ctx.conn_mtx};
+    ctx.conn_queue.emplace_back(ws_conn_request{
+        .conn{*this}, .url{std::move(url)}, .timeout_ms = 8000});
+  }
+  uv_async_send(&ctx.loop_async);
+}
 
-//===-- Internal variable -------------------------------------------------===//
-
-constexpr lws_protocols protocol{.name = "",
-                                 .callback = tsc_lws_cb,
-                                 .per_session_data_size = 0,
-                                 .rx_buffer_size = 32768,
-                                 .id = 0,
-                                 .user = nullptr,
-                                 .tx_packet_size = 8192};
+void cm_conn::disconnect() {
+  switch (conn_state.load(std::memory_order::relaxed)) {
+  case conn_state::disconnected:
+    // Already disonnected
+    return;
+  case conn_state::signed_in: {
+    /// Send logoff request
+    message<msg_payloads::LogoffRequest> msg;
+    msg.type = EMsg::EMSG_CLIENT_LOG_OFF;
+    if (const auto res{send_message<TEK_SC_ERRC_cm_disconnect>(std::move(msg))};
+        tek_sc_err_success(&res)) {
+      break;
+    }
+    // Fallback to closing the connection from client side
+    [[fallthrough]];
+  }
+  case conn_state::connecting:
+  case conn_state::connected:
+    /// Submit disconnection request
+    ws_conn::disconnect(TSCI_WS_CLOSE_CODE_NORMAL);
+  }
+}
 
 //===-- Internal function -------------------------------------------------===//
 
@@ -664,42 +635,21 @@ std::uint64_t gen_job_id() noexcept {
 
 //===-- Public functions --------------------------------------------------===//
 
-using namespace tek::steamclient;
-using namespace tek::steamclient::cm;
-
 extern "C" {
 
 //===--- Create/destroy ---------------------------------------------------===//
 
 tek_sc_cm_client *tek_sc_cm_client_create(tek_sc_lib_ctx *lib_ctx,
                                           void *user_data) {
-  const auto client{new (std::nothrow) cm_client(lib_ctx, user_data)};
-  if (!client) {
-    return nullptr;
-  }
-  if (tsci_z_inflateInit2(&client->zstream, 16) != Z_OK) {
-    delete client;
-    return nullptr;
-  }
-  const std::scoped_lock lock{lib_ctx->cm_clients_mtx};
-  lib_ctx->cm_clients.emplace_front(client);
-  return client;
+  return new (std::nothrow) tek_sc_cm_client(*lib_ctx, user_data);
 }
 
 void tek_sc_cm_client_destroy(tek_sc_cm_client *client) {
-  if (client->conn_state.load(std::memory_order::relaxed) ==
-      conn_state::disconnected) {
-    // Client can be destroyed immediately
-    destroy(*client);
-    return;
-  }
-  // Request disconnection and destruction afterwards
-  client->destroy_requested.store(true, std::memory_order::relaxed);
-  tek_sc_cm_disconnect(client);
+  client->conn.destroy();
 }
 
 void tek_sc_cm_set_user_data(tek_sc_cm_client *client, void *user_data) {
-  client->user_data = user_data;
+  client->conn.user_data = user_data;
 }
 
 //===--- Connect/disconnect -----------------------------------------------===//
@@ -708,66 +658,11 @@ void tek_sc_cm_connect(tek_sc_cm_client *client,
                        tek_sc_cm_callback_func *connection_cb,
                        long fetch_timeout_ms,
                        tek_sc_cm_callback_func *disconnection_cb) {
-  if (auto expected{conn_state::disconnected};
-      !client->conn_state.compare_exchange_strong(
-          expected, conn_state::connecting, std::memory_order::relaxed,
-          std::memory_order::relaxed)) {
-    // Don't do anything if there is already another connection
-    return;
-  }
-  auto &lib_ctx = client->lib_ctx;
-  // Ensure that server list is not empty
-  if (std::unique_lock lock{lib_ctx.cm_servers_mtx};
-      lib_ctx.cm_servers.empty()) {
-    auto res{fetch_server_list(lib_ctx.cm_servers, fetch_timeout_ms)};
-    if (!tek_sc_err_success(&res)) {
-      lock.unlock();
-      connection_cb(client, &res, client->user_data);
-      return;
-    }
-    lib_ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::cm_servers),
-                                 std::memory_order::relaxed);
-    lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
-    client->cur_server = std::to_address(lib_ctx.cm_servers_iter);
-  } else {
-    if (++lib_ctx.cm_servers_iter == lib_ctx.cm_servers.cend()) {
-      lib_ctx.cm_servers_iter = lib_ctx.cm_servers.cbegin();
-    }
-    client->cur_server = std::to_address(lib_ctx.cm_servers_iter);
-  }
-  // Prepare and submit the connection request
-  client->num_conn_retries = 0;
-  client->connection_cb = connection_cb;
-  client->disconnection_cb = disconnection_cb;
-  client->conn_requested.store(true, std::memory_order::release);
-  lws_cancel_service(lib_ctx.lws_ctx);
+  client->conn.connect(connection_cb, fetch_timeout_ms, disconnection_cb);
 }
 
 void tek_sc_cm_disconnect(tek_sc_cm_client *client) {
-  switch (client->conn_state.load(std::memory_order::relaxed)) {
-  case conn_state::disconnected:
-    // Already disonnected
-    return;
-  case conn_state::signed_in: {
-    /// Send logoff request
-    message<msg_payloads::LogoffRequest> msg;
-    msg.type = EMsg::EMSG_CLIENT_LOG_OFF;
-    if (const auto res{
-            client->send_message<TEK_SC_ERRC_cm_disconnect>(msg, nullptr)};
-        tek_sc_err_success(&res)) {
-      break;
-    }
-    // Fallback to closing the connection from client side
-    [[fallthrough]];
-  }
-  case conn_state::connecting:
-  case conn_state::connected:
-    /// Submit disconnection request
-    client->pending_msgs_mtx.lock();
-    client->pending_msgs.emplace_back();
-    client->pending_msgs_mtx.unlock();
-    lws_cancel_service(client->lib_ctx.lws_ctx);
-  }
+  client->conn.disconnect();
 }
 
 } // extern "C"

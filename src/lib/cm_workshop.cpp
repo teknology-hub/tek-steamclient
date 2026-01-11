@@ -1,6 +1,6 @@
 //===-- cm_workshop.cpp - Steam CM client Workshop subsystem impl. --------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -26,9 +26,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <libwebsockets.h>
+#include <mutex>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace tek::steamclient::cm {
@@ -38,47 +39,23 @@ namespace {
 //===-- Private functions -------------------------------------------------===//
 
 /// Handle a Steam Workshop item details response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_gd(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  const auto data{reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
-  data->result = tsc_err_sub(TEK_SC_ERRC_cm_ws_details, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+static void timeout_gd(cm_conn &conn, msg_await_entry &entry) {
+  reinterpret_cast<tek_sc_cm_data_ws *>(entry.inout_data)->result =
+      tsc_err_sub(TEK_SC_ERRC_cm_ws_details, TEK_SC_ERRC_cm_timeout);
+  entry.cb(&conn, entry.inout_data, conn.user_data);
 }
 
 /// Handle a Steam Workshop items query response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_qi(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  const auto data{reinterpret_cast<tek_sc_cm_data_ws *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
-  data->result = tsc_err_sub(TEK_SC_ERRC_cm_ws_query, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+static void timeout_qi(cm_conn &conn, msg_await_entry &entry) {
+  reinterpret_cast<tek_sc_cm_data_ws *>(entry.inout_data)->result =
+      tsc_err_sub(TEK_SC_ERRC_cm_ws_query, TEK_SC_ERRC_cm_timeout);
+  entry.cb(&conn, entry.inout_data, conn.user_data);
 }
 
 /// Handle "PublishedFile.GetDetails#1" response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -90,7 +67,7 @@ static void timeout_qi(lws_sorted_usec_list_t *_Nonnull sul) {
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_gd(cm_client &client, const MessageHeader &,
+static bool handle_gd(cm_conn &conn, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {
   auto &data_ws{*reinterpret_cast<tek_sc_cm_data_ws *>(inout_data)};
@@ -98,7 +75,7 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_ws.result = tsc_err_sub(TEK_SC_ERRC_cm_ws_details,
                                  TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_ws, client.user_data);
+    cb(&conn, &data_ws, conn.user_data);
     return true;
   }
   // Process details entries
@@ -145,14 +122,14 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
   }
   // Report results via callback
   data_ws.result = tsc_err_ok();
-  cb(&client, &data_ws, client.user_data);
+  cb(&conn, &data_ws, conn.user_data);
   return true;
 }
 
 /// Handle "PublishedFile.QueryFiles#1" response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -164,7 +141,7 @@ static bool handle_gd(cm_client &client, const MessageHeader &,
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_qf(cm_client &client, const MessageHeader &,
+static bool handle_qf(cm_conn &conn, const MessageHeader &,
                       const void *_Nonnull data, int size, cb_func *_Nonnull cb,
                       void *_Nonnull inout_data) {
   auto &data_ws{*reinterpret_cast<tek_sc_cm_data_ws *>(inout_data)};
@@ -172,7 +149,7 @@ static bool handle_qf(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_ws.result =
         tsc_err_sub(TEK_SC_ERRC_cm_ws_query, TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_ws, client.user_data);
+    cb(&conn, &data_ws, conn.user_data);
     return true;
   }
   data_ws.num_returned_details = payload.details_size();
@@ -203,7 +180,7 @@ static bool handle_qf(cm_client &client, const MessageHeader &,
   }
   // Report results via callback
   data_ws.result = tsc_err_ok();
-  cb(&client, &data_ws, client.user_data);
+  cb(&conn, &data_ws, conn.user_data);
   return true;
 }
 
@@ -219,18 +196,19 @@ extern "C" {
 
 void tek_sc_cm_ws_get_details(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
                               tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   if (!data->num_details) {
     // No-op
     data->result = tsc_err_ok();
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_ws_details, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -244,34 +222,19 @@ void tek_sc_cm_ws_get_details(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
       [&msg](auto id) { msg.payload.add_ids(id); },
       &tek_sc_cm_ws_item_details::id);
   msg.payload.set_include_children(true);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_gd,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_gd,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry = a_entry_it->second;
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_ws_details>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_gd, cb, timeout_gd, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_ws_details>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 
@@ -279,12 +242,13 @@ void tek_sc_cm_ws_query_items(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
                               uint32_t app_id, int page,
                               const char *search_query,
                               tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_ws_query, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -300,34 +264,19 @@ void tek_sc_cm_ws_query_items(tek_sc_cm_client *client, tek_sc_cm_data_ws *data,
     msg.payload.set_search_text(search_query);
   }
   msg.payload.set_return_metadata(true);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_qi,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_qf,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_ws_query>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_qf, cb, timeout_qi, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_ws_query>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 

@@ -1,6 +1,6 @@
 //===-- main.c - command-line argument parser -----------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 #include "common.h"
 
-#include "config.h"
+#include "config.h" // IWYU pragma: keep
 #include "os.h"
 #include "tek-steamclient/base.h"
 #include "tek-steamclient/os.h"
@@ -108,20 +108,6 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
         "  s3c sync-manifest <url>  Synchronize manifest of tek-s3 server at "
         "specified URL, i.e. fetch its depot decryption keys and update list "
         "of apps/depots that it can provide manifest request codes for"));
-    puts(
-#ifdef TEK_SCB_QR
-        // L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
-        //    signin" command with QR support)
-        tsc_gettext("  s3c signin <type> <url>  (interactive mode only) Submit "
-                    "a Steam account to a tek-s3 server at specified URL. "
-                    "<type> must be either \"credentials\" or \"qr\"")
-#else  // def TEK_SCB_QR
-       // L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
-       //    signin" command without QR support)
-        tsc_gettext("  s3c signin <url>         (interactive mode only) Submit "
-                    "a Steam account to a tek-s3 server at specified URL")
-#endif // def TEK_SCB_QR else
-    );
 #endif // def TEK_SCB_S3C
     *cmds = nullptr;
     return 0;
@@ -138,8 +124,7 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
     }
     switch (cmd->type) {
     case TSCL_CMD_TYPE_help:
-    case TSCL_CMD_TYPE_exit:
-    case TSCL_CMD_TYPE_s3c_signin: {
+    case TSCL_CMD_TYPE_exit: {
       const char *name;
       switch (cmd->type) {
       case TSCL_CMD_TYPE_help:
@@ -148,12 +133,11 @@ int tscl_process_args(int argc, tek_sc_os_char **argv, tscl_command **cmds) {
       case TSCL_CMD_TYPE_exit:
         name = "exit/quit";
         break;
+#ifdef TEK_SCB_AM
       case TSCL_CMD_TYPE_am_status:
         name = "am status";
         break;
-      case TSCL_CMD_TYPE_s3c_signin:
-        name = "s3c signin";
-        break;
+#endif // def TEK_SCB_AM
       default:
         name = nullptr;
         break;

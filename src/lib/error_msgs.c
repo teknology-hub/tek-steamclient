@@ -1,6 +1,6 @@
 //===-- error_msgs.c - error message getters implementation ---------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -18,6 +18,7 @@
 #include "os.h"
 #include "tek-steamclient/base.h" // IWYU pragma: keep
 #include "tek-steamclient/cm.h"
+#include "ws_close_code.h"
 
 #include <curl/curl.h>
 #include <sqlite3.h>
@@ -263,7 +264,6 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
 static inline const char *tscp_msg_eresult(tek_sc_cm_eresult eresult) {
   switch (eresult) {
   case TEK_SC_CM_ERESULT_invalid:
-    // L18N: From here on are messages for Steam's EResult codes
     return tsc_gettext("Invalid EResult value");
   case TEK_SC_CM_ERESULT_ok:
     return tsc_gettext("OK");
@@ -526,6 +526,94 @@ static inline const char *tscp_msg_eresult(tek_sc_cm_eresult eresult) {
   } // switch (eresult)
 }
 
+/// Get the message for specified @ref tek_sc_err_io_type value.
+///
+/// @param type
+///    I/O operation type to get the message for.
+/// @return Human-readable message for @p type, as a statically allocated
+///    null-terminated UTF-8 string.
+[[gnu::returns_nonnull]]
+static inline const char *tscp_msg_io_type(tek_sc_err_io_type type) {
+  switch (type) {
+  case TEK_SC_ERR_IO_TYPE_check_existence:
+    return tsc_gettext("Checking for existence");
+  case TEK_SC_ERR_IO_TYPE_open:
+    return tsc_gettext("Creating or opening");
+  case TEK_SC_ERR_IO_TYPE_get_type:
+    return tsc_gettext("Getting type of filesystem entry");
+  case TEK_SC_ERR_IO_TYPE_get_size:
+    return tsc_gettext("Getting file size");
+  case TEK_SC_ERR_IO_TYPE_truncate:
+    return tsc_gettext("Truncating");
+  case TEK_SC_ERR_IO_TYPE_read:
+    return tsc_gettext("Reading data");
+  case TEK_SC_ERR_IO_TYPE_write:
+    return tsc_gettext("Writing data");
+  case TEK_SC_ERR_IO_TYPE_apply_flags:
+    return tsc_gettext("Setting attributes or permissions");
+  case TEK_SC_ERR_IO_TYPE_copy:
+    return tsc_gettext("Copying data");
+  case TEK_SC_ERR_IO_TYPE_move:
+    return tsc_gettext("Moving");
+  case TEK_SC_ERR_IO_TYPE_delete:
+    return tsc_gettext("Deleting");
+  case TEK_SC_ERR_IO_TYPE_symlink:
+    return tsc_gettext("Creating symbolic link");
+  case TEK_SC_ERR_IO_TYPE_aio_reg:
+    return tsc_gettext("Registering for asynchronous I/O");
+  case TEK_SC_ERR_IO_TYPE_aio_submit:
+    return tsc_gettext("Submitting an asynchronous I/O request");
+  case TEK_SC_ERR_IO_TYPE_aio_wait:
+    return tsc_gettext("Waiting for asynchronous I/O completions");
+  default:
+    return tsc_gettext("Unknown");
+  } // switch (type)
+}
+
+/// Get the message for specified @ref tsci_ws_close_code value.
+///
+/// @param code
+///    WebSocket close code to get the message for.
+/// @return Human-readable message for @p code, as a statically allocated
+///    null-terminated UTF-8 string.
+[[gnu::returns_nonnull]]
+static inline const char *tscp_msg_ws_cc(tsci_ws_close_code code) {
+  switch (code) {
+  case TSCI_WS_CLOSE_CODE_NORMAL:
+    return tsc_gettext("Normal closure");
+  case TSCI_WS_CLOSE_CODE_GOING_AWAY:
+    return tsc_gettext("Going away");
+  case TSCI_WS_CLOSE_CODE_PROTO_ERR:
+    return tsc_gettext("Protocol error");
+  case TSCI_WS_CLOSE_CODE_UNSUPP_DATA:
+    return tsc_gettext("Unsupported data");
+  case TSCI_WS_CLOSE_CODE_NO_STATUS:
+    return tsc_gettext("No status code received");
+  case TSCI_WS_CLOSE_CODE_ABNORMAL:
+    return tsc_gettext("Abnormal closure");
+  case TSCI_WS_CLOSE_CODE_INVALID_PAYLOAD:
+    return tsc_gettext("Invalid payload");
+  case TSCI_WS_CLOSE_CODE_POLICY_VIOLATION:
+    return tsc_gettext("Policy violation");
+  case TSCI_WS_CLOSE_CODE_MSG_TOO_BIG:
+    return tsc_gettext("Message too big");
+  case TSCI_WS_CLOSE_CODE_MANDATORY_EXT:
+    return tsc_gettext("Mandatory extension not supported");
+  case TSCI_WS_CLOSE_CODE_INTERNAL_ERR:
+    return tsc_gettext("Internal server error");
+  case TSCI_WS_CLOSE_CODE_SVC_RESTART:
+    return tsc_gettext("Service restart");
+  case TSCI_WS_CLOSE_CODE_TRY_AGAIN:
+    return tsc_gettext("Try again later");
+  case TSCI_WS_CLOSE_CODE_BAD_GATEWAY:
+    return tsc_gettext("Bad gateway");
+  case TSCI_WS_CLOSE_CODE_TLS_HANDSHAKE:
+    return tsc_gettext("TLS handshake failure");
+  default:
+    return tsc_gettext("Unknown");
+  } // switch (code)
+}
+
 //===-- Public functions --------------------------------------------------===//
 
 tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
@@ -537,6 +625,18 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
   case TEK_SC_ERR_TYPE_basic:
     // L18N: An error type
     type = tsc_gettext("Basic");
+    if (err->extra) {
+      auto const msg = tscp_msg_ws_cc(err->extra);
+      // L18N: %u is the WebSocket close code number, %s is its string
+      //    representation
+      auto const fmt = tsc_gettext("WebSocket close code: (%u) %s");
+      const int size = snprintf(nullptr, 0, fmt, err->extra, msg) + 1;
+      char *const buf = malloc(size);
+      if (buf) {
+        snprintf(buf, size, fmt, err->extra, msg);
+        extra = buf;
+      }
+    }
     if (err->uri) {
       // L18N: An error URI kind
       uri_type = tsc_gettext("URL");
@@ -561,79 +661,14 @@ tek_sc_err_msgs tek_sc_err_get_msgs(const tek_sc_err *err) {
     type = tsc_gettext("OS");
     aux = tsci_os_get_err_msg((tek_sc_os_errc)err->auxiliary);
     if (err->extra != TEK_SC_ERR_IO_TYPE_none) {
-      const char *io_op_type;
-      switch (err->extra) {
-      case TEK_SC_ERR_IO_TYPE_check_existence:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Checking for existence");
-        break;
-      case TEK_SC_ERR_IO_TYPE_open:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Creating or opening");
-        break;
-      case TEK_SC_ERR_IO_TYPE_get_type:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Getting type of filesystem entry");
-        break;
-      case TEK_SC_ERR_IO_TYPE_get_size:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Getting file size");
-        break;
-      case TEK_SC_ERR_IO_TYPE_truncate:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Truncating");
-        break;
-      case TEK_SC_ERR_IO_TYPE_read:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Reading data");
-        break;
-      case TEK_SC_ERR_IO_TYPE_write:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Writing data");
-        break;
-      case TEK_SC_ERR_IO_TYPE_apply_flags:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Setting attributes or permissions");
-        break;
-      case TEK_SC_ERR_IO_TYPE_copy:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Copying data");
-        break;
-      case TEK_SC_ERR_IO_TYPE_move:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Moving");
-        break;
-      case TEK_SC_ERR_IO_TYPE_delete:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Deleting");
-        break;
-      case TEK_SC_ERR_IO_TYPE_symlink:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Creating symbolic link");
-        break;
-      case TEK_SC_ERR_IO_TYPE_aio_reg:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Registering for asynchronous I/O");
-        break;
-      case TEK_SC_ERR_IO_TYPE_aio_submit:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Submitting an asynchronous I/O request");
-        break;
-      case TEK_SC_ERR_IO_TYPE_aio_wait:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Waiting for asynchronous I/O completions");
-        break;
-      default:
-        // L18N: An I/O operation type
-        io_op_type = tsc_gettext("Unknown");
-      } // switch (err->extra)
+      auto const msg = tscp_msg_io_type(err->extra);
       // L18N: %u is the I/O operation type code, %s is its string
       //    representation
       auto const fmt = tsc_gettext("I/O operation type: (%u) %s");
-      const int size = snprintf(nullptr, 0, fmt, err->extra, io_op_type) + 1;
+      const int size = snprintf(nullptr, 0, fmt, err->extra, msg) + 1;
       char *const buf = malloc(size);
       if (buf) {
-        snprintf(buf, size, fmt, err->extra, io_op_type);
+        snprintf(buf, size, fmt, err->extra, msg);
         extra = buf;
       }
     } // if (err->extra != TEK_SC_ERR_IO_TYPE_none)

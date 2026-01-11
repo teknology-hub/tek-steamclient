@@ -1,6 +1,6 @@
 //===-- cm_pics.cpp - Steam CM client PICS subsystem implementation -------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -17,7 +17,7 @@
 
 #include "common/error.h"
 #include "config.h"
-#include "tek-steamclient/base.h"
+#include "tek-steamclient/base.h" // IWYU pragma: keep
 #include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
 #include "tek/steamclient/cm/emsg.pb.h"
@@ -33,18 +33,20 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <curl/curl.h>
 #include <format>
 #include <functional>
-#include <libwebsockets.h>
 #include <locale>
 #include <memory>
 #include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <uv.h>
 #include <vector>
 
 namespace tek::steamclient::cm {
@@ -74,9 +76,9 @@ struct tsc_curl_ctx {
 ///    The error code indicating failed operation.
 /// @return A @ref tek_sc_cm_data_licenses for specified error code.
 static constexpr tek_sc_cm_data_lics lic_data_errc(tek_sc_errc errc) noexcept {
-  return {.entries = nullptr,
-          .num_entries = 0,
-          .result = tsc_err_sub(TEK_SC_ERRC_cm_licenses, errc)};
+  return {.entries{},
+          .num_entries{},
+          .result{tsc_err_sub(TEK_SC_ERRC_cm_licenses, errc)}};
 }
 
 /// Create a @ref tek_sc_err for a libcurl-multi error code.
@@ -88,8 +90,8 @@ static constexpr tek_sc_err pi_err_curlm(CURLMcode errc) noexcept {
   return {.type = TEK_SC_ERR_TYPE_curlm,
           .primary = TEK_SC_ERRC_cm_product_info,
           .auxiliary = errc,
-          .extra = 0,
-          .uri = nullptr};
+          .extra{},
+          .uri{}};
 }
 
 /// curl write data callback that copies downloaded data to the context
@@ -120,96 +122,62 @@ static std::size_t tsc_curl_write(const unsigned char *_Nonnull buf,
   return size;
 }
 
-/// Handle a licenses response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
+/// Handle a licenses message timeout.
 [[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_lics(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry_reduced *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  // Remove the await entry
-  client.lics_mtx.lock();
-  for (auto it{client.lics_a_entries.cbefore_begin()};;) {
-    const auto prev_it{it++};
-    if (it == client.lics_a_entries.cend()) {
-      break;
+static void timeout_lics(uv_timer_t *_Nonnull timer) {
+  auto &entry{*reinterpret_cast<await_entry *>(
+      uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(timer)))};
+  auto &conn{entry.conn};
+  uv_close(reinterpret_cast<uv_handle_t *>(timer), [](auto timer) {
+    auto &entry{*reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
+    auto &conn{entry.conn};
+    {
+      const std::scoped_lock lock{conn.lics_mtx};
+      for (auto it{conn.lics_a_entries.cbefore_begin()};;) {
+        const auto prev_it{it++};
+        if (it == conn.lics_a_entries.cend()) {
+          break;
+        }
+        if (std::to_address(it) == &entry) {
+          conn.lics_a_entries.erase_after(prev_it);
+          break;
+        }
+      }
     }
-    if (std::to_address(it) == &a_entry) {
-      client.lics_a_entries.erase_after(prev_it);
-      break;
+    if (!--conn.ref_count &&
+        conn.delete_pending.load(std::memory_order::relaxed)) {
+      delete &conn;
     }
-  }
-  client.lics_mtx.unlock();
-  // Report timeout via callback
+  });
   auto data{lic_data_errc(TEK_SC_ERRC_cm_timeout)};
-  cb(&client, &data, client.user_data);
+  entry.cb(&conn, &data, conn.user_data);
 }
 
 /// Handle a PICS access token response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_pics_at(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  const auto data{reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
-  data->result =
+static void timeout_pics_at(cm_conn &conn, msg_await_entry &entry) {
+  reinterpret_cast<tek_sc_cm_data_pics *>(entry.inout_data)->result =
       tsc_err_sub(TEK_SC_ERRC_cm_access_token, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+  entry.cb(&conn, entry.inout_data, conn.user_data);
 }
 
 /// Handle a PICS changes since response message timeout.
-///
-/// @param [in] sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_pics_cs(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
+static void timeout_pics_cs(cm_conn &conn, msg_await_entry &entry) {
   tek_sc_cm_data_pics_changes data;
   data.result = tsc_err_sub(TEK_SC_ERRC_cm_changes, TEK_SC_ERRC_cm_timeout);
-  cb(&client, &data, client.user_data);
+  entry.cb(&conn, &data, conn.user_data);
 }
 
 /// Handle a PICS product info response message timeout.
-///
-/// @param sul
-///    Pointer to the scheduling element.
-[[using gnu: nonnull(1), access(read_only, 1)]]
-static void timeout_pics_pi(lws_sorted_usec_list_t *_Nonnull sul) {
-  const auto &a_entry{*reinterpret_cast<const msg_await_entry *>(sul)};
-  auto &client{a_entry.client};
-  const auto cb{a_entry.cb};
-  const auto data{reinterpret_cast<tek_sc_cm_data_pics *>(a_entry.inout_data)};
-  // Remove the await entry
-  client.a_entries_mtx.lock();
-  client.a_entries.erase(a_entry.job_id);
-  client.a_entries_mtx.unlock();
-  // Report timeout via callback
-  data->result =
+static void timeout_pics_pi(cm_conn &conn, msg_await_entry &entry) {
+  reinterpret_cast<tek_sc_cm_data_pics *>(entry.inout_data)->result =
       tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_cm_timeout);
-  cb(&client, data, client.user_data);
+  entry.cb(&conn, entry.inout_data, conn.user_data);
 }
 
 /// Handle `EMSG_CLIENT_PICS_ACCESS_TOKEN_RESPONSE` response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -221,7 +189,7 @@ static void timeout_pics_pi(lws_sorted_usec_list_t *_Nonnull sul) {
 /// @return `true`.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_pat(cm_client &client, const MessageHeader &,
+static bool handle_pat(cm_conn &conn, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
   auto &data_pics{*reinterpret_cast<tek_sc_cm_data_pics *>(inout_data)};
@@ -229,7 +197,7 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_pics.result = tsc_err_sub(TEK_SC_ERRC_cm_access_token,
                                    TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_pics, client.user_data);
+    cb(&conn, &data_pics, conn.user_data);
     return true;
   }
   // Process application tokens
@@ -274,14 +242,14 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
   }
   // Report results via callback
   data_pics.result = tsc_err_ok();
-  cb(&client, &data_pics, client.user_data);
+  cb(&conn, &data_pics, conn.user_data);
   return true;
 }
 
 /// Handle `EMSG_CLIENT_PICS_CHANGES_SINCE_RESPONSE` response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -291,7 +259,7 @@ static bool handle_pat(cm_client &client, const MessageHeader &,
 /// @return `true`.
 [[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
   clang::callback(cb, __, __, __)]]
-static bool handle_pcs(cm_client &client, const MessageHeader &,
+static bool handle_pcs(cm_conn &conn, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *) {
   msg_payloads::PicsChangesSinceResponse payload;
@@ -299,7 +267,7 @@ static bool handle_pcs(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_pics_chngs.result =
         tsc_err_sub(TEK_SC_ERRC_cm_changes, TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_pics_chngs, client.user_data);
+    cb(&conn, &data_pics_chngs, conn.user_data);
     return true;
   }
   std::vector<tek_sc_cm_pics_change_entry> changes;
@@ -314,15 +282,15 @@ static bool handle_pcs(cm_client &client, const MessageHeader &,
                              ? -1
                              : payload.app_changes_size(),
                      .changenumber = payload.current_changenumber(),
-                     .result = tsc_err_ok()};
-  cb(&client, &data_pics_chngs, client.user_data);
+                     .result{tsc_err_ok()}};
+  cb(&conn, &data_pics_chngs, conn.user_data);
   return true;
 }
 
 /// Handle `EMSG_CLIENT_PICS_PRODUCT_INFO_RESPONSE` response message.
 ///
-/// @param [in, out] client
-///    CM client instance that received the message.
+/// @param [in, out] conn
+///    CM connection instance that received the message.
 /// @param [in] data
 ///    Pointer to serialized message payload data.
 /// @param size
@@ -335,7 +303,7 @@ static bool handle_pcs(cm_client &client, const MessageHeader &,
 ///    are coming.
 [[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
   gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
-static bool handle_ppi(cm_client &client, const MessageHeader &,
+static bool handle_ppi(cm_conn &conn, const MessageHeader &,
                        const void *_Nonnull data, int size,
                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
   auto &data_pics{*reinterpret_cast<tek_sc_cm_data_pics *>(inout_data)};
@@ -343,7 +311,7 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
   if (!payload.ParseFromArray(data, size)) {
     data_pics.result = tsc_err_sub(TEK_SC_ERRC_cm_product_info,
                                    TEK_SC_ERRC_protobuf_deserialize);
-    cb(&client, &data_pics, client.user_data);
+    cb(&conn, &data_pics, conn.user_data);
     return true;
   }
   // Process apps
@@ -580,15 +548,15 @@ static bool handle_ppi(cm_client &client, const MessageHeader &,
           continue;
         }
         // Inflate the data
-        client.zstream.next_in = ctx->buf.data();
-        client.zstream.avail_in = ctx->buf.size();
-        client.zstream.total_in = 0;
-        client.zstream.next_out = reinterpret_cast<unsigned char *>(entry.data);
-        client.zstream.avail_out = entry.data_size;
-        client.zstream.total_out = 0;
-        auto res{tsci_z_inflate(&client.zstream, Z_FINISH)};
+        conn.zstream.next_in = ctx->buf.data();
+        conn.zstream.avail_in = ctx->buf.size();
+        conn.zstream.total_in = 0;
+        conn.zstream.next_out = reinterpret_cast<unsigned char *>(entry.data);
+        conn.zstream.avail_out = entry.data_size;
+        conn.zstream.total_out = 0;
+        auto res{tsci_z_inflate(&conn.zstream, Z_FINISH)};
         ctx->buf.clear();
-        if (const auto reset_res{tsci_z_inflateReset2(&client.zstream, 16)};
+        if (const auto reset_res{tsci_z_inflateReset2(&conn.zstream, 16)};
             res == Z_STREAM_END) {
           res = reset_res;
         }
@@ -640,19 +608,15 @@ http_err:
 http_success:
   // Report results via callback
   data_pics.result = tsc_err_ok();
-  cb(&client, &data_pics, client.user_data);
+  cb(&conn, &data_pics, conn.user_data);
   return true;
 }
 
 } // namespace
 
-} // namespace tek::steamclient::cm
-
 //===-- Internal method ---------------------------------------------------===//
 
-using namespace tek::steamclient::cm;
-
-void tek_sc_cm_client::handle_license_list(const void *data, int size) {
+void cm_conn::handle_license_list(const void *data, int size) {
   msg_payloads::LicenseList payload;
   if (!payload.ParseFromArray(data, size)) {
     return;
@@ -673,62 +637,68 @@ void tek_sc_cm_client::handle_license_list(const void *data, int size) {
   // Report licenses via callbacks if any
   for (tek_sc_cm_data_lics data_lics{.entries = lics.get(),
                                      .num_entries = num_lics,
-                                     .result = tsc_err_ok()};
+                                     .result{tsc_err_ok()}};
        auto &lic_entry : lics_a_entries) {
-    lws_sul_cancel(&lic_entry.sul);
-    lic_entry.cb(this, &data_lics, user_data);
+    lic_entry.cb(&*this, &data_lics, user_data);
   }
   lics_a_entries.clear();
 }
 
+} // namespace tek::steamclient::cm
+
 //===-- Public functions --------------------------------------------------===//
+
+using namespace tek::steamclient::cm;
 
 extern "C" {
 
 void tek_sc_cm_get_licenses(tek_sc_cm_client *client,
                             tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     auto data{lic_data_errc(TEK_SC_ERRC_cm_not_signed_in)};
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
     return;
   }
-  client->lics_mtx.lock();
-  if (client->num_lics >= 0) {
-    tek_sc_cm_data_lics data{.entries = client->lics.get(),
-                             .num_entries = client->num_lics,
-                             .result = tsc_err_ok()};
-    client->lics_mtx.unlock();
-    cb(client, &data, client->user_data);
+  std::unique_lock lock{conn.lics_mtx};
+  if (conn.num_lics >= 0) {
+    tek_sc_cm_data_lics data{.entries = conn.lics.get(),
+                             .num_entries = conn.num_lics,
+                             .result{tsc_err_ok()}};
+    lock.unlock();
+    cb(&conn, &data, conn.user_data);
     return;
   }
-  // Setup the await entry
-  client->lics_a_entries.emplace_front(
-      lws_sorted_usec_list_t{.list = {},
-                             .us = timeout_to_deadline(timeout_ms),
-                             .cb = timeout_lics,
-                             .latency_us = 0},
-      *client, cb);
-  client->lics_mtx.unlock();
-  lws_cancel_service(client->lib_ctx.lws_ctx);
+  // Setup and submit the await entry
+  auto &entry{conn.lics_a_entries.emplace_front(conn, cb)};
+  conn.send_msg({.buf{},
+                 .size{},
+                 .frame_type{},
+                 .timer = &entry.timer,
+                 .timer_active = &entry.timer_active,
+                 .timer_cb = timeout_lics,
+                 .timeout = static_cast<std::uint64_t>(timeout_ms),
+                 .data = &entry});
 }
 
 void tek_sc_cm_get_access_token(tek_sc_cm_client *client,
                                 tek_sc_cm_data_pics *data,
                                 tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   if (!data->num_app_entries && !data->num_package_entries) {
     // No-op
     data->result = tsc_err_ok();
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_access_token, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -746,52 +716,39 @@ void tek_sc_cm_get_access_token(tek_sc_cm_client *client,
                 static_cast<std::size_t>(data->num_package_entries)},
       [&msg](auto id) { msg.payload.add_package_ids(id); },
       &tek_sc_cm_pics_entry::id);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_pics_at,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_pat,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry = a_entry_it->second;
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_access_token>(msg, &a_entry.sul)};
+  const auto it{
+      conn.setup_a_entry(job_id, handle_pat, cb, timeout_pics_at, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_access_token>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 
 void tek_sc_cm_get_product_info(tek_sc_cm_client *client,
                                 tek_sc_cm_data_pics *data,
                                 tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   if (!data->num_app_entries && !data->num_package_entries) {
     // No-op
     data->result = tsc_err_ok();
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -817,46 +774,33 @@ void tek_sc_cm_get_product_info(tek_sc_cm_client *client,
       payload_package.set_access_token(package.access_token);
     }
   }
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_pics_pi,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_ppi,
-                                           .cb = cb,
-                                           .inout_data = data})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_product_info>(msg, &a_entry.sul)};
+  const auto it{
+      conn.setup_a_entry(job_id, handle_ppi, cb, timeout_pics_pi, data)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_product_info>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     data->result = res;
-    cb(client, data, client->user_data);
+    cb(&conn, data, conn.user_data);
   }
 }
 
 void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
                            tek_sc_cm_callback_func *cb, long timeout_ms) {
+  auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (client->conn_state.load(std::memory_order::relaxed) !=
+  if (conn.conn_state.load(std::memory_order::relaxed) !=
       conn_state::signed_in) {
     tek_sc_cm_data_pics_changes data;
     data.result =
         tsc_err_sub(TEK_SC_ERRC_cm_changes, TEK_SC_ERRC_cm_not_signed_in);
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -867,35 +811,20 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
   msg.payload.set_since_changenumber(changenumber);
   msg.payload.set_send_app_info_changes(true);
   msg.payload.set_send_package_info_changes(false);
-  // Setup the await entry
-  client->a_entries_mtx.lock();
-  const auto a_entry_it{
-      client->a_entries
-          .emplace(job_id, msg_await_entry{.sul = {.list = {},
-                                                   .us = timeout_to_deadline(
-                                                       timeout_ms),
-                                                   .cb = timeout_pics_cs,
-                                                   .latency_us = 0},
-                                           .client = *client,
-                                           .job_id = job_id,
-                                           .proc = handle_pcs,
-                                           .cb = cb,
-                                           .inout_data = nullptr})
-          .first};
-  auto &a_entry{a_entry_it->second};
-  client->a_entries_mtx.unlock();
   // Send the request message
-  if (const auto res{
-          client->send_message<TEK_SC_ERRC_cm_changes>(msg, &a_entry.sul)};
+  const auto it{conn.setup_a_entry(job_id, handle_pcs, cb, timeout_pics_cs)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_changes>(
+          std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
     // Remove the await entry
-    client->a_entries_mtx.lock();
-    client->a_entries.erase(a_entry_it);
-    client->a_entries_mtx.unlock();
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
     // Report error via callback
     tek_sc_cm_data_pics_changes data;
     data.result = res;
-    cb(client, &data, client->user_data);
+    cb(&conn, &data, conn.user_data);
   }
 }
 

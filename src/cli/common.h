@@ -1,6 +1,6 @@
 //===-- common.h - common tek-sc-cli declarations -------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -121,8 +121,6 @@ enum tscl_cmd_type {
 #ifdef TEK_SCB_S3C
   /// Synchronize manifest of tek-s3 server at specified URL.
   TSCL_CMD_TYPE_s3c_sync_manifest,
-  /// Submit a Steam account to a tek-s3 server at specified URL.
-  TSCL_CMD_TYPE_s3c_signin
 #endif // def TEK_SCB_S3C
 };
 /// @copydoc tscl_cmd_type
@@ -191,14 +189,6 @@ struct tscl_command {
       ///    with `free` after use.
       const char *_Nonnull url;
     } s3c_sync_manifest;
-    /// "s3c signin" command arguments.
-    struct {
-      /// Chosen authentication type.
-      tscl_s3_auth_type type;
-      /// URL of the tek-s3 server to submit Steam account to. Must be freed
-      ///    with `free` after use.
-      const char *_Nonnull url;
-    } s3c_signin;
 #endif // def TEK_SCB_S3C
   }; // union
 };
