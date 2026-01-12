@@ -1,6 +1,6 @@
 //===-- sp.c - SteamPipe downloader interface implementation --------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -563,6 +563,7 @@ tek_sc_err tek_sc_sp_download_dm(tek_sc_sp_data_dm *data, long timeout_ms,
     goto cleanup_curlu;
   }
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
@@ -682,6 +683,7 @@ tek_sc_err tek_sc_sp_download_dp(tek_sc_sp_data_dp *data, long timeout_ms,
     goto cleanup_curlu;
   }
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
@@ -795,6 +797,7 @@ tek_sc_err tek_sc_sp_download_chunk(const tek_sc_cm_sp_srv_entry *srv,
     goto cleanup_curlu;
   }
   curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
@@ -1030,6 +1033,7 @@ tek_sc_sp_multi_dlr_create(tek_sc_sp_multi_dlr_desc *desc, uint32_t depot_id,
         goto handle_err_insts;
       }
       curl_easy_setopt(inst->curl, CURLOPT_FAILONERROR, 1L);
+      curl_easy_setopt(inst->curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
       curl_easy_setopt(inst->curl, CURLOPT_NOSIGNAL, 1L);
       curl_easy_setopt(inst->curl, CURLOPT_TIMEOUT_MS, 180000L);
       curl_easy_setopt(inst->curl, CURLOPT_CONNECTTIMEOUT_MS, 16000L);
