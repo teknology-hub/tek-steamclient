@@ -1,6 +1,6 @@
 //===-- depot_delta_compute.cpp - depot delta computation -----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -905,7 +905,7 @@ static void write_dir(write_ctx &ctx, const tek_sc_dm_dir &src_dir,
       if (src_file.num_chunks) {
         // The file is to be truncated to zero bytes
         auto &dd_file{*ctx.next_file++};
-        init_dd_file(src_file, dd_file);
+        init_dd_file(tgt_file, dd_file);
         dd_file.parent = &dd_dir;
         dd_file.flags = TEK_SC_DD_FILE_FLAG_truncate;
         dd_file.chunks = nullptr;
