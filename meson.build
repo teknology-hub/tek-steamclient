@@ -64,12 +64,6 @@ if is_windows
     compiler.find_library('ntdll'),
     compiler.find_library('synchronization')
   ]
-  if (get_option('gettext'))
-    win_deps += [
-      dependency('iconv'),
-      compiler.find_library('intl')
-    ]
-  endif # get_option('gettext')
 endif # is_windows
 zlib_dep = dependency('zlib-ng', required: get_option('zlib_ng'))
 if not zlib_dep.found()
@@ -126,6 +120,10 @@ lib_deps = [
   dependency('threads'),
   zlib_dep
 ]
+if get_option('gettext')
+  intl_dep = dependency('intl')
+  lib_deps += intl_dep
+endif # get_option('gettext')
 if mz_needed
   lib_deps += mz_dep
 endif # mz_needed
@@ -212,6 +210,9 @@ import('pkgconfig').generate(
 
 ### tek-sc-cli
 cli_deps = []
+if get_option('gettext')
+  cli_deps += intl_dep
+endif # get_option('gettext')
 subdir('src/cli')
 if is_windows
   cli_deps += win_deps
