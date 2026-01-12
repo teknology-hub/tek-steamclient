@@ -45,6 +45,14 @@ namespace tek::steamclient::s3c {
 
 namespace {
 
+/// Hardcoded IP addresses to resolve cloudflare-dns.com to when using DOH
+///    fallbacks.
+static curl_slist cloudflare_dns_resolve{
+    .data = const_cast<char *>(
+        "cloudflare-dns.com:443:2606:4700:4700::1111,2606:4700:4700::1001,"
+        "1.1.1.1,1.0.0.1"),
+    .next{}};
+
 //===-- Private type ------------------------------------------------------===//
 
 /// Download context for curl.
@@ -150,10 +158,16 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   lib_ctx->s3_mtx.unlock_shared();
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEVALUE_LARGE, timestamp);
   auto res{curl_easy_perform(curl_ctx.curl.get())};
-  if (res == CURLE_COULDNT_RESOLVE_HOST) {
-    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_DNS_SERVERS,
-                     "1.1.1.1,1.0.0.1");
+  switch (res) {
+  case CURLE_COULDNT_RESOLVE_HOST:
+  case CURLE_PEER_FAILED_VERIFICATION:
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_RESOLVE,
+                     &cloudflare_dns_resolve);
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_DOH_URL,
+                     "https://cloudflare-dns.com/dns-query");
     res = curl_easy_perform(curl_ctx.curl.get());
+    break;
+  default:
   }
   if (res != CURLE_OK) {
     const auto url_buf{
@@ -318,9 +332,15 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_mrc);
   auto res{curl_easy_perform(curl.get())};
-  if (res == CURLE_COULDNT_RESOLVE_HOST) {
-    curl_easy_setopt(curl.get(), CURLOPT_DNS_SERVERS, "1.1.1.1,1.0.0.1");
+  switch (res) {
+  case CURLE_COULDNT_RESOLVE_HOST:
+  case CURLE_PEER_FAILED_VERIFICATION:
+    curl_easy_setopt(curl.get(), CURLOPT_RESOLVE, &cloudflare_dns_resolve);
+    curl_easy_setopt(curl.get(), CURLOPT_DOH_URL,
+                     "https://cloudflare-dns.com/dns-query");
     res = curl_easy_perform(curl.get());
+    break;
+  default:
   }
   if (res != CURLE_OK) {
     const auto url_buf{
