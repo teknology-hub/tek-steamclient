@@ -403,7 +403,7 @@ using namespace tek::steamclient;
 
 extern "C" {
 
-tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
+tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
   // Initialize libcurl and allocate the context
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
     return nullptr;
@@ -423,16 +423,17 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
     uv_thread_join(&ctx->loop_thread);
     return nullptr;
   }
+  scope_exit stop_loop{[&ctx{*ctx.get()}] {
+    ctx.loop_state.store(loop_state::stopped, std::memory_order::relaxed);
+    uv_async_send(&ctx.loop_async);
+    uv_thread_join(&ctx.loop_thread);
+  }};
   ctx->os_type = get_os_type();
-  curl_cleanup.release();
-  if (!use_file_cache) {
-    return ctx.release();
-  }
   // Get cache file path
   std::unique_ptr<tek_sc_os_char, decltype(&std::free)> cache_dir{
       tsci_os_get_cache_dir(), std::free};
   if (!cache_dir) {
-    return ctx.release();
+    return nullptr;
   }
   const int cache_dir_len{tsci_os_pstr_strlen(cache_dir.get())};
   std::string cache_file_path;
@@ -452,19 +453,19 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
       sqlite3_close_v2(db_ptr);
     }
     if (res != SQLITE_CANTOPEN) {
-      return ctx.release();
+      return nullptr;
     }
     // Most likely the parent directory doesn't exist yet, create the cache
     //    directory and its tek-steamclient subdirectory if they are missing
     const auto cache_dir_handle{tsci_os_dir_create(cache_dir.get())};
     if (cache_dir_handle == TSCI_OS_INVALID_HANDLE) {
-      return ctx.release();
+      return nullptr;
     }
     const auto tsc_subdir_handle{tsci_os_dir_create_at(
         cache_dir_handle, TEK_SC_OS_STR("tek-steamclient"))};
     tsci_os_close_handle(cache_dir_handle);
     if (tsc_subdir_handle == TSCI_OS_INVALID_HANDLE) {
-      return ctx.release();
+      return nullptr;
     }
     tsci_os_close_handle(tsc_subdir_handle);
     // Try opening the database connection again
@@ -474,7 +475,7 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
       if (db_ptr) {
         sqlite3_close_v2(db_ptr);
       }
-      return ctx.release();
+      return nullptr;
     }
   }
   cache_dir.reset();
@@ -554,6 +555,8 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool use_file_cache, bool) {
   }
 #endif // def TEK_SCB_S3C
   sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+  stop_loop.release();
+  curl_cleanup.release();
   return ctx.release();
 }
 
@@ -563,7 +566,7 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
   uv_thread_join(&ctx->loop_thread);
   const auto dirty_flags{static_cast<dirty_flag>(
       ctx->dirty_flags.load(std::memory_order::relaxed))};
-  if (ctx->cache && dirty_flags != dirty_flag::none) {
+  if (dirty_flags != dirty_flag::none) {
     const auto db{ctx->cache.get()};
     if (sqlite3_exec(db, "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK) {
       goto skip_file_cache;

@@ -70,7 +70,7 @@ struct tek_sc_item_id {
 
 /// Opaque TEK Steam Client library context.
 /// This context holds caches for various data and WebSocket connection
-///    processing thread.
+///    processing event loop.
 typedef struct tek_sc_lib_ctx tek_sc_lib_ctx;
 
 #ifdef __cplusplus
@@ -81,17 +81,19 @@ extern "C" {
 ///
 /// @remark
 /// This function creates a single thread that processes WebSocket connections
-///    for all CM client instances associated with the content.
+///    for all CM client instances associated with the context.
+/// This function also creates/opens an sqlite3 database for cache purposes at
+///    `$XDG_CACHE_HOME/tek-steamclient/cache.sqlite3`
+///    (`/var/cache/tek-steamclient/cache.sqlite3` for root user if
+///    `$XDG_CACHE_HOME` is not set) on Unix-like systems, and
+///    `%appdata%\tek-steamclient\cache.sqlite3` on Windows systems.
 /// Not safe to call inside `DllMain`.
 ///
-/// @param use_file_cache
-///    Value indicating whether the library should attempt reading cached data
-///    from a file on init, and writing to it on cleanup. The path to cache file
-///    is `$XDG_CACHE_HOME/tek-steamclient/cache.sqlite3`
-///    (`/var/cache/tek-steamclient/cache.sqlite3` for root user) on Linux
-///    systems, and `%appdata%\tek-steamclient\cache.sqlite3` on Windows
-///    systems.
-/// @param reserved
+/// @param reserved1
+///    This parameter was used in earlier versions of tek-steamclient. It
+///    remains for API compatibility and will be removed or changed in the next
+///    major release.
+/// @param reserved2
 ///    This parameter was used in earlier versions of tek-steamclient. It
 ///    remains for API compatibility and will be removed or changed in the next
 ///    major release.
@@ -99,8 +101,8 @@ extern "C" {
 ///    functions. It must be cleaned up with @ref tek_sc_lib_cleanup after use.
 ///    `nullptr` may be returned on failure, which may be caused by the
 ///    libraries that tek-steamclient depends on failing to initialize.
-[[gnu::TEK_SC_API]] tek_sc_lib_ctx *_Nullable tek_sc_lib_init(
-    bool use_file_cache, bool reserved);
+[[gnu::TEK_SC_API]]
+tek_sc_lib_ctx *_Nullable tek_sc_lib_init(bool reserved1, bool reserved2);
 
 /// Cleanup TEK Steam Client library context.
 ///
