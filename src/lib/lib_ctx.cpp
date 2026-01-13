@@ -32,7 +32,6 @@
 #include <mutex>
 #include <new>
 #include <ranges>
-#include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
 #include <string_view>
@@ -482,7 +481,7 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
   ctx->cache.reset(db_ptr);
   const auto db{ctx->cache.get()};
   if (sqlite3_exec(db, "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK) {
-    return ctx.release();
+    return nullptr;
   }
   sqlite3_stmt *stmt_ptr;
   // Get CM server list
@@ -503,18 +502,12 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
     ctx->cm_servers.shrink_to_fit();
     ctx->cm_servers_iter = ctx->cm_servers.cbegin();
   }
-  // Get depot keys
-  query = "SELECT depot_id, key FROM depot_keys";
-  if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
-                         nullptr) == SQLITE_OK) {
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
-        stmt_ptr, sqlite3_finalize};
-    for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
-         res = sqlite3_step(stmt.get())) {
-      auto &key{ctx->depot_keys[static_cast<std::uint32_t>(
-          sqlite3_column_int(stmt.get(), 0))]};
-      std::memcpy(key, sqlite3_column_blob(stmt.get(), 1), sizeof key);
-    }
+  // Create depot_keys table if it doesn't exist
+  if (sqlite3_exec(db,
+                   "CREATE TABLE IF NOT EXISTS depot_keys (depot_id INTEGER "
+                   "PRIMARY KEY UNIQUE, key BLOB)",
+                   nullptr, nullptr, nullptr) != SQLITE_OK) {
+    return nullptr;
   }
 #ifdef TEK_SCB_S3C
   // Get tek-s3 servers
@@ -541,11 +534,14 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
         stmt_ptr, sqlite3_finalize};
     for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
+      const auto idx{sqlite3_column_int64(stmt.get(), 2)};
+      if (idx < 0 || static_cast<std::size_t>(idx) >= ctx->s3_servers.size()) {
+        continue;
+      }
       ctx->s3_cache[static_cast<std::uint32_t>(sqlite3_column_int(
           stmt.get(),
           0))][static_cast<std::uint32_t>(sqlite3_column_int(stmt.get(), 1))]
-          .servers.emplace_back(
-              &ctx->s3_servers[sqlite3_column_int64(stmt.get(), 2)]);
+          .servers.emplace_back(&ctx->s3_servers[idx]);
     }
   }
   for (auto &app : ctx->s3_cache | std::views::values) {
@@ -593,36 +589,6 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
             break;
           }
           if (sqlite3_bind_int(stmt.get(), 2, server.port) != SQLITE_OK) {
-            break;
-          }
-          const int res{sqlite3_step(stmt.get())};
-          if (res != SQLITE_DONE && res != SQLITE_CONSTRAINT) {
-            break;
-          }
-          sqlite3_reset(stmt.get());
-          sqlite3_clear_bindings(stmt.get());
-        }
-      }
-    }
-    if ((dirty_flags & dirty_flag::depot_keys) &&
-        sqlite3_exec(db,
-                     "CREATE TABLE IF NOT EXISTS depot_keys (depot_id INTEGER "
-                     "PRIMARY KEY UNIQUE, key BLOB)",
-                     nullptr, nullptr, nullptr) == SQLITE_OK) {
-      // Write depot keys
-      constexpr std::string_view query{
-          "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
-      if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
-        for (const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
-                 stmt{stmt_ptr, sqlite3_finalize};
-             const auto &[depot_id, key] : ctx->depot_keys) {
-          if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id)) !=
-              SQLITE_OK) {
-            break;
-          }
-          if (sqlite3_bind_blob(stmt.get(), 2, key, sizeof key,
-                                SQLITE_STATIC) != SQLITE_OK) {
             break;
           }
           const int res{sqlite3_step(stmt.get())};
@@ -721,14 +687,48 @@ skip_file_cache:
 
 const char *tek_sc_version(void) { return TEK_SC_VERSION; }
 
+void tek_sc_lib_add_depot_key(tek_sc_lib_ctx *lib_ctx, uint32_t depot_id,
+                              const tek_sc_aes256_key key) {
+  constexpr std::string_view query{
+      "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
+  sqlite3_stmt *stmt_ptr;
+  if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(), query.length() + 1,
+                         &stmt_ptr, nullptr) != SQLITE_OK) {
+    return;
+  }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      stmt_ptr, sqlite3_finalize};
+  if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id)) !=
+      SQLITE_OK) {
+    return;
+  }
+  if (sqlite3_bind_blob(stmt.get(), 2, key, sizeof(tek_sc_aes256_key),
+                        SQLITE_STATIC) != SQLITE_OK) {
+    return;
+  }
+  sqlite3_step(stmt.get());
+}
+
 bool tek_sc_lib_get_depot_key(tek_sc_lib_ctx *lib_ctx, uint32_t depot_id,
                               tek_sc_aes256_key key) {
-  const std::shared_lock lock{lib_ctx->depot_keys_mtx};
-  const auto it{lib_ctx->depot_keys.find(depot_id)};
-  if (it == lib_ctx->depot_keys.cend()) {
+  constexpr std::string_view query{
+      "SELECT key FROM depot_keys WHERE depot_id = ?"};
+  sqlite3_stmt *stmt_ptr;
+  if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(), query.length() + 1,
+                         &stmt_ptr, nullptr) != SQLITE_OK) {
     return false;
   }
-  std::ranges::copy(it->second, key);
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      stmt_ptr, sqlite3_finalize};
+  if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id)) !=
+      SQLITE_OK) {
+    return false;
+  }
+  if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+    return false;
+  }
+  std::memcpy(key, sqlite3_column_blob(stmt.get(), 0),
+              sizeof(tek_sc_aes256_key));
   return true;
 }
 

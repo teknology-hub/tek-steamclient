@@ -37,6 +37,7 @@
 #include <rapidjson/document.h>
 #include <rapidjson/reader.h>
 #include <shared_mutex>
+#include <sqlite3.h>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -261,26 +262,40 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
       }
     }
     lock.unlock();
-    for (const std::scoped_lock lock{lib_ctx->depot_keys_mtx};
-         const auto &[id, value] : depot_keys->value.GetObject()) {
-      if (!value.IsString()) {
-        continue;
+    if (sqlite3_exec(lib_ctx->cache.get(), "SAVEPOINT s3", nullptr, nullptr,
+                     nullptr) == SQLITE_OK) {
+      constexpr std::string_view query{
+          "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
+      sqlite3_stmt *stmt_ptr;
+      if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(),
+                             query.length() + 1, &stmt_ptr,
+                             nullptr) == SQLITE_OK) {
+        const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+            stmt_ptr, sqlite3_finalize};
+        for (const auto &[id, value] : depot_keys->value.GetObject()) {
+          if (!value.IsString()) {
+            continue;
+          }
+          if (value.GetStringLength() != 44) {
+            continue;
+          }
+          std::uint32_t depot_id;
+          if (const std::string_view view{id.GetString(), id.GetStringLength()};
+              std::from_chars(view.begin(), view.end(), depot_id).ec !=
+              std::errc{}) {
+            continue;
+          }
+          tek_sc_aes256_key key;
+          tsci_u_base64_decode(value.GetString(), 44, key);
+          sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id));
+          sqlite3_bind_blob(stmt.get(), 2, key, sizeof key, SQLITE_STATIC);
+          sqlite3_step(stmt.get());
+          sqlite3_reset(stmt.get());
+          sqlite3_clear_bindings(stmt.get());
+        }
       }
-      if (value.GetStringLength() != 44) {
-        continue;
-      }
-      std::uint32_t depot_id;
-      if (const std::string_view view{id.GetString(), id.GetStringLength()};
-          std::from_chars(view.begin(), view.end(), depot_id).ec !=
-          std::errc{}) {
-        continue;
-      }
-      const auto [it, emplaced]{lib_ctx->depot_keys.try_emplace(depot_id)};
-      if (emplaced) {
-        lib_ctx->dirty_flags.fetch_or(static_cast<int>(dirty_flag::depot_keys),
-                                      std::memory_order::relaxed);
-      }
-      tsci_u_base64_decode(value.GetString(), 44, it->second);
+      sqlite3_exec(lib_ctx->cache.get(), "RELEASE s3", nullptr, nullptr,
+                   nullptr);
     }
   } // JSON parsing scope
   return tsc_err_ok();
