@@ -1,6 +1,6 @@
 //===-- am_cm.c - CM bridge for Steam application manager -----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -115,6 +115,20 @@ static void tscp_am_cb_connected(tek_sc_cm_client *_Nonnull client,
 /// The callback for CM client disconnected event.
 static void tscp_am_cb_disconnected(tek_sc_cm_client *, void *, void *) {}
 
+/// The callback for CM client PICS access tokens received event.
+///
+/// @param client
+///    Pointer to the CM client instance that emitted the callback.
+/// @param [in, out] data
+///    Pointer to the @ref tek_sc_cm_data_pics associated with the request.
+/// @param [in, out] user_data
+///    Pointer to the @ref tek_sc_am instance associated with @p client.
+[[gnu::nonnull(1, 2, 3), gnu::access(read_write, 1), gnu::access(read_write, 2),
+  gnu::access(read_write, 3)]]
+static void tscp_am_cb_access_tokens(tek_sc_cm_client *_Nonnull client,
+                                     void *_Nonnull data,
+                                     void *_Nonnull user_data);
+
 /// The callback for CM client PICS app info received event.
 ///
 /// @param [in, out] data
@@ -122,13 +136,16 @@ static void tscp_am_cb_disconnected(tek_sc_cm_client *, void *, void *) {}
 /// @param [in, out] user_data
 ///    Pointer to the associated @ref tek_sc_am instance.
 [[gnu::nonnull(2, 3), gnu::access(read_write, 2), gnu::access(read_write, 3)]]
-static void tscp_am_cb_app_info(tek_sc_cm_client *, void *_Nonnull data,
-                                void *_Nonnull user_data) {
+static void tscp_am_cb_app_info(tek_sc_cm_client *_Nonnull client,
+                                void *_Nonnull data, void *_Nonnull user_data) {
   tek_sc_cm_data_pics *const data_pics = data;
   tek_sc_am *const am = user_data;
   auto const ctx = &am->cm_ctx;
   if (!tek_sc_err_success(&data_pics->result)) {
-    if (ctx->num_rem_reqs >= 0) {
+    if (data_pics->result.type == TEK_SC_ERR_TYPE_sub &&
+        data_pics->result.auxiliary == TEK_SC_ERRC_cm_not_signed_in) {
+      tek_sc_cm_sign_in_anon(client, tscp_am_cb_signed_in, ctx->timeout);
+    } else if (ctx->num_rem_reqs >= 0) {
       ctx->num_rem_reqs = -1;
       ctx->result = data_pics->result;
       atomic_store_explicit(&ctx->completed, 1, memory_order_release);
@@ -138,10 +155,17 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *, void *_Nonnull data,
     free(data_pics);
     return;
   }
+  enum { TSCP_AT_OK, TSCP_AT_RETRY, TSCP_AT_REQUEST } res = TSCP_AT_OK;
   for (int i = 0; i < data_pics->num_app_entries; ++i) {
     auto const entry = &data_pics->app_entries[i];
     tek_sc_err err;
     if (!tek_sc_err_success(&entry->result)) {
+      if (entry->result.type == TEK_SC_ERR_TYPE_sub &&
+          entry->result.auxiliary == TEK_SC_ERRC_cm_access_token_denied &&
+          !ctx->requested_tokens) {
+        res = TSCP_AT_REQUEST;
+        break;
+      }
       err = entry->result;
       goto failure;
     }
@@ -165,6 +189,18 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *, void *_Nonnull data,
     }
     return;
   }
+  switch (res) {
+  case TSCP_AT_RETRY:
+    ctx->requested_tokens = true;
+    tek_sc_cm_get_product_info(client, data_pics, tscp_am_cb_app_info,
+                               ctx->timeout);
+    return;
+  case TSCP_AT_REQUEST:
+    tek_sc_cm_get_access_token(client, data_pics, tscp_am_cb_access_tokens,
+                               ctx->timeout);
+    return;
+  default:
+  }
   free(data_pics->app_entries);
   free(data_pics);
   if (!--ctx->num_rem_reqs) {
@@ -175,26 +211,12 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *, void *_Nonnull data,
   }
 }
 
-/// The callback for CM client PICS access tokens received event.
-///
-/// @param client
-///    Pointer to the CM client instance that emitted the callback.
-/// @param [in, out] data
-///    Pointer to the @ref tek_sc_cm_data_pics associated with the request.
-/// @param [in, out] user_data
-///    Pointer to the @ref tek_sc_am instance associated with @p client.
-[[gnu::nonnull(1, 2, 3), gnu::access(read_write, 1), gnu::access(read_write, 2),
-  gnu::access(read_write, 3)]]
-static void tscp_am_cb_access_tokens(tek_sc_cm_client *_Nonnull client,
-                                     void *_Nonnull data,
-                                     void *_Nonnull user_data) {
+static void tscp_am_cb_access_tokens(tek_sc_cm_client *client, void *data,
+                                     void *user_data) {
   tek_sc_cm_data_pics *const data_pics = data;
   auto const ctx = &((tek_sc_am *)user_data)->cm_ctx;
   if (!tek_sc_err_success(&data_pics->result)) {
-    if (data_pics->result.type == TEK_SC_ERR_TYPE_sub &&
-        data_pics->result.auxiliary == TEK_SC_ERRC_cm_not_signed_in) {
-      tek_sc_cm_sign_in_anon(client, tscp_am_cb_signed_in, ctx->timeout);
-    } else if (ctx->num_rem_reqs >= 0) {
+    if (ctx->num_rem_reqs >= 0) {
       ctx->num_rem_reqs = -1;
       ctx->result = data_pics->result;
       atomic_store_explicit(&ctx->completed, 1, memory_order_release);
@@ -204,6 +226,7 @@ static void tscp_am_cb_access_tokens(tek_sc_cm_client *_Nonnull client,
     free(data_pics);
     return;
   }
+  ctx->requested_tokens = true;
   tek_sc_cm_get_product_info(client, data_pics, tscp_am_cb_app_info,
                              ctx->timeout);
 }
@@ -335,6 +358,7 @@ static void tscp_am_cb_changes(tek_sc_cm_client *_Nonnull client,
   if (num_apps) {
     // Prepare and submit the PICS request
     ++ctx->num_rem_reqs;
+    ctx->requested_tokens = false;
     tek_sc_cm_data_pics *const data_pics = malloc(sizeof *data_pics);
     if (!data_pics) {
       pthread_mutex_unlock(&am->item_descs_mtx);
@@ -366,17 +390,27 @@ static void tscp_am_cb_changes(tek_sc_cm_client *_Nonnull client,
         continue;
       }
       if (data_picsc->num_entries < 0) {
-        cur_ent++->id = item_id->app_id;
+        if (!tek_sc_lib_get_pics_at(am->lib_ctx, item_id->app_id,
+                                    &cur_ent->access_token)) {
+          cur_ent->access_token = 0;
+        }
+        cur_ent->id = item_id->app_id;
+        ++cur_ent;
       } else {
         auto const ent = tscp_am_find_change(
             data_picsc->entries, data_picsc->num_entries, item_id->app_id);
         if (ent) {
-          cur_ent++->id = ent->id;
+          if (!tek_sc_lib_get_pics_at(am->lib_ctx, item_id->app_id,
+                                      &cur_ent->access_token)) {
+            cur_ent->access_token = 0;
+          }
+          cur_ent->id = ent->id;
+          ++cur_ent;
         }
       }
       last_app_id = item_id->app_id;
     }
-    tek_sc_cm_get_access_token(client, data_pics, tscp_am_cb_access_tokens,
+    tek_sc_cm_get_product_info(client, data_pics, tscp_am_cb_app_info,
                                ctx->timeout);
   } // if (num_apps)
   if (num_ws_items) {
@@ -572,12 +606,16 @@ static void tscp_am_cb_signed_in(tek_sc_cm_client *client, void *data,
       tsci_os_futex_wake(&ctx->completed);
       break;
     }
+    if (!tek_sc_lib_get_pics_at(am->lib_ctx, ctx->item_id->app_id,
+                                &data_pics->app_entries->access_token)) {
+      data_pics->app_entries->access_token = 0;
+    }
     data_pics->app_entries->id = ctx->item_id->app_id;
     data_pics->package_entries = nullptr;
     data_pics->num_app_entries = 1;
     data_pics->num_package_entries = 0;
     data_pics->timeout_ms = ctx->timeout;
-    tek_sc_cm_get_access_token(client, data_pics, tscp_am_cb_access_tokens,
+    tek_sc_cm_get_product_info(client, data_pics, tscp_am_cb_app_info,
                                ctx->timeout);
     break;
   }
@@ -673,6 +711,7 @@ tek_sc_err tsci_am_get_latest_man_id(tek_sc_am *am,
                              cm_ctx->timeout);
   } else {
     cm_ctx->pending_req = TSCI_AM_PENDING_CM_REQ_app_man_ids;
+    cm_ctx->requested_tokens = false;
     tek_sc_cm_data_pics *const data_pics = malloc(sizeof *data_pics);
     if (!data_pics) {
       pthread_mutex_unlock(&cm_ctx->mtx);
@@ -684,13 +723,17 @@ tek_sc_err tsci_am_get_latest_man_id(tek_sc_am *am,
       free(data_pics);
       return tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_mem_alloc);
     }
+    if (!tek_sc_lib_get_pics_at(am->lib_ctx, item_id->app_id,
+                                &data_pics->app_entries->access_token)) {
+      data_pics->app_entries->access_token = 0;
+    }
     data_pics->app_entries->id = item_id->app_id;
     data_pics->package_entries = nullptr;
     data_pics->num_app_entries = 1;
     data_pics->num_package_entries = 0;
     data_pics->timeout_ms = cm_ctx->timeout;
-    tek_sc_cm_get_access_token(am->cm_client, data_pics,
-                               tscp_am_cb_access_tokens, cm_ctx->timeout);
+    tek_sc_cm_get_product_info(am->cm_client, data_pics, tscp_am_cb_app_info,
+                               cm_ctx->timeout);
   }
   if (!tsci_os_futex_wait(&cm_ctx->completed, 0, cm_ctx->timeout * 5 + 28000)) {
     cm_ctx->result =
