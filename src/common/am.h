@@ -1,6 +1,6 @@
 //===-- am.h - Steam application manager internal interface ---------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -103,6 +103,9 @@ struct tsci_am_cm_ctx {
     uint64_t mrc;
     /// Value indicating whether a patch is available for specified manifests.
     bool patch_available;
+    /// Value indicating whether the client tried requesting PICS access tokens
+    ///    from the CM yet.
+    bool requested_tokens;
   };
   /// ID of the target manifest for patching.
   uint64_t target_manifest_id;

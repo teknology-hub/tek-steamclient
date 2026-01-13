@@ -509,6 +509,13 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
                    nullptr, nullptr, nullptr) != SQLITE_OK) {
     return nullptr;
   }
+  // Create pics_access_tokens table if it doesn't exist
+  if (sqlite3_exec(db,
+                   "CREATE TABLE IF NOT EXISTS pics_access_tokens (app_id "
+                   "INTEGER PRIMARY KEY UNIQUE, token INTEGER)",
+                   nullptr, nullptr, nullptr) != SQLITE_OK) {
+    return nullptr;
+  }
 #ifdef TEK_SCB_S3C
   // Get tek-s3 servers
   query = "SELECT url, timestamp FROM s3_servers ORDER BY rowid";
@@ -729,6 +736,48 @@ bool tek_sc_lib_get_depot_key(tek_sc_lib_ctx *lib_ctx, uint32_t depot_id,
   }
   std::memcpy(key, sqlite3_column_blob(stmt.get(), 0),
               sizeof(tek_sc_aes256_key));
+  return true;
+}
+
+void tek_sc_lib_add_pics_at(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
+                            uint64_t token) {
+  constexpr std::string_view query{
+      "INSERT INTO pics_access_tokens (app_id, token) VALUES (?, ?)"};
+  sqlite3_stmt *stmt_ptr;
+  if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(), query.length() + 1,
+                         &stmt_ptr, nullptr) != SQLITE_OK) {
+    return;
+  }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      stmt_ptr, sqlite3_finalize};
+  if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app_id)) != SQLITE_OK) {
+    return;
+  }
+  if (sqlite3_bind_int64(stmt.get(), 2, static_cast<sqlite3_int64>(token)) !=
+      SQLITE_OK) {
+    return;
+  }
+  sqlite3_step(stmt.get());
+}
+
+bool tek_sc_lib_get_pics_at(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
+                            uint64_t *token) {
+  constexpr std::string_view query{
+      "SELECT token FROM pics_access_tokens WHERE app_id = ?"};
+  sqlite3_stmt *stmt_ptr;
+  if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(), query.length() + 1,
+                         &stmt_ptr, nullptr) != SQLITE_OK) {
+    return false;
+  }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      stmt_ptr, sqlite3_finalize};
+  if (sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app_id)) != SQLITE_OK) {
+    return false;
+  }
+  if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+    return false;
+  }
+  *token = static_cast<std::uint64_t>(sqlite3_column_int64(stmt.get(), 0));
   return true;
 }
 

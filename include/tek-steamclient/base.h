@@ -147,6 +147,31 @@ bool tek_sc_lib_get_depot_key(tek_sc_lib_ctx *_Nonnull lib_ctx,
                               uint32_t depot_id,
                               tek_sc_aes256_key _Nonnull key);
 
+/// Add PICS access token for specified app to library context's cache.
+///
+/// @param [in, out] lib_ctx
+///    Pointer to the library context to add the access token to.
+/// @param app_id
+///    ID of the Steam application to add PICS access token for.
+/// @param token
+///    Access token value.
+[[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_write, 1)]]
+void tek_sc_lib_add_pics_at(tek_sc_lib_ctx *_Nonnull lib_ctx, uint32_t app_id,
+                            uint64_t token);
+
+/// Get PICS access token for specified app from library context's cache.
+///
+/// @param [in, out] lib_ctx
+///    Pointer to the library context to get the access token from.
+/// @param app_id
+///    ID of the Steam application to get access token for.
+/// @param [out] token
+///    Address of variable that receives access token for the app on success.
+/// @return Value indicating whether the access token was found in the cache.
+[[gnu::TEK_SC_API, gnu::nonnull(1), gnu::access(read_write, 1)]]
+bool tek_sc_lib_get_pics_at(tek_sc_lib_ctx *_Nonnull lib_ctx, uint32_t app_id,
+                            uint64_t *_Nonnull token);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // def __cplusplus

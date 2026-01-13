@@ -204,6 +204,11 @@ static bool handle_pat(cm_conn &conn, const MessageHeader &,
   const std::span apps{data_pics.app_entries,
                        static_cast<std::size_t>(data_pics.num_app_entries)};
   for (const auto &app_token : payload.app_tokens()) {
+    if (app_token.access_token()) {
+      // Store the token into the cache
+      tek_sc_lib_add_pics_at(&conn.ctx, app_token.app_id(),
+                             app_token.access_token());
+    }
     const auto app{
         std::ranges::find(apps, app_token.app_id(), &tek_sc_cm_pics_entry::id)};
     if (app == apps.end()) {
