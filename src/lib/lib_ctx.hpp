@@ -57,8 +57,6 @@ enum class [[clang::flag_enum]] dirty_flag {
   none,
   /// `cm_servers` has changed.
   cm_servers = 1 << 0,
-  /// `depot_keys` has changed.
-  depot_keys = 1 << 1,
 #ifdef TEK_SCB_S3C
   /// `s3_servers` and/or `s3_cache` have changed.
   s3 = 1 << 2
@@ -140,10 +138,6 @@ struct tek_sc_lib_ctx {
   /// Mutex locking concurrent access to @ref cm_servers and
   ///    @ref cm_servers_iter.
   std::mutex cm_servers_mtx;
-  /// Cached depot decryption keys.
-  std::map<std::uint32_t, tek_sc_aes256_key> depot_keys;
-  /// Mutex locking concurrent write access to @ref depot_keys.
-  std::shared_mutex depot_keys_mtx;
   /// Cache database connection handle.
   std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> cache{nullptr,
                                                               sqlite3_close_v2};

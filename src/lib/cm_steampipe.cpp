@@ -16,7 +16,6 @@
 #include "cm.hpp"
 
 #include "common/error.h"
-#include "lib_ctx.hpp"
 #include "tek-steamclient/base.h"
 #include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
@@ -109,12 +108,7 @@ static bool handle_gddk(cm_conn &conn, const MessageHeader &,
       std::string_view{payload.decryption_key().data(), sizeof data_dk.key},
       data_dk.key);
   // Store the key into the cache
-  {
-    const std::scoped_lock lock{conn.ctx.depot_keys_mtx};
-    std::ranges::copy(data_dk.key, conn.ctx.depot_keys[payload.depot_id()]);
-  }
-  conn.ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::depot_keys),
-                                std::memory_order::relaxed);
+  tek_sc_lib_add_depot_key(&conn.ctx, payload.depot_id(), data_dk.key);
   //  Report results via callback
   cb(&conn, &data_dk, conn.user_data);
   return true;
@@ -280,16 +274,10 @@ void tek_sc_cm_get_depot_key(tek_sc_cm_client *client,
                              tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Check if the key is present in the cache first
-  {
-    std::unique_lock lock{conn.ctx.depot_keys_mtx};
-    if (const auto it{conn.ctx.depot_keys.find(data->depot_id)};
-        it != conn.ctx.depot_keys.cend()) {
-      std::ranges::copy(it->second, data->key);
-      lock.unlock();
-      data->result = tsc_err_ok();
-      cb(&conn, data, conn.user_data);
-      return;
-    }
+  if (tek_sc_lib_get_depot_key(&conn.ctx, data->depot_id, data->key)) {
+    data->result = tsc_err_ok();
+    cb(&conn, data, conn.user_data);
+    return;
   }
   // Ensure that the client is signed in
   if (conn.conn_state.load(std::memory_order::relaxed) !=

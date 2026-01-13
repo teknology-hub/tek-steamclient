@@ -117,6 +117,20 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *_Nonnull ctx);
 [[gnu::TEK_SC_API,
   gnu::returns_nonnull]] const char *_Nonnull tek_sc_version(void);
 
+/// Add decryption key for specified depot to library context's cache.
+///
+/// @param [in, out] lib_ctx
+///    Pointer to the library context to add the key to.
+/// @param depot_id
+///    ID of the depot to add decryption key for.
+/// @param [in] key
+///    Pointer to the decryption key to add.
+[[gnu::TEK_SC_API, gnu::nonnull(1, 3), gnu::access(read_write, 1),
+  gnu::access(read_only, 3)]]
+void tek_sc_lib_add_depot_key(tek_sc_lib_ctx *_Nonnull lib_ctx,
+                              uint32_t depot_id,
+                              const tek_sc_aes256_key _Nonnull key);
+
 /// Get decryption key for specified depot from library context's cache.
 ///
 /// @param [in, out] lib_ctx
