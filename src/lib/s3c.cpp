@@ -237,6 +237,20 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
     if (depot_keys == doc.MemberEnd() || !depot_keys->value.IsObject()) {
       goto json_parse_err;
     }
+    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+        nullptr, sqlite3_finalize};
+    const auto db{lib_ctx->cache.get()};
+    const bool savepoint_created{sqlite3_exec(db, "SAVEPOINT s3", nullptr,
+                                              nullptr, nullptr) == SQLITE_OK};
+    if (savepoint_created) {
+      sqlite3_stmt *stmt_ptr;
+      constexpr std::string_view query{
+          "INSERT INTO pics_access_tokens (app_id, token) VALUES (?, ?)"};
+      if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
+                             nullptr) == SQLITE_OK) {
+        stmt.reset(stmt_ptr);
+      }
+    }
     for (const auto &[id, value] : apps->value.GetObject()) {
       if (!value.IsObject()) {
         continue;
@@ -245,6 +259,18 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
       if (const std::string_view view{id.GetString(), id.GetStringLength()};
           std::from_chars(view.begin(), view.end(), app_id).ec != std::errc{}) {
         continue;
+      }
+      if (stmt) {
+        const auto pics_at{value.FindMember("pics_at")};
+        if (pics_at != value.MemberEnd() && pics_at->value.IsUint64()) {
+          sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app_id));
+          sqlite3_bind_int64(
+              stmt.get(), 2,
+              static_cast<sqlite3_int64>(pics_at->value.GetUint64()));
+          sqlite3_step(stmt.get());
+          sqlite3_reset(stmt.get());
+          sqlite3_clear_bindings(stmt.get());
+        }
       }
       const auto depots{value.FindMember("depots")};
       if (depots == value.MemberEnd() || !depots->value.IsArray()) {
@@ -262,16 +288,14 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
       }
     }
     lock.unlock();
-    if (sqlite3_exec(lib_ctx->cache.get(), "SAVEPOINT s3", nullptr, nullptr,
-                     nullptr) == SQLITE_OK) {
+    stmt.reset();
+    if (savepoint_created) {
       constexpr std::string_view query{
           "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
       sqlite3_stmt *stmt_ptr;
-      if (sqlite3_prepare_v2(lib_ctx->cache.get(), query.data(),
-                             query.length() + 1, &stmt_ptr,
+      if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
                              nullptr) == SQLITE_OK) {
-        const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
-            stmt_ptr, sqlite3_finalize};
+        stmt.reset(stmt_ptr);
         for (const auto &[id, value] : depot_keys->value.GetObject()) {
           if (!value.IsString()) {
             continue;
@@ -294,8 +318,8 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
           sqlite3_clear_bindings(stmt.get());
         }
       }
-      sqlite3_exec(lib_ctx->cache.get(), "RELEASE s3", nullptr, nullptr,
-                   nullptr);
+      stmt.reset();
+      sqlite3_exec(db, "RELEASE s3", nullptr, nullptr, nullptr);
     }
   } // JSON parsing scope
   return tsc_err_ok();
