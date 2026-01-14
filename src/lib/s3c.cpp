@@ -18,7 +18,9 @@
 #include "config.h"
 #include "lib_ctx.hpp"
 #include "tek-steamclient/base.h"
+#include "tek-steamclient/error.h"
 #include "utils.h"
+#include "zlib_api.h"
 
 #include <algorithm>
 #include <array>
@@ -37,10 +39,12 @@
 #include <rapidjson/document.h>
 #include <rapidjson/reader.h>
 #include <shared_mutex>
+#include <span>
 #include <sqlite3.h>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace tek::steamclient::s3c {
 
@@ -54,7 +58,7 @@ static curl_slist cloudflare_dns_resolve{
         "1.1.1.1,1.0.0.1"),
     .next{}};
 
-//===-- Private type ------------------------------------------------------===//
+//===-- Private types -----------------------------------------------------===//
 
 /// Download context for curl.
 struct tsc_curl_ctx {
@@ -62,7 +66,45 @@ struct tsc_curl_ctx {
   std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
                                                            curl_easy_cleanup};
   /// Buffer storing downloaded content.
-  std::string buf;
+  std::vector<unsigned char> buf;
+};
+
+//===-- Binary manifest types ---------------------------------------------===//
+//
+// The structure of binary manifest is as following:
+//    bmanifest_hdr
+//    bmanifest_app[num_apps]
+//    std::uint32_t[num_depots]
+//    bmanifest_depot_key[num_depot_keys]
+
+/// Binary manifest header.
+struct bmanifest_hdr {
+  /// CRC32 checksum for the remainder of serialized data (excluding itself).
+  std::uint32_t crc;
+  /// Total number of application entries in the manifest.
+  std::int32_t num_apps;
+  /// Total number of depot entries in the manifest.
+  std::int32_t num_depots;
+  /// Total number of depot decryption key entries in the manifest.
+  std::int32_t num_depot_keys;
+};
+
+/// Binary manifest application entry.
+struct bmanifest_app {
+  /// ID of the application.
+  std::uint32_t app_id;
+  /// Number of depot IDs assigned to the application.
+  std::int32_t num_depots;
+  /// PICS access token for the application.
+  std::uint64_t pics_access_token;
+};
+
+/// Binary manifest depot decryption key entry.
+struct bmanifest_depot_key {
+  /// ID of the depot.
+  std::int32_t id;
+  /// Decryption key for the depot.
+  tek_sc_aes256_key key;
 };
 
 //===-- Private functions -------------------------------------------------===//
@@ -91,7 +133,7 @@ static std::size_t tsc_curl_write_manifest(const char *_Nonnull buf,
       ctx.buf.reserve(content_len);
     }
   }
-  ctx.buf.append(buf, size);
+  ctx.buf.insert(ctx.buf.end(), buf, &buf[size]);
   return size;
 }
 
@@ -114,6 +156,269 @@ static std::size_t tsc_curl_write_mrc(const char *_Nonnull buf, std::size_t,
   }
   std::ranges::copy_n(buf, size, out_buf.data());
   return size;
+}
+
+/// Parse JSON variant of tek-s3 manifest.
+///
+/// @param [in, out] ctx
+///    Library context that will cache the parsed data.
+/// @param [in] url
+///    tek-s3 server URL.
+/// @param last_mod
+///    Last manifest modification timestamp reported by the server.
+/// @param [in, out] data
+///    Buffer storing downloaded manifest data.
+/// @return Value indicating whether parsing succeeded.
+static bool parse_manifest_json(lib_ctx &ctx, const std::string_view &url,
+                                curl_off_t last_mod,
+                                std::vector<unsigned char> &data) {
+  data.emplace_back(static_cast<unsigned char>('\0'));
+  rapidjson::Document doc;
+  doc.ParseInsitu<rapidjson::kParseStopWhenDoneFlag>(
+      reinterpret_cast<char *>(data.data()));
+  if (doc.HasParseError() || !doc.IsObject()) {
+    return false;
+  }
+  ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::s3),
+                           std::memory_order::relaxed);
+  std::unique_lock lock{ctx.s3_mtx};
+  const auto srv_it{std::ranges::find(ctx.s3_servers, url, &server::url)};
+  if (srv_it != ctx.s3_servers.end()) {
+    srv_it->timestamp = static_cast<std::time_t>(last_mod);
+    // Clear all server references, in case some apps/depots have been removed
+    //    from the manifest
+    for (auto addr{std::to_address(srv_it)};
+         auto &app : ctx.s3_cache | std::views::values) {
+      for (auto &depot : app | std::views::values) {
+        if (std::erase(depot.servers, addr)) {
+          depot.it = depot.servers.cbegin();
+        }
+      }
+      std::erase_if(
+          app, [](const auto &depot) { return depot.second.servers.empty(); });
+    }
+    std::erase_if(ctx.s3_cache,
+                  [](const auto &app) { return app.second.empty(); });
+  }
+  const auto srv{srv_it == ctx.s3_servers.end()
+                     ? &ctx.s3_servers.emplace_back(
+                           std::string{url}, static_cast<std::time_t>(last_mod))
+                     : std::to_address(srv_it)};
+  const auto apps{doc.FindMember("apps")};
+  if (apps == doc.MemberEnd() || !apps->value.IsObject()) {
+    return false;
+  }
+  const auto depot_keys{doc.FindMember("depot_keys")};
+  if (depot_keys == doc.MemberEnd() || !depot_keys->value.IsObject()) {
+    return false;
+  }
+  std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      nullptr, sqlite3_finalize};
+  const auto db{ctx.cache.get()};
+  const bool savepoint_created{
+      sqlite3_exec(db, "SAVEPOINT s3", nullptr, nullptr, nullptr) == SQLITE_OK};
+  if (savepoint_created) {
+    sqlite3_stmt *stmt_ptr;
+    constexpr std::string_view query{
+        "INSERT INTO pics_access_tokens (app_id, token) VALUES (?, ?)"};
+    if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
+                           nullptr) == SQLITE_OK) {
+      stmt.reset(stmt_ptr);
+    }
+  }
+  for (const auto &[id, value] : apps->value.GetObject()) {
+    if (!value.IsObject()) {
+      continue;
+    }
+    std::uint32_t app_id;
+    if (const std::string_view view{id.GetString(), id.GetStringLength()};
+        std::from_chars(view.begin(), view.end(), app_id).ec != std::errc{}) {
+      continue;
+    }
+    if (stmt) {
+      const auto pics_at{value.FindMember("pics_at")};
+      if (pics_at != value.MemberEnd() && pics_at->value.IsUint64()) {
+        sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app_id));
+        sqlite3_bind_int64(
+            stmt.get(), 2,
+            static_cast<sqlite3_int64>(pics_at->value.GetUint64()));
+        sqlite3_step(stmt.get());
+        sqlite3_reset(stmt.get());
+        sqlite3_clear_bindings(stmt.get());
+      }
+    }
+    const auto depots{value.FindMember("depots")};
+    if (depots == value.MemberEnd() || !depots->value.IsArray()) {
+      continue;
+    }
+    for (auto &cache_app = ctx.s3_cache[app_id];
+         const auto &depot : depots->value.GetArray()) {
+      if (!depot.IsUint()) {
+        continue;
+      }
+      auto &cache_depot{cache_app[static_cast<std::uint32_t>(depot.GetUint())]};
+      cache_depot.servers.emplace_back(srv);
+      cache_depot.it = cache_depot.servers.cbegin();
+    }
+  }
+  lock.unlock();
+  stmt.reset();
+  if (savepoint_created) {
+    constexpr std::string_view query{
+        "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
+    sqlite3_stmt *stmt_ptr;
+    if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
+                           nullptr) == SQLITE_OK) {
+      stmt.reset(stmt_ptr);
+      for (const auto &[id, value] : depot_keys->value.GetObject()) {
+        if (!value.IsString()) {
+          continue;
+        }
+        if (value.GetStringLength() != 44) {
+          continue;
+        }
+        std::uint32_t depot_id;
+        if (const std::string_view view{id.GetString(), id.GetStringLength()};
+            std::from_chars(view.begin(), view.end(), depot_id).ec !=
+            std::errc{}) {
+          continue;
+        }
+        tek_sc_aes256_key key;
+        tsci_u_base64_decode(value.GetString(), 44, key);
+        sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id));
+        sqlite3_bind_blob(stmt.get(), 2, key, sizeof key, SQLITE_STATIC);
+        sqlite3_step(stmt.get());
+        sqlite3_reset(stmt.get());
+        sqlite3_clear_bindings(stmt.get());
+      }
+    }
+    stmt.reset();
+    sqlite3_exec(db, "RELEASE s3", nullptr, nullptr, nullptr);
+  }
+  return true;
+}
+
+/// Parse binary variant of tek-s3 manifest.
+///
+/// @param [in, out] ctx
+///    Library context that will cache the parsed data.
+/// @param [in] url
+///    tek-s3 server URL.
+/// @param last_mod
+///    Last manifest modification timestamp reported by the server.
+/// @param [in, out] data
+///    Buffer storing downloaded manifest data.
+/// @return Error code indicating the result of parsing.
+static tek_sc_errc parse_manifest_bin(lib_ctx &ctx, const std::string_view &url,
+                                      curl_off_t last_mod,
+                                      std::vector<unsigned char> &data) {
+  if (data.size() < sizeof(bmanifest_hdr)) {
+    return TEK_SC_ERRC_invalid_data;
+  }
+  const auto &hdr{*reinterpret_cast<const bmanifest_hdr *>(data.data())};
+  if (hdr.crc != tsci_z_crc32(tsci_z_crc32(0, nullptr, 0),
+                              &data[sizeof hdr.crc],
+                              data.size() - sizeof hdr.crc)) {
+    return TEK_SC_ERRC_crc_mismatch;
+  }
+  const std::span apps{reinterpret_cast<const bmanifest_app *>(&hdr + 1),
+                       static_cast<std::size_t>(hdr.num_apps)};
+  auto next_depot{
+      reinterpret_cast<const std::uint32_t *>(std::to_address(apps.end()))};
+  const std::span depot_keys{reinterpret_cast<const bmanifest_depot_key *>(
+                                 &next_depot[hdr.num_depots]),
+                             static_cast<std::size_t>(hdr.num_depot_keys)};
+  if (static_cast<std::size_t>(reinterpret_cast<const unsigned char *>(
+                                   std::to_address(depot_keys.end())) -
+                               data.data()) > data.size()) {
+    return TEK_SC_ERRC_invalid_data;
+  }
+  if (std::ranges::fold_left(apps, 0, [](int acc, const auto &app) {
+        return acc + app.num_depots;
+      }) != hdr.num_depots) {
+    return TEK_SC_ERRC_invalid_data;
+  }
+  ctx.dirty_flags.fetch_or(static_cast<int>(dirty_flag::s3),
+                           std::memory_order::relaxed);
+  std::unique_lock lock{ctx.s3_mtx};
+  const auto srv_it{std::ranges::find(ctx.s3_servers, url, &server::url)};
+  if (srv_it != ctx.s3_servers.end()) {
+    srv_it->timestamp = static_cast<std::time_t>(last_mod);
+    // Clear all server references, in case some apps/depots have been removed
+    //    from the manifest
+    for (auto addr{std::to_address(srv_it)};
+         auto &app : ctx.s3_cache | std::views::values) {
+      for (auto &depot : app | std::views::values) {
+        if (std::erase(depot.servers, addr)) {
+          depot.it = depot.servers.cbegin();
+        }
+      }
+      std::erase_if(
+          app, [](const auto &depot) { return depot.second.servers.empty(); });
+    }
+    std::erase_if(ctx.s3_cache,
+                  [](const auto &app) { return app.second.empty(); });
+  }
+  const auto srv{srv_it == ctx.s3_servers.end()
+                     ? &ctx.s3_servers.emplace_back(
+                           std::string{url}, static_cast<std::time_t>(last_mod))
+                     : std::to_address(srv_it)};
+  std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
+      nullptr, sqlite3_finalize};
+  const auto db{ctx.cache.get()};
+  const bool savepoint_created{
+      sqlite3_exec(db, "SAVEPOINT s3", nullptr, nullptr, nullptr) == SQLITE_OK};
+  if (savepoint_created) {
+    sqlite3_stmt *stmt_ptr;
+    constexpr std::string_view query{
+        "INSERT INTO pics_access_tokens (app_id, token) VALUES (?, ?)"};
+    if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
+                           nullptr) == SQLITE_OK) {
+      stmt.reset(stmt_ptr);
+    }
+  }
+  for (const auto &app : apps) {
+    if (stmt) {
+      if (app.pics_access_token) {
+        sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app.app_id));
+        sqlite3_bind_int64(stmt.get(), 2,
+                           static_cast<sqlite3_int64>(app.pics_access_token));
+        sqlite3_step(stmt.get());
+        sqlite3_reset(stmt.get());
+        sqlite3_clear_bindings(stmt.get());
+      }
+    }
+    auto &cache_app = ctx.s3_cache[app.app_id];
+    next_depot =
+        std::ranges::for_each_n(next_depot, app.num_depots,
+                                [&cache_app, srv](auto depot_id) {
+                                  auto &cache_depot{cache_app[depot_id]};
+                                  cache_depot.servers.emplace_back(srv);
+                                  cache_depot.it = cache_depot.servers.cbegin();
+                                })
+            .in;
+  }
+  lock.unlock();
+  stmt.reset();
+  if (savepoint_created) {
+    constexpr std::string_view query{
+        "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
+    sqlite3_stmt *stmt_ptr;
+    if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
+                           nullptr) == SQLITE_OK) {
+      stmt.reset(stmt_ptr);
+      for (const auto &dk : depot_keys) {
+        sqlite3_bind_int(stmt.get(), 1, static_cast<int>(dk.id));
+        sqlite3_bind_blob(stmt.get(), 2, dk.key, sizeof dk.key, SQLITE_STATIC);
+        sqlite3_step(stmt.get());
+        sqlite3_reset(stmt.get());
+        sqlite3_clear_bindings(stmt.get());
+      }
+    }
+    stmt.reset();
+    sqlite3_exec(db, "RELEASE s3", nullptr, nullptr, nullptr);
+  }
+  return TEK_SC_ERRC_ok;
 }
 
 } // namespace
@@ -144,7 +449,7 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEDATA, &curl_ctx);
   const std::string_view url_view{url};
-  const auto req_url = std::string{url_view}.append("/manifest");
+  auto req_url{std::string{url_view}.append("/manifest-bin")};
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, req_url.data());
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
@@ -170,6 +475,36 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
     break;
   default:
   }
+  if (res == CURLE_OK) {
+    long cond_unmet{};
+    curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_CONDITION_UNMET,
+                      &cond_unmet);
+    if (cond_unmet) {
+      return tsc_err_ok();
+    }
+    curl_off_t last_mod;
+    curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_FILETIME_T, &last_mod);
+    if (parse_manifest_bin(*lib_ctx, url_view, last_mod, curl_ctx.buf) ==
+        TEK_SC_ERRC_ok) {
+      return tsc_err_ok();
+    }
+    curl_ctx.buf.clear();
+    req_url = std::string{url_view}.append("/manifest");
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, req_url.data());
+    res = curl_easy_perform(curl_ctx.curl.get());
+    goto process_json_manifest;
+  }
+  if (res == CURLE_HTTP_RETURNED_ERROR) {
+    long status{};
+    curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_RESPONSE_CODE, &status);
+    if (status == 404) {
+      curl_ctx.buf.clear();
+      req_url = std::string{url_view}.append("/manifest");
+      curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_URL, req_url.data());
+      res = curl_easy_perform(curl_ctx.curl.get());
+    }
+  }
+process_json_manifest:
   if (res != CURLE_OK) {
     const auto url_buf{
         reinterpret_cast<char *>(std::malloc(req_url.length() + 1))};
@@ -194,137 +529,9 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   curl_off_t last_mod;
   curl_easy_getinfo(curl_ctx.curl.get(), CURLINFO_FILETIME_T, &last_mod);
   curl_ctx.curl.reset();
-  // Parse downloaded data
-  rapidjson::Document doc;
-  doc.ParseInsitu<rapidjson::kParseStopWhenDoneFlag>(curl_ctx.buf.data());
-  if (doc.HasParseError() || !doc.IsObject()) {
-    goto json_parse_err;
-  }
-  lib_ctx->dirty_flags.fetch_or(static_cast<int>(dirty_flag::s3),
-                                std::memory_order::relaxed);
-  {
-    std::unique_lock lock{lib_ctx->s3_mtx};
-    const auto srv_it{
-        std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
-    if (srv_it != lib_ctx->s3_servers.end()) {
-      srv_it->timestamp = static_cast<std::time_t>(last_mod);
-      // Clear all server references, in case some apps/depots have been removed
-      //    from the manifest
-      for (auto addr{std::to_address(srv_it)};
-           auto &app : lib_ctx->s3_cache | std::views::values) {
-        for (auto &depot : app | std::views::values) {
-          if (std::erase(depot.servers, addr)) {
-            depot.it = depot.servers.cbegin();
-          }
-        }
-        std::erase_if(app, [](const auto &depot) {
-          return depot.second.servers.empty();
-        });
-      }
-      std::erase_if(lib_ctx->s3_cache,
-                    [](const auto &app) { return app.second.empty(); });
-    }
-    const auto srv{
-        srv_it == lib_ctx->s3_servers.end()
-            ? &lib_ctx->s3_servers.emplace_back(
-                  std::string{url_view}, static_cast<std::time_t>(last_mod))
-            : std::to_address(srv_it)};
-    const auto apps{doc.FindMember("apps")};
-    if (apps == doc.MemberEnd() || !apps->value.IsObject()) {
-      goto json_parse_err;
-    }
-    const auto depot_keys{doc.FindMember("depot_keys")};
-    if (depot_keys == doc.MemberEnd() || !depot_keys->value.IsObject()) {
-      goto json_parse_err;
-    }
-    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt{
-        nullptr, sqlite3_finalize};
-    const auto db{lib_ctx->cache.get()};
-    const bool savepoint_created{sqlite3_exec(db, "SAVEPOINT s3", nullptr,
-                                              nullptr, nullptr) == SQLITE_OK};
-    if (savepoint_created) {
-      sqlite3_stmt *stmt_ptr;
-      constexpr std::string_view query{
-          "INSERT INTO pics_access_tokens (app_id, token) VALUES (?, ?)"};
-      if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
-        stmt.reset(stmt_ptr);
-      }
-    }
-    for (const auto &[id, value] : apps->value.GetObject()) {
-      if (!value.IsObject()) {
-        continue;
-      }
-      std::uint32_t app_id;
-      if (const std::string_view view{id.GetString(), id.GetStringLength()};
-          std::from_chars(view.begin(), view.end(), app_id).ec != std::errc{}) {
-        continue;
-      }
-      if (stmt) {
-        const auto pics_at{value.FindMember("pics_at")};
-        if (pics_at != value.MemberEnd() && pics_at->value.IsUint64()) {
-          sqlite3_bind_int(stmt.get(), 1, static_cast<int>(app_id));
-          sqlite3_bind_int64(
-              stmt.get(), 2,
-              static_cast<sqlite3_int64>(pics_at->value.GetUint64()));
-          sqlite3_step(stmt.get());
-          sqlite3_reset(stmt.get());
-          sqlite3_clear_bindings(stmt.get());
-        }
-      }
-      const auto depots{value.FindMember("depots")};
-      if (depots == value.MemberEnd() || !depots->value.IsArray()) {
-        continue;
-      }
-      for (auto &cache_app = lib_ctx->s3_cache[app_id];
-           const auto &depot : depots->value.GetArray()) {
-        if (!depot.IsUint()) {
-          continue;
-        }
-        auto &cache_depot{
-            cache_app[static_cast<std::uint32_t>(depot.GetUint())]};
-        cache_depot.servers.emplace_back(srv);
-        cache_depot.it = cache_depot.servers.cbegin();
-      }
-    }
-    lock.unlock();
-    stmt.reset();
-    if (savepoint_created) {
-      constexpr std::string_view query{
-          "INSERT INTO depot_keys (depot_id, key) VALUES (?, ?)"};
-      sqlite3_stmt *stmt_ptr;
-      if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
-                             nullptr) == SQLITE_OK) {
-        stmt.reset(stmt_ptr);
-        for (const auto &[id, value] : depot_keys->value.GetObject()) {
-          if (!value.IsString()) {
-            continue;
-          }
-          if (value.GetStringLength() != 44) {
-            continue;
-          }
-          std::uint32_t depot_id;
-          if (const std::string_view view{id.GetString(), id.GetStringLength()};
-              std::from_chars(view.begin(), view.end(), depot_id).ec !=
-              std::errc{}) {
-            continue;
-          }
-          tek_sc_aes256_key key;
-          tsci_u_base64_decode(value.GetString(), 44, key);
-          sqlite3_bind_int(stmt.get(), 1, static_cast<int>(depot_id));
-          sqlite3_bind_blob(stmt.get(), 2, key, sizeof key, SQLITE_STATIC);
-          sqlite3_step(stmt.get());
-          sqlite3_reset(stmt.get());
-          sqlite3_clear_bindings(stmt.get());
-        }
-      }
-      stmt.reset();
-      sqlite3_exec(db, "RELEASE s3", nullptr, nullptr, nullptr);
-    }
-  } // JSON parsing scope
-  return tsc_err_ok();
-json_parse_err:
-  return tsc_err_sub(TEK_SC_ERRC_s3c_manifest, TEK_SC_ERRC_json_parse);
+  return parse_manifest_json(*lib_ctx, url_view, last_mod, curl_ctx.buf)
+             ? tsc_err_ok()
+             : tsc_err_sub(TEK_SC_ERRC_s3c_manifest, TEK_SC_ERRC_json_parse);
 }
 
 const char *tek_sc_s3c_get_srv_for_mrc(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
