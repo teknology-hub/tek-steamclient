@@ -78,7 +78,6 @@ void cm_conn::handle_logon(const MessageHeader &header, const void *data,
   if (entry->timer_active) {
     uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), close_cb);
   } else {
-    --ref_count;
     delete &entry;
   }
   // Parse the payload

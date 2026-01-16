@@ -446,7 +446,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
 }
 
 void cm_conn::handle_post_disconnection() {
-  if (!--ref_count && delete_pending.load(std::memory_order::relaxed)) {
+  if (!ref_count && delete_pending.load(std::memory_order::relaxed)) {
     delete this;
   }
 }
@@ -565,7 +565,6 @@ void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
                   ->first);
         });
       } else {
-        --ref_count;
         const std::scoped_lock lock{a_entries_mtx};
         a_entries.erase(it);
       }
