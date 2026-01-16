@@ -682,8 +682,7 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *client,
                                 tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is connected
-  if (conn.conn_state.load(std::memory_order::relaxed) <
-      conn_state::connected) {
+  if (conn.state.load(std::memory_order::relaxed) < conn_state::connected) {
     auto data{auth_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(&conn, &data, conn.user_data);
     return;
@@ -736,8 +735,7 @@ void tek_sc_cm_auth_qr(tek_sc_cm_client *client, const char *device_name,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is connected
-  if (conn.conn_state.load(std::memory_order::relaxed) <
-      conn_state::connected) {
+  if (conn.state.load(std::memory_order::relaxed) < conn_state::connected) {
     auto data{auth_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(&conn, &data, conn.user_data);
     return;
@@ -829,8 +827,7 @@ void tek_sc_cm_auth_renew_token(tek_sc_cm_client *client, const char *token,
                                 tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is connected
-  if (conn.conn_state.load(std::memory_order::relaxed) <
-      conn_state::connected) {
+  if (conn.state.load(std::memory_order::relaxed) < conn_state::connected) {
     auto data{renew_data_errc(TEK_SC_ERRC_cm_not_connected)};
     cb(&conn, &data, conn.user_data);
     return;
@@ -885,8 +882,7 @@ void tek_sc_cm_get_enc_app_ticket(tek_sc_cm_client *client,
                                   long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     data->result = tsc_err_sub(TEK_SC_ERRC_cm_enc_app_ticket,
                                TEK_SC_ERRC_cm_not_signed_in);
     cb(&conn, &data, conn.user_data);

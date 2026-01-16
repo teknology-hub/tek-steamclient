@@ -661,8 +661,7 @@ void tek_sc_cm_get_licenses(tek_sc_cm_client *client,
                             tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     auto data{lic_data_errc(TEK_SC_ERRC_cm_not_signed_in)};
     cb(&conn, &data, conn.user_data);
     return;
@@ -699,8 +698,7 @@ void tek_sc_cm_get_access_token(tek_sc_cm_client *client,
     return;
   }
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_access_token, TEK_SC_ERRC_cm_not_signed_in);
     cb(&conn, data, conn.user_data);
@@ -749,8 +747,7 @@ void tek_sc_cm_get_product_info(tek_sc_cm_client *client,
     return;
   }
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_product_info, TEK_SC_ERRC_cm_not_signed_in);
     cb(&conn, data, conn.user_data);
@@ -800,8 +797,7 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *client, uint32_t changenumber,
                            tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     tek_sc_cm_data_pics_changes data;
     data.result =
         tsc_err_sub(TEK_SC_ERRC_cm_changes, TEK_SC_ERRC_cm_not_signed_in);

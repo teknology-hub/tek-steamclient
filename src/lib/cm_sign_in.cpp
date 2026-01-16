@@ -78,7 +78,7 @@ void cm_conn::handle_logon(const MessageHeader &header, const void *data,
   if (entry->timer_active) {
     uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), close_cb);
   } else {
-    delete &entry;
+    delete entry;
   }
   // Parse the payload
   msg_payloads::LogonResponse payload;
@@ -98,7 +98,7 @@ void cm_conn::handle_logon(const MessageHeader &header, const void *data,
       const std::scoped_lock lock{lics_mtx};
       num_lics = 0;
     }
-    conn_state.store(conn_state::signed_in, std::memory_order::release);
+    state.store(conn_state::signed_in, std::memory_order::release);
   }
   auto res{eresult == TEK_SC_CM_ERESULT_ok
                ? tsc_err_ok()
@@ -118,7 +118,7 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is connected
-  const auto cur_conn_state{conn.conn_state.load(std::memory_order::relaxed)};
+  const auto cur_conn_state{conn.state.load(std::memory_order::relaxed)};
   if (cur_conn_state == conn_state::signed_in) {
     // No-op
     return;
@@ -184,7 +184,7 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
                             tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is connected
-  const auto cur_conn_state{conn.conn_state.load(std::memory_order::relaxed)};
+  const auto cur_conn_state{conn.state.load(std::memory_order::relaxed)};
   if (cur_conn_state == conn_state::signed_in) {
     // No-op
     return;

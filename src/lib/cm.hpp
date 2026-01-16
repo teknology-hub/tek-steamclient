@@ -206,7 +206,7 @@ private:
 
 public:
   /// Current connection state.
-  std::atomic<conn_state> conn_state{};
+  std::atomic<conn_state> state{};
   /// Active response message await entires by job ID.
   std::map<std::uint64_t, msg_await_entry> a_entries;
   /// Mutex locking concurrent access to @ref a_entries.
