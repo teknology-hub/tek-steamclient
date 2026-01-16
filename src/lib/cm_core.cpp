@@ -204,7 +204,7 @@ static tek_sc_err fetch_server_list(std::vector<cm_server> &cm_servers,
 
 void cm_conn::handle_connection(CURLcode code) {
   if (code == CURLE_OK) {
-    conn_state.store(conn_state::connected, std::memory_order::relaxed);
+    state.store(conn_state::connected, std::memory_order::relaxed);
     // Send hello message
     msg_payloads::Hello payload;
     payload.set_protocol_version(protocol_ver);
@@ -281,7 +281,7 @@ void cm_conn::handle_connection(CURLcode code) {
       return;
     }
     // Otherwise report the error via callback
-    conn_state.store(conn_state::disconnected, std::memory_order::relaxed);
+    state.store(conn_state::disconnected, std::memory_order::relaxed);
     long status{};
     if (code == CURLE_HTTP_RETURNED_ERROR) {
       curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status);
@@ -304,7 +304,7 @@ void cm_conn::handle_connection(CURLcode code) {
 
 void cm_conn::handle_disconnection(tsci_ws_close_code code) {
   ws_conn::handle_disconnection(code);
-  conn_state.store(conn_state::disconnected, std::memory_order::relaxed);
+  state.store(conn_state::disconnected, std::memory_order::relaxed);
   steam_id = 0;
   session_id = 0;
   tsci_z_inflateEnd(&zstream);
@@ -577,7 +577,7 @@ void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
 //===-- CM API methods ----------------------------------------------------===//
 
 void cm_conn::destroy() {
-  if (conn_state.load(std::memory_order::relaxed) == conn_state::disconnected) {
+  if (state.load(std::memory_order::relaxed) == conn_state::disconnected) {
     // Client can be destroyed immediately
     delete this;
   } else {
@@ -592,10 +592,9 @@ void cm_conn::destroy() {
 
 void cm_conn::connect(cb_func *connection_cb, long fetch_timeout_ms,
                       cb_func *disconnection_cb) {
-  if (auto expected{conn_state::disconnected};
-      !conn_state.compare_exchange_strong(expected, conn_state::connecting,
-                                          std::memory_order::relaxed,
-                                          std::memory_order::relaxed)) {
+  if (auto expected{conn_state::disconnected}; !state.compare_exchange_strong(
+          expected, conn_state::connecting, std::memory_order::relaxed,
+          std::memory_order::relaxed)) {
     // Do nothing if there is already another connection
     return;
   }
@@ -632,7 +631,7 @@ void cm_conn::connect(cb_func *connection_cb, long fetch_timeout_ms,
 }
 
 void cm_conn::disconnect() {
-  switch (conn_state.load(std::memory_order::relaxed)) {
+  switch (state.load(std::memory_order::relaxed)) {
   case conn_state::disconnected:
     // Already disonnected
     return;

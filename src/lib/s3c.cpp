@@ -506,6 +506,7 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
     res = curl_easy_perform(curl_ctx.curl.get());
     break;
   default:
+    break;
   }
   if (res == CURLE_OK) {
     long cond_unmet{};
@@ -651,6 +652,7 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
     res = curl_easy_perform(curl.get());
     break;
   default:
+    break;
   }
   if (res != CURLE_OK) {
     const auto url_buf{
@@ -717,6 +719,7 @@ tek_sc_err tek_sc_s3c_get_depot_key(const char *url, long timeout_ms,
     res = curl_easy_perform(curl.get());
     break;
   default:
+    break;
   }
   if (res != CURLE_OK) {
     const auto url_buf{
@@ -775,6 +778,7 @@ tek_sc_err tek_sc_s3c_get_pics_at(const char *url, long timeout_ms,
     res = curl_easy_perform(curl.get());
     break;
   default:
+    break;
   }
   if (res != CURLE_OK) {
     const auto url_buf{

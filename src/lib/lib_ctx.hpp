@@ -114,7 +114,7 @@ using namespace tek::steamclient;
 /// @copydoc tek_sc_lib_ctx
 struct tek_sc_lib_ctx {
   /// Futex indicating current libuv event loop state.
-  std::atomic<loop_state> loop_state{loop_state::stopped};
+  std::atomic<loop_state> state{loop_state::stopped};
   /// Cached OS type value.
   cm::msg_payloads::OsType os_type;
   /// curl multi handle used for establishing WebSocket connections.

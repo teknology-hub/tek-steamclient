@@ -280,8 +280,7 @@ void tek_sc_cm_get_depot_key(tek_sc_cm_client *client,
     return;
   }
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_depot_key, TEK_SC_ERRC_cm_not_signed_in);
     cb(&conn, data, conn.user_data);
@@ -317,8 +316,7 @@ void tek_sc_cm_get_dp_info(tek_sc_cm_client *client,
                            tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     tek_sc_cm_data_dp_info data;
     data.result = tsc_err_sub(TEK_SC_ERRC_cm_depot_patch_info,
                               TEK_SC_ERRC_cm_not_signed_in);
@@ -356,8 +354,7 @@ void tek_sc_cm_get_mrc(tek_sc_cm_client *client, tek_sc_cm_data_mrc *data,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     data->result =
         tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_cm_not_signed_in);
     cb(&conn, data, conn.user_data);
@@ -394,8 +391,7 @@ void tek_sc_cm_get_sp_servers(tek_sc_cm_client *client,
                               tek_sc_cm_callback_func *cb, long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
-  if (conn.conn_state.load(std::memory_order::relaxed) !=
-      conn_state::signed_in) {
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
     tek_sc_cm_data_sp_servers data;
     data.result =
         tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_not_signed_in);

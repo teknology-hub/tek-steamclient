@@ -130,7 +130,7 @@ static void process_curl_msgs(lib_ctx &ctx) {
 static void async_cb(uv_async_t *_Nonnull async) {
   auto &ctx{*reinterpret_cast<lib_ctx *>(
       uv_handle_get_data(reinterpret_cast<const uv_handle_t *>(async)))};
-  if (ctx.loop_state.load(std::memory_order::relaxed) == loop_state::stopped) {
+  if (ctx.state.load(std::memory_order::relaxed) == loop_state::stopped) {
     uv_stop(&ctx.loop);
     return;
   }
@@ -165,7 +165,7 @@ static void async_cb(uv_async_t *_Nonnull async) {
     return;
   }
   while (!ctx.conn_queue.empty()) {
-    const scope_exit pop{[&queue{ctx.conn_queue}] { queue.pop_front(); }};
+    const scope_exit pop{[&ctx] { ctx.conn_queue.pop_front(); }};
     auto &req{ctx.conn_queue.front()};
     auto &conn{req.conn};
     conn.url = std::move(req.url);
@@ -302,29 +302,29 @@ static int curlsocket_cb(CURL *, curl_socket_t sock, int what,
 static void event_loop(void *_Nonnull arg) noexcept {
   uv_thread_setname("tsc event loop");
   auto &ctx{*reinterpret_cast<lib_ctx *>(arg)};
-  scope_exit fail{[&loop_state{ctx.loop_state}] {
-    loop_state.store(loop_state::error, std::memory_order::relaxed);
-    tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&loop_state));
+  scope_exit fail{[&ctx] {
+    ctx.state.store(loop_state::error, std::memory_order::relaxed);
+    tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&ctx.state));
   }};
   if (uv_loop_init(&ctx.loop) != 0) {
     return;
   }
-  const scope_exit loop_close{[&loop{ctx.loop}] {
-    uv_run(&loop, UV_RUN_NOWAIT);
-    uv_loop_close(&loop);
+  const scope_exit loop_close{[&ctx] {
+    uv_run(&ctx.loop, UV_RUN_NOWAIT);
+    uv_loop_close(&ctx.loop);
   }};
   if (uv_async_init(&ctx.loop, &ctx.loop_async, async_cb) != 0) {
     return;
   }
-  const scope_exit async_close{[&async{ctx.loop_async}] {
-    uv_close(reinterpret_cast<uv_handle_t *>(&async), nullptr);
+  const scope_exit async_close{[&ctx] {
+    uv_close(reinterpret_cast<uv_handle_t *>(&ctx.loop_async), nullptr);
   }};
   uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&ctx.loop_async), &ctx);
   if (uv_timer_init(&ctx.loop, &ctx.curlm_timer) != 0) {
     return;
   }
-  const scope_exit timer_close{[&timer{ctx.curlm_timer}] {
-    uv_close(reinterpret_cast<uv_handle_t *>(&timer), nullptr);
+  const scope_exit timer_close{[&ctx] {
+    uv_close(reinterpret_cast<uv_handle_t *>(&ctx.curlm_timer), nullptr);
   }};
   uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&ctx.curlm_timer), &ctx);
   ctx.curlm.reset(curl_multi_init());
@@ -336,8 +336,8 @@ static void event_loop(void *_Nonnull arg) noexcept {
   curl_multi_setopt(ctx.curlm.get(), CURLMOPT_SOCKETFUNCTION, curlsocket_cb);
   curl_multi_setopt(ctx.curlm.get(), CURLMOPT_TIMERFUNCTION, curltimer_cb);
   fail.release();
-  ctx.loop_state.store(loop_state::running, std::memory_order::relaxed);
-  tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&ctx.loop_state));
+  ctx.state.store(loop_state::running, std::memory_order::relaxed);
+  tsci_os_futex_wake(reinterpret_cast<std::atomic_uint32_t *>(&ctx.state));
   uv_run(&ctx.loop, UV_RUN_DEFAULT);
 }
 
@@ -416,16 +416,16 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
   if (uv_thread_create(&ctx->loop_thread, event_loop, ctx.get()) != 0) {
     return nullptr;
   }
-  tsci_os_futex_wait(reinterpret_cast<std::atomic_uint32_t *>(&ctx->loop_state),
+  tsci_os_futex_wait(reinterpret_cast<std::atomic_uint32_t *>(&ctx->state),
                      static_cast<std::uint32_t>(loop_state::stopped), 3000);
-  if (ctx->loop_state.load(std::memory_order::relaxed) == loop_state::error) {
+  if (ctx->state.load(std::memory_order::relaxed) == loop_state::error) {
     uv_thread_join(&ctx->loop_thread);
     return nullptr;
   }
-  scope_exit stop_loop{[&ctx{*ctx.get()}] {
-    ctx.loop_state.store(loop_state::stopped, std::memory_order::relaxed);
-    uv_async_send(&ctx.loop_async);
-    uv_thread_join(&ctx.loop_thread);
+  scope_exit stop_loop{[ctx{ctx.get()}] {
+    ctx->state.store(loop_state::stopped, std::memory_order::relaxed);
+    uv_async_send(&ctx->loop_async);
+    uv_thread_join(&ctx->loop_thread);
   }};
   ctx->os_type = get_os_type();
   // Get cache file path
@@ -569,7 +569,7 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
 }
 
 void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
-  ctx->loop_state.store(loop_state::stopped, std::memory_order::relaxed);
+  ctx->state.store(loop_state::stopped, std::memory_order::relaxed);
   uv_async_send(&ctx->loop_async);
   uv_thread_join(&ctx->loop_thread);
   const auto dirty_flags{static_cast<dirty_flag>(
