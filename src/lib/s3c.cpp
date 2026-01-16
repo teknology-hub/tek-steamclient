@@ -38,7 +38,6 @@
 #include <ranges>
 #include <rapidjson/document.h>
 #include <rapidjson/reader.h>
-#include <shared_mutex>
 #include <span>
 #include <sqlite3.h>
 #include <string>
@@ -69,6 +68,14 @@ struct tsc_curl_ctx {
   std::vector<unsigned char> buf;
 };
 
+/// Stack buffer descriptor for downloads.
+struct tsc_stack_buf {
+  /// Pointer to the buffer to write data to.
+  char *_Nonnull data;
+  /// Size of the buffer pointed to by @ref data, in bytes.
+  std::size_t size;
+};
+
 //===-- Binary manifest types ---------------------------------------------===//
 //
 // The structure of binary manifest is as following:
@@ -81,7 +88,9 @@ struct tsc_curl_ctx {
 struct bmanifest_hdr {
   /// CRC32 checksum for the remainder of serialized data (excluding itself).
   std::uint32_t crc;
-  /// Total number of application entries in the manifest.
+  /// Total number of application entries in the manifest. A negative value
+  ///    indcates that the server is "ultimate" variant that can provide
+  ///    manifest request codes for every manifest in existence.
   std::int32_t num_apps;
   /// Total number of depot entries in the manifest.
   std::int32_t num_depots;
@@ -137,24 +146,23 @@ static std::size_t tsc_curl_write_manifest(const char *_Nonnull buf,
   return size;
 }
 
-/// curl write data callback for manifest request code fetching, that copies
-///    curl data to specified stack buffer.
+/// curl write data callback that copies data to specified stack buffer.
 ///
 /// @param [in] buf
 ///    Pointer to the buffer containing downloaded content.
 /// @param size
 ///    Size of the content in bytes.
 /// @param [out] out_buf
-///    Stack buffer that should receive the content.
+///    Stack buffer receiving the content.
 /// @return @p size, or `CURL_WRITEFUNC_ERROR` on error.
 [[using gnu: nonnull(1), access(read_only, 1, 3)]]
-static std::size_t tsc_curl_write_mrc(const char *_Nonnull buf, std::size_t,
+static std::size_t tsc_curl_write_buf(const char *_Nonnull buf, std::size_t,
                                       std::size_t size,
-                                      std::array<char, 20> &out_buf) {
-  if (size > out_buf.size()) {
+                                      tsc_stack_buf &out_buf) {
+  if (size > out_buf.size) {
     return CURL_WRITEFUNC_ERROR;
   }
-  std::ranges::copy_n(buf, size, out_buf.data());
+  std::ranges::copy_n(buf, size, out_buf.data);
   return size;
 }
 
@@ -199,6 +207,16 @@ static bool parse_manifest_json(lib_ctx &ctx, const std::string_view &url,
     }
     std::erase_if(ctx.s3_cache,
                   [](const auto &app) { return app.second.empty(); });
+  }
+  const auto ultimate{doc.FindMember("ultimate")};
+  if (ultimate != doc.MemberEnd() && ultimate->value.IsBool() &&
+      ultimate->value.GetBool()) {
+    if (srv_it != ctx.s3_servers.end()) {
+      ctx.s3_servers.erase(srv_it);
+    }
+    ctx.s3u_servers.emplace_back(std::string{url});
+    ctx.s3u_servers_it = ctx.s3u_servers.cbegin();
+    return true;
   }
   const auto srv{srv_it == ctx.s3_servers.end()
                      ? &ctx.s3_servers.emplace_back(
@@ -321,8 +339,9 @@ static tek_sc_errc parse_manifest_bin(lib_ctx &ctx, const std::string_view &url,
                               data.size() - sizeof hdr.crc)) {
     return TEK_SC_ERRC_crc_mismatch;
   }
-  const std::span apps{reinterpret_cast<const bmanifest_app *>(&hdr + 1),
-                       static_cast<std::size_t>(hdr.num_apps)};
+  const std::span apps{
+      reinterpret_cast<const bmanifest_app *>(&hdr + 1),
+      static_cast<std::size_t>(hdr.num_apps < 0 ? 0 : hdr.num_apps)};
   auto next_depot{
       reinterpret_cast<const std::uint32_t *>(std::to_address(apps.end()))};
   const std::span depot_keys{reinterpret_cast<const bmanifest_depot_key *>(
@@ -358,6 +377,14 @@ static tek_sc_errc parse_manifest_bin(lib_ctx &ctx, const std::string_view &url,
     }
     std::erase_if(ctx.s3_cache,
                   [](const auto &app) { return app.second.empty(); });
+  }
+  if (hdr.num_apps < 0) {
+    if (srv_it != ctx.s3_servers.end()) {
+      ctx.s3_servers.erase(srv_it);
+    }
+    ctx.s3u_servers.emplace_back(std::string{url});
+    ctx.s3u_servers_it = ctx.s3u_servers.cbegin();
+    return TEK_SC_ERRC_ok;
   }
   const auto srv{srv_it == ctx.s3_servers.end()
                      ? &ctx.s3_servers.emplace_back(
@@ -434,6 +461,10 @@ extern "C" {
 
 tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
                                     long timeout_ms) {
+  if (const std::scoped_lock lock{lib_ctx->s3_mtx};
+      std::ranges::contains(lib_ctx->s3u_servers, url)) {
+    return tsc_err_ok();
+  }
   tsc_curl_ctx curl_ctx;
   if (!curl_ctx.curl) {
     return tsc_err_sub(TEK_SC_ERRC_s3c_manifest, TEK_SC_ERRC_curle_init);
@@ -455,14 +486,15 @@ tek_sc_err tek_sc_s3c_sync_manifest(tek_sc_lib_ctx *lib_ctx, const char *url,
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_WRITEFUNCTION,
                    tsc_curl_write_manifest);
-  lib_ctx->s3_mtx.lock_shared();
-  const auto srv{
-      std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
-  const auto timestamp{srv == lib_ctx->s3_servers.end()
-                           ? 0
-                           : static_cast<curl_off_t>(srv->timestamp)};
-  lib_ctx->s3_mtx.unlock_shared();
-  curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEVALUE_LARGE, timestamp);
+  {
+    const std::scoped_lock lock{lib_ctx->s3_mtx};
+    const auto srv{
+        std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
+    const auto timestamp{srv == lib_ctx->s3_servers.end()
+                             ? 0
+                             : static_cast<curl_off_t>(srv->timestamp)};
+    curl_easy_setopt(curl_ctx.curl.get(), CURLOPT_TIMEVALUE_LARGE, timestamp);
+  }
   auto res{curl_easy_perform(curl_ctx.curl.get())};
   switch (res) {
   case CURLE_COULDNT_RESOLVE_HOST:
@@ -534,9 +566,40 @@ process_json_manifest:
              : tsc_err_sub(TEK_SC_ERRC_s3c_manifest, TEK_SC_ERRC_json_parse);
 }
 
+void tek_sc_s3c_remove_server(tek_sc_lib_ctx *lib_ctx, const char *url) {
+  const std::string_view url_view{url};
+  const std::scoped_lock lock{lib_ctx->s3_mtx};
+  std::erase(lib_ctx->s3u_servers, url_view);
+  const auto srv_it{
+      std::ranges::find(lib_ctx->s3_servers, url_view, &server::url)};
+  if (srv_it == lib_ctx->s3_servers.end()) {
+    return;
+  }
+  for (auto addr{std::to_address(srv_it)};
+       auto &app : lib_ctx->s3_cache | std::views::values) {
+    for (auto &depot : app | std::views::values) {
+      if (std::erase(depot.servers, addr)) {
+        depot.it = depot.servers.cbegin();
+      }
+    }
+    std::erase_if(
+        app, [](const auto &depot) { return depot.second.servers.empty(); });
+  }
+  std::erase_if(lib_ctx->s3_cache,
+                [](const auto &app) { return app.second.empty(); });
+  lib_ctx->s3_servers.erase(srv_it);
+}
+
 const char *tek_sc_s3c_get_srv_for_mrc(tek_sc_lib_ctx *lib_ctx, uint32_t app_id,
                                        uint32_t depot_id) {
-  const std::shared_lock lock{lib_ctx->s3_mtx};
+  const std::scoped_lock lock{lib_ctx->s3_mtx};
+  if (!lib_ctx->s3u_servers.empty()) {
+    const auto res{lib_ctx->s3u_servers_it->data()};
+    if (++lib_ctx->s3u_servers_it == lib_ctx->s3u_servers.cend()) {
+      lib_ctx->s3u_servers_it = lib_ctx->s3u_servers.cbegin();
+    }
+    return res;
+  }
   const auto app_it{lib_ctx->s3_cache.find(app_id)};
   if (app_it == lib_ctx->s3_cache.end()) {
     return nullptr;
@@ -570,13 +633,14 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
   curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
   std::array<char, 20> buf;
-  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &buf);
+  tsc_stack_buf stack_buf{.data = buf.data(), .size = buf.size()};
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &stack_buf);
   const auto req_url{std::format(
       std::locale::classic(), "{}/mrc?app_id={}&depot_id={}&manifest_id={}",
       url, data->app_id, data->depot_id, data->manifest_id)};
   curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
   curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
-  curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_mrc);
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_buf);
   auto res{curl_easy_perform(curl.get())};
   switch (res) {
   case CURLE_COULDNT_RESOLVE_HOST:
@@ -608,7 +672,7 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
   curl_off_t content_len;
   if (curl_easy_getinfo(curl.get(), CURLINFO_CONTENT_LENGTH_DOWNLOAD_T,
                         &content_len) != CURLE_OK ||
-      content_len <= 0 || content_len > 20) {
+      content_len <= 0 || static_cast<std::size_t>(content_len) > buf.size()) {
     data->result = tsc_err_sub(TEK_SC_ERRC_s3c_mrc, TEK_SC_ERRC_invalid_data);
     return;
   };
@@ -621,6 +685,225 @@ void tek_sc_s3c_get_mrc(const char *url, long timeout_ms,
     return;
   }
   data->result = tsc_err_ok();
+}
+
+tek_sc_err tek_sc_s3c_get_depot_key(const char *url, long timeout_ms,
+                                    uint32_t depot_id, tek_sc_aes256_key key) {
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
+  if (!curl) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_depot_key, TEK_SC_ERRC_curle_init);
+  }
+  curl_easy_setopt(curl.get(), CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl.get(), CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
+  curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
+  curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
+  std::array<char, 44> buf;
+  tsc_stack_buf stack_buf{.data = buf.data(), .size = buf.size()};
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &stack_buf);
+  const auto req_url{std::format(std::locale::classic(),
+                                 "{}/depot_key?depot_id={}", url, depot_id)};
+  curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
+  curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_buf);
+  auto res{curl_easy_perform(curl.get())};
+  switch (res) {
+  case CURLE_COULDNT_RESOLVE_HOST:
+  case CURLE_PEER_FAILED_VERIFICATION:
+    curl_easy_setopt(curl.get(), CURLOPT_RESOLVE, &cloudflare_dns_resolve);
+    curl_easy_setopt(curl.get(), CURLOPT_DOH_URL,
+                     "https://cloudflare-dns.com/dns-query");
+    res = curl_easy_perform(curl.get());
+    break;
+  default:
+  }
+  if (res != CURLE_OK) {
+    const auto url_buf{
+        reinterpret_cast<char *>(std::malloc(req_url.length() + 1))};
+    if (url_buf) {
+      std::ranges::copy(req_url.begin(), req_url.end() + 1, url_buf);
+    }
+    long status{};
+    if (res == CURLE_HTTP_RETURNED_ERROR) {
+      curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status);
+    }
+    return {.type = TEK_SC_ERR_TYPE_curle,
+            .primary = TEK_SC_ERRC_s3c_depot_key,
+            .auxiliary = res,
+            .extra = static_cast<int>(status),
+            .uri = url_buf};
+  }
+  curl_off_t content_len;
+  if (curl_easy_getinfo(curl.get(), CURLINFO_CONTENT_LENGTH_DOWNLOAD_T,
+                        &content_len) != CURLE_OK ||
+      static_cast<std::size_t>(content_len) != buf.size()) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_depot_key, TEK_SC_ERRC_invalid_data);
+  };
+  curl.reset();
+  tsci_u_base64_decode(buf.data(), buf.size(), key);
+  return tsc_err_ok();
+}
+
+tek_sc_err tek_sc_s3c_get_pics_at(const char *url, long timeout_ms,
+                                  uint32_t app_id, uint64_t *token) {
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{curl_easy_init(),
+                                                           curl_easy_cleanup};
+  if (!curl) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_pics_at, TEK_SC_ERRC_curle_init);
+  }
+  curl_easy_setopt(curl.get(), CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl.get(), CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
+  curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT_MS, timeout_ms);
+  curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT_MS, 8000L);
+  std::array<char, 20> buf;
+  tsc_stack_buf stack_buf{.data = buf.data(), .size = buf.size()};
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &stack_buf);
+  const auto req_url{
+      std::format(std::locale::classic(), "{}/pics_at?app_id={}", url, app_id)};
+  curl_easy_setopt(curl.get(), CURLOPT_URL, req_url.data());
+  curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, TEK_SC_UA);
+  curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, tsc_curl_write_buf);
+  auto res{curl_easy_perform(curl.get())};
+  switch (res) {
+  case CURLE_COULDNT_RESOLVE_HOST:
+  case CURLE_PEER_FAILED_VERIFICATION:
+    curl_easy_setopt(curl.get(), CURLOPT_RESOLVE, &cloudflare_dns_resolve);
+    curl_easy_setopt(curl.get(), CURLOPT_DOH_URL,
+                     "https://cloudflare-dns.com/dns-query");
+    res = curl_easy_perform(curl.get());
+    break;
+  default:
+  }
+  if (res != CURLE_OK) {
+    const auto url_buf{
+        reinterpret_cast<char *>(std::malloc(req_url.length() + 1))};
+    if (url_buf) {
+      std::ranges::copy(req_url.begin(), req_url.end() + 1, url_buf);
+    }
+    long status{};
+    if (res == CURLE_HTTP_RETURNED_ERROR) {
+      curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status);
+    }
+    return {.type = TEK_SC_ERR_TYPE_curle,
+            .primary = TEK_SC_ERRC_s3c_pics_at,
+            .auxiliary = res,
+            .extra = static_cast<int>(status),
+            .uri = url_buf};
+  }
+  curl_off_t content_len;
+  if (curl_easy_getinfo(curl.get(), CURLINFO_CONTENT_LENGTH_DOWNLOAD_T,
+                        &content_len) != CURLE_OK ||
+      content_len <= 0 || static_cast<std::size_t>(content_len) > buf.size()) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_pics_at, TEK_SC_ERRC_invalid_data);
+  };
+  curl.reset();
+  if (const std::string_view at{buf.data(),
+                                static_cast<std::size_t>(content_len)};
+      std::from_chars(at.begin(), at.end(), *token).ec != std::errc{}) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_pics_at, TEK_SC_ERRC_invalid_data);
+  }
+  return tsc_err_ok();
+}
+
+void tek_sc_s3c_ctx_get_mrc(tek_sc_lib_ctx *lib_ctx, long timeout_ms,
+                            tek_sc_cm_data_mrc *data) {
+  data->result = tsc_err_ok();
+  const std::scoped_lock lock{lib_ctx->s3_mtx};
+  if (!lib_ctx->s3u_servers.empty()) {
+    for (const auto start_it{lib_ctx->s3u_servers_it};;) {
+      tek_sc_s3c_get_mrc(lib_ctx->s3u_servers_it->data(), timeout_ms, data);
+      if (tek_sc_err_success(&data->result)) {
+        return;
+      }
+      if (++lib_ctx->s3u_servers_it == lib_ctx->s3u_servers.cend()) {
+        lib_ctx->s3u_servers_it = lib_ctx->s3u_servers.cbegin();
+      }
+      if (lib_ctx->s3u_servers_it == start_it) {
+        break;
+      } else if (data->result.uri) {
+        std::free(const_cast<char *>(data->result.uri));
+      }
+    }
+  }
+  if (const auto app_it{lib_ctx->s3_cache.find(data->app_id)};
+      app_it != lib_ctx->s3_cache.end()) {
+    if (const auto depot_it{app_it->second.find(data->depot_id)};
+        depot_it != app_it->second.end()) {
+      auto &entry{depot_it->second};
+      for (const auto start_it{entry.it};;) {
+        tek_sc_s3c_get_mrc((*entry.it)->url.data(), timeout_ms, data);
+        if (tek_sc_err_success(&data->result)) {
+          return;
+        }
+        if (++entry.it == entry.servers.cend()) {
+          entry.it = entry.servers.cbegin();
+        }
+        if (entry.it == start_it) {
+          break;
+        } else if (data->result.uri) {
+          std::free(const_cast<char *>(data->result.uri));
+        }
+      }
+    }
+  }
+  if (tek_sc_err_success(&data->result)) {
+    data->result = tsc_err_sub(TEK_SC_ERRC_s3c_mrc, TEK_SC_ERRC_s3c_no_srv);
+  }
+}
+
+tek_sc_err tek_sc_s3c_ctx_get_depot_key(tek_sc_lib_ctx *lib_ctx,
+                                        long timeout_ms, uint32_t depot_id,
+                                        tek_sc_aes256_key key) {
+  tek_sc_err res;
+  const std::scoped_lock lock{lib_ctx->s3_mtx};
+  if (lib_ctx->s3u_servers.empty()) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_depot_key, TEK_SC_ERRC_s3c_no_srv);
+  }
+  for (const auto start_it{lib_ctx->s3u_servers_it};;) {
+    res = tek_sc_s3c_get_depot_key(lib_ctx->s3u_servers_it->data(), timeout_ms,
+                                   depot_id, key);
+    if (tek_sc_err_success(&res)) {
+      tek_sc_lib_add_depot_key(lib_ctx, depot_id, key);
+      return res;
+    }
+    if (++lib_ctx->s3u_servers_it == lib_ctx->s3u_servers.cend()) {
+      lib_ctx->s3u_servers_it = lib_ctx->s3u_servers.cbegin();
+    }
+    if (lib_ctx->s3u_servers_it == start_it) {
+      break;
+    } else if (res.uri) {
+      std::free(const_cast<char *>(res.uri));
+    }
+  }
+  return res;
+}
+
+tek_sc_err tek_sc_s3c_ctx_get_pics_at(tek_sc_lib_ctx *lib_ctx, long timeout_ms,
+                                      uint32_t app_id, uint64_t *token) {
+  tek_sc_err res;
+  const std::scoped_lock lock{lib_ctx->s3_mtx};
+  if (lib_ctx->s3u_servers.empty()) {
+    return tsc_err_sub(TEK_SC_ERRC_s3c_pics_at, TEK_SC_ERRC_s3c_no_srv);
+  }
+  for (const auto start_it{lib_ctx->s3u_servers_it};;) {
+    res = tek_sc_s3c_get_pics_at(lib_ctx->s3u_servers_it->data(), timeout_ms,
+                                 app_id, token);
+    if (tek_sc_err_success(&res)) {
+      tek_sc_lib_add_pics_at(lib_ctx, app_id, *token);
+      return res;
+    }
+    if (++lib_ctx->s3u_servers_it == lib_ctx->s3u_servers.cend()) {
+      lib_ctx->s3u_servers_it = lib_ctx->s3u_servers.cbegin();
+    }
+    if (lib_ctx->s3u_servers_it == start_it) {
+      break;
+    } else if (res.uri) {
+      std::free(const_cast<char *>(res.uri));
+    }
+  }
+  return res;
 }
 
 } // extern "C"
