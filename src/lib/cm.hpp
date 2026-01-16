@@ -17,6 +17,7 @@
 
 #include "common/error.h"
 #include "lib_ctx.hpp"
+#include "os.h"
 #include "tek-steamclient/base.h" // IWYU pragma: keep
 #include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
@@ -239,6 +240,9 @@ private:
   /// If a disconnection is initiated due to a CM server's response, this field
   ///    will contain it.
   tek_sc_errc disconnection_reason;
+  /// Pointer to the futex that will be set to 1 and waken when destroying the
+  ///    instance.
+  std::atomic<std::atomic_uint32_t *> destroy_futex{};
 
 public:
   /// Value indicating whether the instance should be deleted after being
@@ -247,6 +251,13 @@ public:
 
   constexpr cm_conn(lib_ctx &ctx, void *_Nullable user_data) noexcept
       : ws_conn{ctx}, user_data{user_data} {}
+  constexpr ~cm_conn() {
+    const auto futex{destroy_futex.load(std::memory_order::acquire)};
+    if (futex) {
+      futex->store(1, std::memory_order::release);
+      tsci_os_futex_wake(futex);
+    }
+  }
 
   //===-- Methods ---------------------------------------------------------===//
 
