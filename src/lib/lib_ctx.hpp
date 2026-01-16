@@ -30,7 +30,6 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <sqlite3.h>
 #include <string>
 #include <uv.h>
@@ -142,13 +141,18 @@ struct tek_sc_lib_ctx {
   std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> cache{nullptr,
                                                               sqlite3_close_v2};
 #ifdef TEK_SCB_S3C
+  /// Known tek-s3u server URLs.
+  std::vector<std::string> s3u_servers;
+  /// Iterator pointing to the next tek-s3u server to use.
+  decltype(s3u_servers)::const_iterator s3u_servers_it;
   /// Known tek-s3 servers.
   std::vector<s3c::server> s3_servers;
   /// Map of app and depot IDs to tek-s3 server entries that can provide
   ///    manifest request codes for the depot.
   std::map<std::uint32_t, std::map<std::uint32_t, s3c::cache_entry>> s3_cache;
-  /// Mutex locking concurrent access to @ref s3_servers and @ref s3_cache.
-  std::shared_mutex s3_mtx;
+  /// Mutex locking concurrent access to @ref s3u_servers, @ref s3u_servers_it,
+  ///    @ref s3_servers and @ref s3_cache.
+  std::mutex s3_mtx;
 #endif // def TEK_SCB_S3C
   /// Flags indicating which cache fields have changed and should be written
   ///    back to the cache file. Holds a @ref tek::steamclient::dirty_flag

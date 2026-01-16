@@ -16,10 +16,14 @@
 #include "common/am.h"
 
 #include "common/error.h"
+#include "config.h" // IWYU pragma: keep
 #include "os.h"
 #include "tek-steamclient/am.h"
 #include "tek-steamclient/base.h"
 #include "tek-steamclient/error.h"
+#ifdef TEK_SCB_S3C
+#include "tek-steamclient/s3c.h"
+#endif // def TEK_SCB_S3C
 
 #include <pthread.h>
 #include <sqlite3.h>
@@ -163,6 +167,34 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *_Nonnull client,
       if (entry->result.type == TEK_SC_ERR_TYPE_sub &&
           entry->result.auxiliary == TEK_SC_ERRC_cm_access_token_denied &&
           !ctx->requested_tokens) {
+#ifdef TEK_SCB_S3C
+        auto const req_res = tek_sc_s3c_ctx_get_pics_at(
+            am->lib_ctx, ctx->timeout, entry->id, &entry->access_token);
+        if (tek_sc_err_success(&req_res)) {
+          res = TSCP_AT_RETRY;
+          continue;
+        }
+        bool not_found;
+        switch (req_res.type) {
+        case TEK_SC_ERR_TYPE_sub:
+          not_found = req_res.auxiliary == TEK_SC_ERRC_s3c_no_srv;
+          break;
+        case TEK_SC_ERR_TYPE_curle:
+          if (req_res.extra == 404) {
+            free((void *)req_res.uri);
+            not_found = true;
+          } else {
+            not_found = false;
+          }
+          break;
+        default:
+          not_found = false;
+        }
+        if (!not_found) {
+          err = req_res;
+          goto failure;
+        }
+#endif // def TEK_SCB_S3C
         res = TSCP_AT_REQUEST;
         break;
       }

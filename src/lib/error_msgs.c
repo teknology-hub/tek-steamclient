@@ -249,6 +249,12 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
     return tsc_gettext("Zip extraction failure");
   case TEK_SC_ERRC_zstd:
     return tsc_gettext("Zstandard decompression failure");
+  case TEK_SC_ERRC_s3c_no_srv:
+    return tsc_gettext("There are no available tek-s3 servers");
+  case TEK_SC_ERRC_s3c_depot_key:
+    return tsc_gettext("Failed to get depot decryption key from tek-s3 server");
+  case TEK_SC_ERRC_s3c_pics_at:
+    return tsc_gettext("Failed to get PICS access token from tek-s3 server");
   default:
     return tsc_gettext("Unknown");
   } // switch (errc)

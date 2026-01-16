@@ -525,14 +525,19 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
         stmt_ptr, sqlite3_finalize};
     for (int res{sqlite3_step(stmt.get())}; res == SQLITE_ROW;
          res = sqlite3_step(stmt.get())) {
-      ctx->s3_servers.emplace_back(
-          std::string{
-              reinterpret_cast<const char *>(
-                  sqlite3_column_text(stmt.get(), 0)),
-              static_cast<std::size_t>(sqlite3_column_bytes(stmt.get(), 0))},
-          static_cast<std::time_t>(sqlite3_column_int64(stmt.get(), 1)));
+      std::string url{
+          reinterpret_cast<const char *>(sqlite3_column_text(stmt.get(), 0)),
+          static_cast<std::size_t>(sqlite3_column_bytes(stmt.get(), 0))};
+      const auto timestamp{sqlite3_column_int64(stmt.get(), 1)};
+      if (timestamp == -2) {
+        ctx->s3u_servers.emplace_back(std::move(url));
+      } else {
+        ctx->s3_servers.emplace_back(std::move(url),
+                                     static_cast<std::time_t>(timestamp));
+      }
     }
   }
+  ctx->s3u_servers_it = ctx->s3u_servers.cbegin();
   // Get tek-s3 cache
   query = "SELECT app_id, depot_id, srv_index FROM s3_cache";
   if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
@@ -625,9 +630,24 @@ void tek_sc_lib_cleanup(tek_sc_lib_ctx *ctx) {
           "INSERT INTO s3_servers (url, timestamp) VALUES (?, ?)"};
       if (sqlite3_prepare_v2(db, query.data(), query.length() + 1, &stmt_ptr,
                              nullptr) == SQLITE_OK) {
-        for (const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
-                 srv_stmt{stmt_ptr, sqlite3_finalize};
-             const auto &server : ctx->s3_servers) {
+        const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>
+            srv_stmt{stmt_ptr, sqlite3_finalize};
+        for (const auto &server : ctx->s3u_servers) {
+          if (sqlite3_bind_text(srv_stmt.get(), 1, server.data(),
+                                server.length(), SQLITE_STATIC) != SQLITE_OK) {
+            break;
+          }
+          if (sqlite3_bind_int64(srv_stmt.get(), 2, -2) != SQLITE_OK) {
+            break;
+          }
+          const int res{sqlite3_step(srv_stmt.get())};
+          if (res != SQLITE_DONE && res != SQLITE_CONSTRAINT) {
+            break;
+          }
+          sqlite3_reset(srv_stmt.get());
+          sqlite3_clear_bindings(srv_stmt.get());
+        }
+        for (const auto &server : ctx->s3_servers) {
           if (sqlite3_bind_text(srv_stmt.get(), 1, server.url.data(),
                                 server.url.length(),
                                 SQLITE_STATIC) != SQLITE_OK) {

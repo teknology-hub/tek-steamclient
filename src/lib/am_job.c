@@ -1,6 +1,6 @@
 //===-- am_job.c - Steam application manager job skeleton -----------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -107,6 +107,29 @@ static inline bool tscp_am_is_err(const tek_sc_err *_Nonnull err) {
 static inline bool tscp_am_is_finished(const tek_sc_err *_Nonnull err) {
   return err->primary == TEK_SC_ERRC_ok ||
          err->primary == TEK_SC_ERRC_up_to_date;
+}
+
+/// Check if specified @ref tek_sc_err indicates that no tek-s3 server was able
+///    to provide a resource.
+///
+/// @param [in] err
+///    Pointer to the @ref tek_sc_err to examine.
+/// @return Value indicating whether @p err indicates that no tek-s3 server was
+///    able to provide a resource.
+[[gnu::nonnull(1), gnu::access(read_only, 1)]]
+static inline bool tscp_am_s3_not_found(const tek_sc_err *_Nonnull err) {
+  switch (err->type) {
+  case TEK_SC_ERR_TYPE_sub:
+    return err->auxiliary == TEK_SC_ERRC_s3c_no_srv;
+  case TEK_SC_ERR_TYPE_curle:
+    if (err->extra == 404) {
+      free((void *)err->uri);
+      return true;
+    }
+    return false;
+  default:
+    return false;
+  }
 }
 
 /// SteamPipe manifest download progress handler.
@@ -272,15 +295,25 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   tek_sc_aes256_key key;
   if (!tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)) {
     /// Get depot decryption key
-    auto const res = tsci_am_get_depot_key(am, item_id);
-    if (!tek_sc_err_success(&res)) {
+#ifdef TEK_SCB_S3C
+    auto const res =
+        tek_sc_s3c_ctx_get_depot_key(am->lib_ctx, 8000, item_id->depot_id, key);
+    if (tek_sc_err_success(&res)) {
+    } else if (!tscp_am_s3_not_found(&res)) {
       return res;
+    } else
+#endif // def TEK_SCB_S3C
+    {
+      auto const res = tsci_am_get_depot_key(am, item_id);
+      if (!tek_sc_err_success(&res)) {
+        return res;
+      }
+      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
+          TEK_SC_AM_JOB_STATE_pause_pending) {
+        return tsc_err_basic(TEK_SC_ERRC_paused);
+      }
+      tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
     }
-    if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-        TEK_SC_AM_JOB_STATE_pause_pending) {
-      return tsc_err_basic(TEK_SC_ERRC_paused);
-    }
-    tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
   }
   tscp_am_sp_ctx_dm sp_ctx;
   auto const sp_common = &sp_ctx.data.common;
@@ -291,37 +324,14 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   sp_ctx.data.manifest_id = manifest_id;
 // Get manifest request code
 #ifdef TEK_SCB_S3C
-  auto s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
-                                           item_id->depot_id);
-  if (s3_srv) {
-    tek_sc_cm_data_mrc data_mrc;
-    data_mrc.app_id = item_id->app_id;
-    data_mrc.depot_id = item_id->depot_id;
-    data_mrc.manifest_id = manifest_id;
-    /// Make up to 5 attempts to get MRC, so it uses different tek-s3 servers if
-    ///    available
-    const char *prev_uri = nullptr;
-    for (int i = 0; i < 5; ++i) {
-      tek_sc_s3c_get_mrc(s3_srv, 8000, &data_mrc);
-      if (!tek_sc_err_success(&data_mrc.result)) {
-        if (prev_uri) {
-          free((void *)prev_uri);
-        }
-        prev_uri = data_mrc.result.uri;
-        s3_srv = tek_sc_s3c_get_srv_for_mrc(am->lib_ctx, item_id->app_id,
-                                            item_id->depot_id);
-        continue;
-      }
-      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-          TEK_SC_AM_JOB_STATE_pause_pending) {
-        return tsc_err_basic(TEK_SC_ERRC_paused);
-      }
-      sp_ctx.data.request_code = data_mrc.request_code;
-      break;
-    }
-    if (!tek_sc_err_success(&data_mrc.result)) {
-      return data_mrc.result;
-    }
+  tek_sc_cm_data_mrc data_mrc = {.app_id = item_id->app_id,
+                                 .depot_id = item_id->depot_id,
+                                 .manifest_id = manifest_id};
+  tek_sc_s3c_ctx_get_mrc(am->lib_ctx, 8000, &data_mrc);
+  if (tek_sc_err_success(&data_mrc.result)) {
+    sp_ctx.data.request_code = data_mrc.request_code;
+  } else if (!tscp_am_s3_not_found(&data_mrc.result)) {
+    return data_mrc.result;
   } else
 #endif // def TEK_SCB_S3C
   {
