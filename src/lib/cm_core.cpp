@@ -40,6 +40,7 @@
 #include <cstring>
 #include <curl/curl.h>
 #include <format>
+#include <limits>
 #include <locale>
 #include <memory>
 #include <mutex>
@@ -580,9 +581,12 @@ void cm_conn::destroy() {
     // Client can be destroyed immediately
     delete this;
   } else {
-    // Request disconnection and destruction afterwards
+    // Request disconnection and wait for destruction
+    std::atomic_uint32_t futex{};
+    destroy_futex.store(&futex, std::memory_order::release);
     delete_pending.store(true, std::memory_order::relaxed);
     disconnect();
+    tsci_os_futex_wait(&futex, 0, std::numeric_limits<std::uint32_t>::max());
   }
 }
 
