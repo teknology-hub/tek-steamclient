@@ -14,7 +14,8 @@ if get_option('app_manager') and (
   not get_option('steampipe'))
   error('"app_manager" option requires "content" and "steampipe" to be enabled as well')
 endif
-if get_option('cli_dump') and not get_option('app_manager') 
+if get_option('cli') and get_option('cli_dump') and (
+   not get_option('app_manager'))
   error('"cli_dump" option requires "app_manager" to be enabled as well')
 endif
 add_project_arguments('-DTEK_SC_IMPL', language: ['c', 'cpp'])
@@ -28,14 +29,14 @@ if is_windows
   rc_version = meson.project_version().replace('.', ',')
   if rc_version.contains('-')
     rc_version = rc_version.split('-')[0]
-  endif
+  endif # rc_version.contains('-')
   num_elems = rc_version.split(',').length()
   if num_elems == 2
     rc_version += ',0,0'
-  endif
+  endif # num_elems == 2
   if num_elems == 3
     rc_version += ',0'
-  endif
+  endif # num_elems == 3
 else # is_windows
   add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
 endif # is_windows else
