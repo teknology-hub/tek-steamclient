@@ -43,7 +43,6 @@ endif # is_windows else
 compiler = meson.get_compiler('c')
 # -Wno-attributes: Project code uses many attributes that are supported only by
 #    specific compilers or even specific compiler versions
-# -Wno-invalid-offsetof: There's no good enough alternative to this trick yet
 # -Wno-nullability-extension: Fallbacks for these attributes are provided by
 #    base.h anyway
 # -Wno-pointer-arith: provided by GNU extensions (gcc)
@@ -51,10 +50,15 @@ compiler = meson.get_compiler('c')
 # -Wno-gnu-pointer-arith: provided by GNU extensions (clang)
 add_project_arguments(
   compiler.get_supported_arguments(
-    '-Wno-attributes', '-Wno-invalid-offsetof','-Wno-nullability-extension',
-    '-Wno-pointer-arith', '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'
+    '-Wno-attributes', '-Wno-nullability-extension', '-Wno-pointer-arith',
+    '-Wno-gnu-binary-literal', '-Wno-gnu-pointer-arith'
   ),
   language: ['c', 'cpp']
+)
+# -Wno-invalid-offsetof: There's no good enough alternative to this trick yet
+add_project_arguments(
+  meson.get_compiler('cpp').get_supported_arguments('-Wno-invalid-offsetof'),
+  language: 'cpp'
 )
 if is_macos
   add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
