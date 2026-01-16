@@ -1,6 +1,6 @@
 //===-- zip_mzng.c - minizip-ng-based zip extraction API implementation ---===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -54,9 +54,9 @@ delete_strm:
 bool tsci_zip_read_close(void *handle, void *buf, int size) {
   const bool res = mz_zip_entry_read(handle, buf, size) == size;
   mz_zip_entry_close(handle);
-  mz_zip_close(handle);
   void *strm;
   mz_zip_get_stream(handle, &strm);
+  mz_zip_close(handle);
   mz_zip_delete(&handle);
   mz_stream_mem_delete(&strm);
   return res;
