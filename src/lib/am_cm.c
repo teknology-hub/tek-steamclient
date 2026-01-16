@@ -117,7 +117,17 @@ static void tscp_am_cb_connected(tek_sc_cm_client *_Nonnull client,
 }
 
 /// The callback for CM client disconnected event.
-static void tscp_am_cb_disconnected(tek_sc_cm_client *, void *, void *) {}
+///
+/// @param [in] data
+///    Pointer to `tek_sc_err` indicating the disconnection reason.
+[[gnu::nonnull(2), gnu::access(read_only, 2)]]
+static void tscp_am_cb_disconnected(tek_sc_cm_client *, void *_Nonnull data,
+                                    void *) {
+  const tek_sc_err *res = data;
+  if (res->uri) {
+    free((void *)res->uri);
+  }
+}
 
 /// The callback for CM client PICS access tokens received event.
 ///
