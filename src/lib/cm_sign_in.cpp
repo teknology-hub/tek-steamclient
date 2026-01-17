@@ -44,9 +44,12 @@ static void close_cb(uv_handle_t *_Nonnull timer) {
   auto &entry{*reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
   auto &conn{entry.conn};
   delete &entry;
-  if (!--conn.ref_count &&
-      conn.delete_pending.load(std::memory_order::relaxed)) {
-    delete &conn;
+  if (!--conn.ref_count) {
+    if (conn.delete_pending.load(std::memory_order::relaxed)) {
+      delete &conn;
+    } else {
+      conn.safe_to_delete.store(true, std::memory_order::relaxed);
+    }
   }
 }
 

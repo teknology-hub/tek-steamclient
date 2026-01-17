@@ -144,9 +144,12 @@ static void timeout_lics(uv_timer_t *_Nonnull timer) {
         }
       }
     }
-    if (!--conn.ref_count &&
-        conn.delete_pending.load(std::memory_order::relaxed)) {
-      delete &conn;
+    if (!--conn.ref_count) {
+      if (conn.delete_pending.load(std::memory_order::relaxed)) {
+        delete &conn;
+      } else {
+        conn.safe_to_delete.store(true, std::memory_order::relaxed);
+      }
     }
   });
   auto data{lic_data_errc(TEK_SC_ERRC_cm_timeout)};

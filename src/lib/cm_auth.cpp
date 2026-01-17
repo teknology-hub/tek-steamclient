@@ -125,9 +125,12 @@ static void release_auth_ctx(cm_conn &conn) {
                    uv_handle_get_data(timer))};
                auto &conn{actx.status_timer.conn};
                delete &actx;
-               if (!--conn.ref_count &&
-                   conn.delete_pending.load(std::memory_order::relaxed)) {
-                 delete &conn;
+               if (!--conn.ref_count) {
+                 if (conn.delete_pending.load(std::memory_order::relaxed)) {
+                   delete &conn;
+                 } else {
+                   conn.safe_to_delete.store(true, std::memory_order::relaxed);
+                 }
                }
              });
   } else {
