@@ -21,6 +21,7 @@
 #include "tek-steamclient/error.h"
 #include "tek/steamclient/cm/emsg.pb.h"
 #include "tek/steamclient/cm/message_header.pb.h"
+#include "tek/steamclient/cm/msg_payloads/heartbeat.pb.h"
 #include "tek/steamclient/cm/msg_payloads/logon.pb.h"
 
 #include <atomic>
@@ -102,6 +103,26 @@ void cm_conn::handle_logon(const MessageHeader &header, const void *data,
       num_lics = 0;
     }
     state.store(conn_state::signed_in, std::memory_order::release);
+    // Setup heartbeat timer
+    if (uv_timer_init(&ctx.loop, &heartbeat_timer) == 0) {
+      heartbeat_active = true;
+      ++ref_count;
+      uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&heartbeat_timer),
+                         this);
+      uv_timer_start(
+          &heartbeat_timer,
+          [](auto timer) {
+            message<msg_payloads::HeartBeat> msg;
+            msg.type = EMsg::EMSG_CLIENT_HEARTBEAT;
+            msg.payload.set_send_reply(true);
+            reinterpret_cast<cm_conn *>(
+                uv_handle_get_data(
+                    reinterpret_cast<const uv_handle_t *>(timer)))
+                ->send_message<TEK_SC_ERRC_ok>(std::move(msg));
+          },
+          payload.heartbeat_seconds() * 1000,
+          payload.heartbeat_seconds() * 1000);
+    }
   }
   auto res{eresult == TEK_SC_CM_ERESULT_ok
                ? tsc_err_ok()

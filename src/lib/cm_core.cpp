@@ -308,6 +308,19 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
   steam_id = 0;
   session_id = 0;
   tsci_z_inflateEnd(&zstream);
+  if (heartbeat_active) {
+    heartbeat_active = false;
+    uv_close(reinterpret_cast<uv_handle_t *>(&heartbeat_timer), [](auto timer) {
+      auto &conn{*reinterpret_cast<cm_conn *>(uv_handle_get_data(timer))};
+      if (!--conn.ref_count) {
+        if (conn.delete_pending.load(std::memory_order::relaxed)) {
+          delete &conn;
+        } else {
+          conn.safe_to_delete.store(true, std::memory_order::relaxed);
+        }
+      }
+    });
+  }
   // Process all pending timeouts
   {
     const std::scoped_lock lock{a_entries_mtx};

@@ -1,0 +1,17 @@
+//===-- heartbeat.proto - heartbeat message payload -----------------------===//
+//
+// Copyright (c) 2026 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Message payload for EMSG_CLIENT_HEARTBEAT.
+message HeartBeat { optional bool send_reply = 1; }
