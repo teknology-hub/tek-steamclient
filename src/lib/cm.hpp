@@ -248,6 +248,8 @@ public:
   /// Value indicating whether the instance should be deleted after being
   ///    disconnected.
   std::atomic_bool delete_pending{};
+  /// Value indicating whether it's currently safe to delete the instance.
+  std::atomic_bool safe_to_delete{true};
 
   constexpr cm_conn(lib_ctx &ctx, void *_Nullable user_data) noexcept
       : ws_conn{ctx}, user_data{user_data} {}
