@@ -615,6 +615,8 @@ static inline const char *tscp_msg_ws_cc(tsci_ws_close_code code) {
     return tsc_gettext("Bad gateway");
   case TSCI_WS_CLOSE_CODE_TLS_HANDSHAKE:
     return tsc_gettext("TLS handshake failure");
+  case TSCI_WS_CLOSE_CODE_STEAM_NORMAL:
+    return tsc_gettext("Steam CM normal closure");
   default:
     return tsc_gettext("Unknown");
   } // switch (code)
