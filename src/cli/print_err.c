@@ -31,9 +31,9 @@ void tscl_print_err(const tek_sc_err *err) {
     // L18N: %u is an error code number, %s is corresponding error message
     fprintf(stderr, tsc_gettext("  Auxiliary message: (%u) %s\n"),
             err->auxiliary, msgs.auxiliary);
-    if (msgs.extra) {
-      fprintf(stderr, "  %s\n", msgs.extra);
-    }
+  }
+  if (msgs.extra) {
+    fprintf(stderr, "  %s\n", msgs.extra);
   }
   if (err->uri) {
     fprintf(stderr, "  %s: %s\n", msgs.uri_type, err->uri);
