@@ -1,5 +1,5 @@
 # tek-steamclient localization file
-# Copyright (c) 2025 Nuclearist
+# Copyright (c) 2025-2026 Nuclearist
 # This file is distributed under the same license as the tek-steamclient package.
 # Nuclearist <nuclearist@teknology-hub.com>, 2025.
 #
@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tek-steamclient\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-11-07 12:07+0300\n"
+"POT-Creation-Date: 2026-01-17 22:59+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -92,25 +92,8 @@ msgid ""
 "depots that it can provide manifest request codes for"
 msgstr ""
 
-#. L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
-#. signin" command with QR support)
-#: src/cli/args.c:115
-msgid ""
-"  s3c signin <type> <url>  (interactive mode only) Submit a Steam account to "
-"a tek-s3 server at specified URL. <type> must be either \"credentials\" or "
-"\"qr\""
-msgstr ""
-
-#. L18N: output of tek-sc-cli's "--help" command-line argument ("s3c
-#. signin" command without QR support)
-#: src/cli/args.c:121
-msgid ""
-"  s3c signin <url>         (interactive mode only) Submit a Steam account to "
-"a tek-s3 server at specified URL"
-msgstr ""
-
 #. L18N: %s is the command entered by the user
-#: src/cli/args.c:164
+#: src/cli/args.c:148
 #, c-format
 msgid "Error: \"%s\" can only be used in interactive mode\n"
 msgstr ""
@@ -264,28 +247,14 @@ msgstr ""
 msgid "Error: <url> not provided for \"sync-manifest\"\n"
 msgstr ""
 
-#: src/cli/cmd_parser.c:350
-msgid "Error: <type> not provided for \"signin\"\n"
-msgstr ""
-
-#. L18N: %s is the value of <type> provied by the user
-#: src/cli/cmd_parser.c:362
-#, c-format
-msgid "Error: unknown <type> \"%s\" for \"signin\"\n"
-msgstr ""
-
-#: src/cli/cmd_parser.c:371
-msgid "Error: <url> not provided for \"signin\"\n"
-msgstr ""
-
 #. L18N: %s is the command name entered by the user
-#: src/cli/cmd_parser.c:381
+#: src/cli/cmd_parser.c:350
 #, c-format
 msgid "Error: unknown command \"%s\" for module \"s3c\"\n"
 msgstr ""
 
 #. L18N: %s is the command entered by the user
-#: src/cli/cmd_parser.c:390
+#: src/cli/cmd_parser.c:359
 #, c-format
 msgid "Error: unknown command \"%s\"\n"
 msgstr ""
@@ -293,7 +262,7 @@ msgstr ""
 #. L18N: Message displayed when not enough disk space is available, in
 #. interactive mode. First %.2f is the amount of required disk space,
 #. second %.2f is the number of available disk space, both in gibibytes
-#: src/cli/cmd_runner.c:78
+#: src/cli/cmd_runner.c:73
 #, c-format
 msgid ""
 "The job is estimated to require %.2f GiB of disk space, but only %.2f GiB is "
@@ -301,11 +270,11 @@ msgid ""
 "Do you want to proceed anyway? [Y/N]: "
 msgstr ""
 
-#: src/cli/cmd_runner.c:92
+#: src/cli/cmd_runner.c:87
 msgid "Unrecognized input. Please answer Y or N."
 msgstr ""
 
-#: src/cli/cmd_runner.c:101
+#: src/cli/cmd_runner.c:96
 #, c-format
 msgid ""
 "Warning: The job is estimated to require %.2f GiB of disk space, but only "
@@ -313,94 +282,94 @@ msgid ""
 msgstr ""
 
 #. L18N: Job state notification. %s is the item ID
-#: src/cli/cmd_runner.c:116
+#: src/cli/cmd_runner.c:111
 #, c-format
 msgid "Starting the job for %s\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:120
+#: src/cli/cmd_runner.c:115
 msgid ""
 "\n"
 "A pause has been requested for the job"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:138
+#: src/cli/cmd_runner.c:133
 msgid "Fetching data"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:142
+#: src/cli/cmd_runner.c:137
 msgid "Downloading manifest"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:146
+#: src/cli/cmd_runner.c:141
 msgid "Downloading patch"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:150
+#: src/cli/cmd_runner.c:145
 msgid "Verifying installed files"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:154
+#: src/cli/cmd_runner.c:149
 msgid "Downloading new data"
 msgstr ""
 
 #. L18N: Job stage name
 #. L18N: Delta stage value
-#: src/cli/cmd_runner.c:158 src/cli/dump.c:1408
+#: src/cli/cmd_runner.c:153 src/cli/dump.c:1408
 msgid "Patching"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:162
+#: src/cli/cmd_runner.c:157
 msgid "Installing new data"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:166
+#: src/cli/cmd_runner.c:161
 msgid "Deleting delisted content"
 msgstr ""
 
 #. L18N: Job stage name
-#: src/cli/cmd_runner.c:170
+#: src/cli/cmd_runner.c:165
 msgid "Finalizing"
 msgstr ""
 
 #. L18N: Job stage name
 #. L18N: Delta stage value
-#: src/cli/cmd_runner.c:174 src/cli/dump.c:1420
+#: src/cli/cmd_runner.c:169 src/cli/dump.c:1420
 msgid "Unknown stage"
 msgstr ""
 
 #. L18N: Job stage notification. %s is a job stage name from above
-#: src/cli/cmd_runner.c:178
+#: src/cli/cmd_runner.c:173
 #, c-format
 msgid "Job stage updated: %s\n"
 msgstr ""
 
 #. L18N: Appended to the progress message when ETA is available
-#: src/cli/cmd_runner.c:215
+#: src/cli/cmd_runner.c:210
 msgid ", ETA: "
 msgstr ""
 
 #. L18N: Appended to the ETA message above. %u is the number of hours
-#: src/cli/cmd_runner.c:223
+#: src/cli/cmd_runner.c:218
 #, c-format
 msgid "%uh"
 msgstr ""
 
 #. L18N: Appended to the ETA message above. %u is the number of minutes
-#: src/cli/cmd_runner.c:234
+#: src/cli/cmd_runner.c:229
 #, c-format
 msgid "%umin"
 msgstr ""
 
 #. L18N: Appended to the ETA message above. %u is the number of seconds
-#: src/cli/cmd_runner.c:244
+#: src/cli/cmd_runner.c:239
 #, c-format
 msgid "%usec"
 msgstr ""
@@ -408,46 +377,46 @@ msgstr ""
 #. L18N: Progress message for stages that display percentage only. First
 #. %s is improvised progress bar, %6.2f is the percentage number,
 #. second %s is the ETA message if available
-#: src/cli/cmd_runner.c:255
+#: src/cli/cmd_runner.c:250
 #, c-format
 msgid "[%s] %6.2f%%%s"
 msgstr ""
 
 #. L18N: %.2f is the number of gibibytes for progress display
-#: src/cli/cmd_runner.c:266 src/cli/cmd_runner.c:281
+#: src/cli/cmd_runner.c:261 src/cli/cmd_runner.c:276
 #, c-format
 msgid "%.2f GiB"
 msgstr ""
 
 #. L18N: %.1f is the number of mebibytes for progress display
-#: src/cli/cmd_runner.c:270 src/cli/cmd_runner.c:285
+#: src/cli/cmd_runner.c:265 src/cli/cmd_runner.c:280
 #, c-format
 msgid "%.1f MiB"
 msgstr ""
 
 #. L18N: %u is the number of kibibytes for progress display
-#: src/cli/cmd_runner.c:274 src/cli/cmd_runner.c:289
+#: src/cli/cmd_runner.c:269 src/cli/cmd_runner.c:284
 #, c-format
 msgid "%u KiB"
 msgstr ""
 
 #. L18N: %.2f is the number of gigabits/second for download speed
 #. display
-#: src/cli/cmd_runner.c:299
+#: src/cli/cmd_runner.c:294
 #, c-format
 msgid "%.2f Gbit/s"
 msgstr ""
 
 #. L18N: %.1f is the number of megabits/second for download speed
 #. display
-#: src/cli/cmd_runner.c:304
+#: src/cli/cmd_runner.c:299
 #, c-format
 msgid "%.1f Mbit/s"
 msgstr ""
 
 #. L18N: %u is the number of kilobits/second for download speed
 #. display
-#: src/cli/cmd_runner.c:309
+#: src/cli/cmd_runner.c:304
 #, c-format
 msgid "%u kbit/s"
 msgstr ""
@@ -457,7 +426,7 @@ msgstr ""
 #. progress, second %-12f is the speed, second %s is the ETA message if
 #. available. Both progress and speed strings are created via one of
 #. the format strings above
-#: src/cli/cmd_runner.c:317
+#: src/cli/cmd_runner.c:312
 #, c-format
 msgid "[%s] %12s/%-12s (%-12s)%s"
 msgstr ""
@@ -466,40 +435,16 @@ msgstr ""
 #. improvised progress bar, %*llu is the current progress number, %llu
 #. is the total progress number, second %s is the ETA message if
 #. available
-#: src/cli/cmd_runner.c:331
+#: src/cli/cmd_runner.c:326
 #, c-format
 msgid "[%s] %*llu/%llu%s"
-msgstr ""
-
-#: src/cli/cmd_runner.c:367
-msgid "Failed to generate QR code\n"
-msgstr ""
-
-#: src/cli/cmd_runner.c:374
-msgid "Failed to allocate memory for printing the QR code\n"
-msgstr ""
-
-#: src/cli/cmd_runner.c:378
-msgid "Scan this QR code in Steam mobile app:"
-msgstr ""
-
-#: src/cli/cmd_runner.c:416
-msgid "Awaiting confirmation from Steam mobile app..."
-msgstr ""
-
-#: src/cli/cmd_runner.c:419
-msgid "Enter Steam Guard code from your mobile device: "
-msgstr ""
-
-#: src/cli/cmd_runner.c:438
-msgid "Enter confirmation code sent to your email: "
 msgstr ""
 
 #. L18N: output of tek-sc-cli's "help" command (main part)
 #. Here and further, command names cannot be translated; you may however
 #. translate stuff in <angled brackets>, but make sure to use the same
 #. translations in other messages that reference them, e.g. error ones
-#: src/cli/cmd_runner.c:474
+#: src/cli/cmd_runner.c:351
 msgid ""
 "General commands:\n"
 "  help - Display this message\n"
@@ -507,7 +452,7 @@ msgid ""
 "  quit - Synonym for \"exit\""
 msgstr ""
 
-#: src/cli/cmd_runner.c:481
+#: src/cli/cmd_runner.c:358
 msgid ""
 "Application manager commands:\n"
 "  am init <path> - Initialize application manager at specified directory, "
@@ -539,7 +484,7 @@ msgid ""
 "cache directory and resetting its state"
 msgstr ""
 
-#: src/cli/cmd_runner.c:515
+#: src/cli/cmd_runner.c:392
 msgid ""
 "  am dump <type> <item_id> <manifest_id> - Dump specified tek-steamclient "
 "content file into a human-readable text file at current working directory. "
@@ -550,7 +495,7 @@ msgid ""
 "when <type> is \"manifest\" and can be set to 0 otherwise"
 msgstr ""
 
-#: src/cli/cmd_runner.c:528
+#: src/cli/cmd_runner.c:405
 msgid ""
 "tek-s3 client commands:\n"
 "  s3c sync-manifest <url> - Synchronize manifest of tek-s3 server at "
@@ -558,47 +503,47 @@ msgid ""
 "depots that it can provide manifest request codes for"
 msgstr ""
 
-#. L18N: output of tek-sc-cli's "help" command ("s3c signin" command
-#. with QR support)
-#: src/cli/cmd_runner.c:536
-msgid ""
-"  s3c signin <type> <url> - Submit a Steam account to a tek-s3 server at "
-"specified URL. <type> must be either \"credentials\" or \"qr\""
-msgstr ""
-
-#. L18N: output of tek-sc-cli's "help" command ("s3c signin" command
-#. without QR support)
-#: src/cli/cmd_runner.c:542
-msgid ""
-"  s3c signin <url> - Submit a Steam account to a tek-s3 server at specified "
-"URL"
-msgstr ""
-
-#: src/cli/cmd_runner.c:551
+#: src/cli/cmd_runner.c:414
 msgid "Error: There is already an initialized application manager instance\n"
 msgstr ""
 
 #. L18N: %u is the OS error code number, %s is the OS error
 #. message
-#: src/cli/cmd_runner.c:567
+#: src/cli/cmd_runner.c:430
 #, c-format
 msgid "Failed to get current working directory: (%u) %s\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:598
+#: src/cli/cmd_runner.c:454
+msgid "Initialized application manager instance at"
+msgstr ""
+
+#: src/cli/cmd_runner.c:467
+msgid "Application manager instance has been closed"
+msgstr ""
+
+#: src/cli/cmd_runner.c:471
 msgid "Error: There is no initialized application manager instance to close\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:613
+#: src/cli/cmd_runner.c:487
+msgid "Workshop directory has been set to"
+msgstr ""
+
+#: src/cli/cmd_runner.c:492
 msgid ""
 "Error: There is no initialized application manager instance to set workshop "
 "directory for\n"
 msgstr ""
 
+#: src/cli/cmd_runner.c:502
+msgid "No items are currently managed"
+msgstr ""
+
 #. L18N: Item status string. %s is the item ID, first %llu is the
 #. source manifest ID for the job, seconds %llu is the target
 #. manifest ID for the job
-#: src/cli/cmd_runner.c:632
+#: src/cli/cmd_runner.c:514
 #, c-format
 msgid "%s: job %llu->%llu\n"
 msgstr ""
@@ -606,150 +551,88 @@ msgstr ""
 #. L18N: Item status string. First %s is the item ID, %llu is current
 #. manifest ID, second %s may be "update available" string from
 #. below if applicable
-#: src/cli/cmd_runner.c:639
+#: src/cli/cmd_runner.c:521
 #, c-format
 msgid "%s: manifest ID %llu%s\n"
 msgstr ""
 
 #. L18N: Appended to the status string if item update is
 #. available
-#: src/cli/cmd_runner.c:644
+#: src/cli/cmd_runner.c:526
 msgid ", update available"
 msgstr ""
 
-#: src/cli/cmd_runner.c:651
+#: src/cli/cmd_runner.c:533
 msgid ""
 "Error: There is no initialized application manager instance to get status "
 "of\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:665
+#: src/cli/cmd_runner.c:546
+msgid "Check for updates succeeded"
+msgstr ""
+
+#: src/cli/cmd_runner.c:550
 msgid ""
 "Error: There is no initialized application manager instance to check for "
 "updates for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:682
+#: src/cli/cmd_runner.c:566
+msgid "The job has been created successfully"
+msgstr ""
+
+#: src/cli/cmd_runner.c:570
 msgid ""
 "Error: There is no initialized application manager instance to create job "
 "for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:701 src/cli/cmd_runner.c:746 src/cli/dump.c:1143
+#: src/cli/cmd_runner.c:589 src/cli/cmd_runner.c:634 src/cli/dump.c:1143
 #: src/cli/dump.c:1248 src/cli/dump.c:1320
 #, c-format
 msgid "Error: Application manager doesn't have state for item %s\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:712
+#: src/cli/cmd_runner.c:600
 msgid "The job has finished successfully"
 msgstr ""
 
-#: src/cli/cmd_runner.c:715
+#: src/cli/cmd_runner.c:603
 msgid "The job has been paused successfully"
 msgstr ""
 
-#: src/cli/cmd_runner.c:718
+#: src/cli/cmd_runner.c:606
 msgid "No mismatches have been found"
 msgstr ""
 
-#: src/cli/cmd_runner.c:719
+#: src/cli/cmd_runner.c:607
 msgid "The item is already up to date"
 msgstr ""
 
-#: src/cli/cmd_runner.c:727
+#: src/cli/cmd_runner.c:615
 msgid ""
 "Error: There is no initialized application manager instance to run job for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:757
+#: src/cli/cmd_runner.c:644
+msgid "The job has been cancelled successfully"
+msgstr ""
+
+#: src/cli/cmd_runner.c:648
 msgid ""
 "Error: There is no initialized application manager instance to cancel job "
 "for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:779
+#: src/cli/cmd_runner.c:670
 msgid ""
 "Error: There is no initialized application manager instance to dump for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:799
+#: src/cli/cmd_runner.c:688
 #, c-format
-msgid ""
-"IMPORTANT NOTES\n"
-"You are about to sign tek-s3 server at %s into your Steam account.\n"
-"What it WILL do:\n"
-"- Get decryption keys (that are not present in the server's cache yet) for "
-"all Steam depots that your account has access to. This is a one-time "
-"operation\n"
-"- Get manifest request codes for Steam depots that your account has access "
-"to, on demand\n"
-"That is, it will essentially allow all tek-steamclient users to download and "
-"update apps owned on your account, without exposing any account information "
-"to them\n"
-"What it CAN do (but WON'T unless the server is maliciously modified):\n"
-"- Access most of your account information\n"
-"- Do most of the stuff that is not protected by Steam Guard\n"
-"What it CANNOT do under any circumstances (as long as you have Steam Guard "
-"enabled):\n"
-"- Change your email, password, make purchases\n"
-"- Gain any further access to your account after the token expires or you "
-"revoke it\n"
-msgstr ""
-
-#: src/cli/cmd_runner.c:822
-msgid ""
-"Since you're using QR code-based authentication, the server will never know "
-"your password"
-msgstr ""
-
-#: src/cli/cmd_runner.c:826
-msgid ""
-"If you use Steam mobile app for sign-in confirmation and tick \"Remember my "
-"password on this device\", the server will be able to renew access to your "
-"account indefinitely until you revoke it, otherwise it'll gain access only "
-"for a limited amount of time (usually around a month)\n"
-"You can revoke server's access to your account anytime you want via Steam "
-"mobile app: on Steam Guard tab tap on the gear > Authorized Devices, the "
-"server will be listed there as a device with name starting with \"tek-s3\"\n"
-"\n"
-"Press Enter to proceed"
-msgstr ""
-
-#: src/cli/cmd_runner.c:842
-msgid ""
-"WARNING: Connection to specified server is not encrypted, credentials sent "
-"to it are vulnerable to eavesdropping!"
-msgstr ""
-
-#: src/cli/cmd_runner.c:845
-msgid "Enter your account name: "
-msgstr ""
-
-#: src/cli/cmd_runner.c:848 src/cli/cmd_runner.c:863 src/cli/main.c:72
-msgid "Failed to read input string\n"
-msgstr ""
-
-#: src/cli/cmd_runner.c:860
-msgid "Enter your account password: "
-msgstr ""
-
-#. L18N: %s is the date and time string
-#: src/cli/cmd_runner.c:901
-#, c-format
-msgid ""
-"Authentication succeeded, server got non-renewable token that will expire at "
-"%s\n"
-msgstr ""
-
-#: src/cli/cmd_runner.c:905
-msgid ""
-"Authentication succeeded, server got persistent token that will be renewed "
-"automatically"
-msgstr ""
-
-#: src/cli/cmd_runner.c:909
-msgid "The authentication session has been interrupted"
+msgid "Successfully synchronized tek-s3 manifest for \"%s\"\n"
 msgstr ""
 
 #. L18N: May be appended anywhere after raw number of bytes. %.2f is the
@@ -774,7 +657,7 @@ msgid " (%.2f KiB)"
 msgstr ""
 
 #. L18N: One of possible job entry status values
-#: src/cli/dump.c:184 src/lib/error_msgs.c:309
+#: src/cli/dump.c:184 src/lib/error_msgs.c:315
 msgid "Pending"
 msgstr ""
 
@@ -1112,8 +995,7 @@ msgid "Installing"
 msgstr ""
 
 #. L18N: Delta stage value
-#. L18N: An I/O operation type
-#: src/cli/dump.c:1416 src/lib/error_msgs.c:608
+#: src/cli/dump.c:1416 src/lib/error_msgs.c:565
 msgid "Deleting"
 msgstr ""
 
@@ -1164,18 +1046,22 @@ msgstr ""
 msgid "Estimated required disk space: %llu B%s\n"
 msgstr ""
 
-#: src/cli/main.c:47
+#: src/cli/main.c:49
 msgid "Failed to initialize tek-steamclient library context\n"
 msgstr ""
 
-#: src/cli/main.c:67
+#: src/cli/main.c:69
 #, c-format
 msgid ""
 "tek-steamclient %s\n"
 "Enter \"help\" to list available commands\n"
 msgstr ""
 
-#: src/cli/main.c:138
+#: src/cli/main.c:74
+msgid "Failed to read input string\n"
+msgstr ""
+
+#: src/cli/main.c:140
 #, c-format
 msgid "Error: The command is missing closing %c character\n"
 msgstr ""
@@ -1204,1015 +1090,1082 @@ msgstr ""
 msgid "  Auxiliary message: (%u) %s\n"
 msgstr ""
 
-#: src/lib/error_msgs.c:54
+#: src/lib/error_msgs.c:55
 msgid "Operation completed successfully"
 msgstr ""
 
-#: src/lib/error_msgs.c:56
+#: src/lib/error_msgs.c:57
 msgid "AES decryption error"
 msgstr ""
 
-#: src/lib/error_msgs.c:58
+#: src/lib/error_msgs.c:59
 msgid "Failed to initialize asynchronous I/O context"
 msgstr ""
 
-#: src/lib/error_msgs.c:60
+#: src/lib/error_msgs.c:61
 msgid "Failed to create an application manager instance"
 msgstr ""
 
-#: src/lib/error_msgs.c:62
+#: src/lib/error_msgs.c:63
 msgid "Failed to insert a database row"
 msgstr ""
 
-#: src/lib/error_msgs.c:64
+#: src/lib/error_msgs.c:65
 msgid "Failed to update a database row"
 msgstr ""
 
-#: src/lib/error_msgs.c:66
+#: src/lib/error_msgs.c:67
 msgid "Application manager job I/O error"
 msgstr ""
 
-#: src/lib/error_msgs.c:68
+#: src/lib/error_msgs.c:69
 msgid "The job is already running"
 msgstr ""
 
-#: src/lib/error_msgs.c:70
+#: src/lib/error_msgs.c:71
 msgid "Steam didn't provide any manifest ID for this item"
 msgstr ""
 
-#: src/lib/error_msgs.c:72
+#: src/lib/error_msgs.c:73
 msgid "There is no job for this item"
 msgstr ""
 
-#: src/lib/error_msgs.c:75
+#: src/lib/error_msgs.c:76
 msgid ""
 "Attempting to start a job for a Steam Workshop item, but no directory for "
 "such items was provided"
 msgstr ""
 
-#: src/lib/error_msgs.c:78
+#: src/lib/error_msgs.c:79
 msgid "There is already an unifnished job for this item"
 msgstr ""
 
-#: src/lib/error_msgs.c:81
+#: src/lib/error_msgs.c:82
 msgid "Attempting to uninstall an item with unknown current manifest ID"
 msgstr ""
 
-#: src/lib/error_msgs.c:83
+#: src/lib/error_msgs.c:84
 msgid "Failed to set Steam Workshop item directory"
 msgstr ""
 
-#: src/lib/error_msgs.c:85
+#: src/lib/error_msgs.c:86
 msgid "Worker thread error"
 msgstr ""
 
-#: src/lib/error_msgs.c:87
+#: src/lib/error_msgs.c:88
 msgid "Failed to get PICS access token"
 msgstr ""
 
-#: src/lib/error_msgs.c:89
+#: src/lib/error_msgs.c:90
 msgid "PICS access token request has been denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:92
+#: src/lib/error_msgs.c:93
 msgid "There is another incomplete authentication session on the client"
 msgstr ""
 
-#: src/lib/error_msgs.c:94
+#: src/lib/error_msgs.c:95
 msgid "Steam CM authenticaiton session failed"
 msgstr ""
 
 #. L18N: PICS is an acronym that should not be translated
-#: src/lib/error_msgs.c:97
+#: src/lib/error_msgs.c:98
 msgid "Failed to get PICS changes"
 msgstr ""
 
-#: src/lib/error_msgs.c:99
+#: src/lib/error_msgs.c:100
 msgid "Failed to connect to a Steam CM server"
 msgstr ""
 
-#: src/lib/error_msgs.c:101
+#: src/lib/error_msgs.c:102
 msgid "Failed to create a CM client instance"
 msgstr ""
 
-#: src/lib/error_msgs.c:103
+#: src/lib/error_msgs.c:104
 msgid "Failed to get depot decryption key"
 msgstr ""
 
-#: src/lib/error_msgs.c:105
+#: src/lib/error_msgs.c:106
 msgid "Failed to get depot patch information"
 msgstr ""
 
-#: src/lib/error_msgs.c:107
+#: src/lib/error_msgs.c:108
 msgid "Abnormal disconnection from a Steam CM server"
 msgstr ""
 
-#: src/lib/error_msgs.c:109
+#: src/lib/error_msgs.c:110
 msgid "Failed to get encrypted app ticket"
 msgstr ""
 
-#: src/lib/error_msgs.c:111
+#: src/lib/error_msgs.c:112
 msgid "Failed to get account license list"
 msgstr ""
 
-#: src/lib/error_msgs.c:113
+#: src/lib/error_msgs.c:114
 msgid "Missing PICS access token"
 msgstr ""
 
-#: src/lib/error_msgs.c:115
+#: src/lib/error_msgs.c:116
 msgid "Failed to get manifest request code"
 msgstr ""
 
-#: src/lib/error_msgs.c:117
+#: src/lib/error_msgs.c:118
 msgid "Not connected to a server"
 msgstr ""
 
-#: src/lib/error_msgs.c:119
+#: src/lib/error_msgs.c:120
 msgid "Not signed into an account"
 msgstr ""
 
-#: src/lib/error_msgs.c:121
+#: src/lib/error_msgs.c:122
 msgid "Failed to encrypt account password"
 msgstr ""
 
-#: src/lib/error_msgs.c:123
+#: src/lib/error_msgs.c:124
 msgid "Failed to get PICS product information"
 msgstr ""
 
-#: src/lib/error_msgs.c:125
+#: src/lib/error_msgs.c:126
 msgid "Failed to fetch Steam CM server list"
 msgstr ""
 
-#: src/lib/error_msgs.c:127
+#: src/lib/error_msgs.c:128
 msgid "Got empty server list"
 msgstr ""
 
-#: src/lib/error_msgs.c:129
+#: src/lib/error_msgs.c:130
 msgid "Server unavailable"
 msgstr ""
 
-#: src/lib/error_msgs.c:131
+#: src/lib/error_msgs.c:132
 msgid "Failed to sign into a Steam account"
 msgstr ""
 
 #. L18N: "SteamPipe" should not be translated
-#: src/lib/error_msgs.c:134
+#: src/lib/error_msgs.c:135
 msgid "Failed to get SteamPipe server list"
 msgstr ""
 
-#: src/lib/error_msgs.c:136
+#: src/lib/error_msgs.c:137
 msgid "Got empty SteamPipe server list"
 msgstr ""
 
-#: src/lib/error_msgs.c:138
+#: src/lib/error_msgs.c:139
 msgid "Failed to submit Steam Guard code"
 msgstr ""
 
-#: src/lib/error_msgs.c:140 src/lib/error_msgs.c:216
+#: src/lib/error_msgs.c:141 src/lib/error_msgs.c:217
 msgid "Timed out waiting for server response"
 msgstr ""
 
-#: src/lib/error_msgs.c:142
+#: src/lib/error_msgs.c:143
 msgid "The authentication token has expired"
 msgstr ""
 
-#: src/lib/error_msgs.c:144
+#: src/lib/error_msgs.c:145
 msgid "Invalid authentication token"
 msgstr ""
 
-#: src/lib/error_msgs.c:146
+#: src/lib/error_msgs.c:147
 msgid "The token is not renewable"
 msgstr ""
 
-#: src/lib/error_msgs.c:148
+#: src/lib/error_msgs.c:149
 msgid "Failed to renew Steam authentication token"
 msgstr ""
 
-#: src/lib/error_msgs.c:150
+#: src/lib/error_msgs.c:151
 msgid "Unknown app/package ID"
 msgstr ""
 
-#: src/lib/error_msgs.c:152
+#: src/lib/error_msgs.c:153
 msgid "Failed to get Steam Workshop item details"
 msgstr ""
 
-#: src/lib/error_msgs.c:154
+#: src/lib/error_msgs.c:155
 msgid "Failed to query Steam Workshop items"
 msgstr ""
 
-#: src/lib/error_msgs.c:156
+#: src/lib/error_msgs.c:157
 msgid "CRC32 checksum mismatch"
 msgstr ""
 
 #. L18N: "curl easy/multi/URL" are API names that should not be translated
-#: src/lib/error_msgs.c:159
+#: src/lib/error_msgs.c:160
 msgid "Failed to initialize curl easy handle"
 msgstr ""
 
-#: src/lib/error_msgs.c:161
+#: src/lib/error_msgs.c:162
 msgid "Failed to initialize curl multi handle"
 msgstr ""
 
-#: src/lib/error_msgs.c:163
+#: src/lib/error_msgs.c:164
 msgid "Failed to initialize curl URL handle"
 msgstr ""
 
-#: src/lib/error_msgs.c:165
+#: src/lib/error_msgs.c:166
 msgid "Depot delta deserialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:168
+#: src/lib/error_msgs.c:169
 msgid "Provided manifests do not match the ones expected by the delta"
 msgstr ""
 
-#: src/lib/error_msgs.c:171
+#: src/lib/error_msgs.c:172
 msgid "Provided patch does not match the one expected by the delta"
 msgstr ""
 
-#: src/lib/error_msgs.c:173
+#: src/lib/error_msgs.c:174
 msgid "Depot decryption key not found in the cache"
 msgstr ""
 
-#: src/lib/error_msgs.c:175
+#: src/lib/error_msgs.c:176
 msgid "GZip decompression failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:177
+#: src/lib/error_msgs.c:178
 msgid "Encountered invalid data"
 msgstr ""
 
-#: src/lib/error_msgs.c:179
+#: src/lib/error_msgs.c:180
 msgid "Invalid URL was specified"
 msgstr ""
 
-#: src/lib/error_msgs.c:181
+#: src/lib/error_msgs.c:182
 msgid "JSON parsing error"
 msgstr ""
 
-#: src/lib/error_msgs.c:183
+#: src/lib/error_msgs.c:184
 msgid "LZMA decompression failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:185
+#: src/lib/error_msgs.c:186
 msgid "Magic number mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:187
+#: src/lib/error_msgs.c:188
 msgid "Depot manifest deserialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:189
+#: src/lib/error_msgs.c:190
 msgid "Depot manifest parsing error"
 msgstr ""
 
-#: src/lib/error_msgs.c:191
+#: src/lib/error_msgs.c:192
 msgid "Memory allocation error"
 msgstr ""
 
-#: src/lib/error_msgs.c:193
+#: src/lib/error_msgs.c:194
 msgid "Depot patch deserialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:195
+#: src/lib/error_msgs.c:196
 msgid "Protobuf deserialization failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:197
+#: src/lib/error_msgs.c:198
 msgid "Protobuf serialization failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:200
+#: src/lib/error_msgs.c:201
 msgid "Provided manifests do not match the ones expected by the patch"
 msgstr ""
 
-#: src/lib/error_msgs.c:202
+#: src/lib/error_msgs.c:203
 msgid "Depot patch parsing error"
 msgstr ""
 
-#: src/lib/error_msgs.c:204
+#: src/lib/error_msgs.c:205
 msgid "The job has been paused"
 msgstr ""
 
-#: src/lib/error_msgs.c:206
+#: src/lib/error_msgs.c:207
 msgid "Failed to fetch tek-s3 server manifest"
 msgstr ""
 
-#: src/lib/error_msgs.c:209
+#: src/lib/error_msgs.c:210
 msgid "Failed to get manifest request code from tek-s3 server"
 msgstr ""
 
-#: src/lib/error_msgs.c:212
+#: src/lib/error_msgs.c:213
 msgid "Failed to establish WebSocket connection to the tek-s3 server"
 msgstr ""
 
-#: src/lib/error_msgs.c:214
+#: src/lib/error_msgs.c:215
 msgid "Abnormal disconnection from the tek-s3 server"
 msgstr ""
 
-#: src/lib/error_msgs.c:218
+#: src/lib/error_msgs.c:219
 msgid "SHA-1 hashing error"
 msgstr ""
 
-#: src/lib/error_msgs.c:220
+#: src/lib/error_msgs.c:221
 msgid "Failed to download chunk from SteamPipe"
 msgstr ""
 
-#: src/lib/error_msgs.c:222
+#: src/lib/error_msgs.c:223
 msgid "Failed to decode chunk"
 msgstr ""
 
-#: src/lib/error_msgs.c:224
+#: src/lib/error_msgs.c:225
 msgid "Failed to create a chunk decoding context"
 msgstr ""
 
-#: src/lib/error_msgs.c:226
+#: src/lib/error_msgs.c:227
 msgid "Failed to download depot manifest from SteamPipe"
 msgstr ""
 
-#: src/lib/error_msgs.c:228
+#: src/lib/error_msgs.c:229
 msgid "Failed to download depot patch from SteamPipe"
 msgstr ""
 
-#: src/lib/error_msgs.c:231
+#: src/lib/error_msgs.c:232
 msgid "There is already a maximum number of active requests on the thread"
 msgstr ""
 
-#: src/lib/error_msgs.c:233
+#: src/lib/error_msgs.c:234
 msgid "Failed to create SteamPipe multi downloader"
 msgstr ""
 
-#: src/lib/error_msgs.c:235
+#: src/lib/error_msgs.c:236
 msgid "Unknown chunk compression method"
 msgstr ""
 
-#: src/lib/error_msgs.c:237
+#: src/lib/error_msgs.c:238
 msgid "Item installation is already up to date"
 msgstr ""
 
-#: src/lib/error_msgs.c:239
+#: src/lib/error_msgs.c:240
 msgid "Verification cache deserialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:242
+#: src/lib/error_msgs.c:243
 msgid "Verification cache does not bind to the provided manifest"
 msgstr ""
 
-#: src/lib/error_msgs.c:244
+#: src/lib/error_msgs.c:245
 msgid "VDF parsing error"
 msgstr ""
 
-#: src/lib/error_msgs.c:246
+#: src/lib/error_msgs.c:247
 msgid "Failed to start a worker thread"
 msgstr ""
 
-#: src/lib/error_msgs.c:248
+#: src/lib/error_msgs.c:249
 msgid "Zip extraction failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:250
+#: src/lib/error_msgs.c:251
 msgid "Zstandard decompression failure"
 msgstr ""
 
-#. L18N: An I/O operation type
+#: src/lib/error_msgs.c:253
+msgid "There are no available tek-s3 servers"
+msgstr ""
+
+#: src/lib/error_msgs.c:255
+msgid "Failed to get depot decryption key from tek-s3 server"
+msgstr ""
+
+#: src/lib/error_msgs.c:257
+msgid "Failed to get PICS access token from tek-s3 server"
+msgstr ""
+
 #. L18N: An error type
-#: src/lib/error_msgs.c:252 src/lib/error_msgs.c:525 src/lib/error_msgs.c:628
-#: src/lib/error_msgs.c:680
+#: src/lib/error_msgs.c:259 src/lib/error_msgs.c:531 src/lib/error_msgs.c:575
+#: src/lib/error_msgs.c:621 src/lib/error_msgs.c:723
 msgid "Unknown"
 msgstr ""
 
-#. L18N: From here on are messages for Steam's EResult codes
-#: src/lib/error_msgs.c:267
+#: src/lib/error_msgs.c:273
 msgid "Invalid EResult value"
 msgstr ""
 
-#: src/lib/error_msgs.c:269
+#: src/lib/error_msgs.c:275
 msgid "OK"
 msgstr ""
 
-#: src/lib/error_msgs.c:271
+#: src/lib/error_msgs.c:277
 msgid "Failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:273
+#: src/lib/error_msgs.c:279
 msgid "No connection"
 msgstr ""
 
-#: src/lib/error_msgs.c:275
+#: src/lib/error_msgs.c:281
 msgid "Invalid password"
 msgstr ""
 
-#: src/lib/error_msgs.c:277 src/lib/error_msgs.c:365
+#: src/lib/error_msgs.c:283 src/lib/error_msgs.c:371
 msgid "Already logged in elsewhere"
 msgstr ""
 
-#: src/lib/error_msgs.c:279
+#: src/lib/error_msgs.c:285
 msgid "Invalid protocol version"
 msgstr ""
 
-#: src/lib/error_msgs.c:281
+#: src/lib/error_msgs.c:287
 msgid "Invalid parameter"
 msgstr ""
 
-#: src/lib/error_msgs.c:283
+#: src/lib/error_msgs.c:289
 msgid "File not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:285
+#: src/lib/error_msgs.c:291
 msgid "Busy"
 msgstr ""
 
-#: src/lib/error_msgs.c:287
+#: src/lib/error_msgs.c:293
 msgid "Invalid state"
 msgstr ""
 
-#: src/lib/error_msgs.c:289
+#: src/lib/error_msgs.c:295
 msgid "Invalid name"
 msgstr ""
 
-#: src/lib/error_msgs.c:291
+#: src/lib/error_msgs.c:297
 msgid "Invalid email address"
 msgstr ""
 
-#: src/lib/error_msgs.c:293
+#: src/lib/error_msgs.c:299
 msgid "Duplicate name"
 msgstr ""
 
-#: src/lib/error_msgs.c:295
+#: src/lib/error_msgs.c:301
 msgid "Access denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:297
+#: src/lib/error_msgs.c:303
 msgid "Timeout"
 msgstr ""
 
-#: src/lib/error_msgs.c:299
+#: src/lib/error_msgs.c:305
 msgid "Banned"
 msgstr ""
 
-#: src/lib/error_msgs.c:301
+#: src/lib/error_msgs.c:307
 msgid "Account not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:303
+#: src/lib/error_msgs.c:309
 msgid "Invalid Steam ID"
 msgstr ""
 
-#: src/lib/error_msgs.c:305
+#: src/lib/error_msgs.c:311
 msgid "Service unavailable"
 msgstr ""
 
-#: src/lib/error_msgs.c:307
+#: src/lib/error_msgs.c:313
 msgid "Not logged on"
 msgstr ""
 
-#: src/lib/error_msgs.c:311
+#: src/lib/error_msgs.c:317
 msgid "Encryption failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:313
+#: src/lib/error_msgs.c:319
 msgid "Insufficient privilege"
 msgstr ""
 
-#: src/lib/error_msgs.c:315
+#: src/lib/error_msgs.c:321
 msgid "Limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:317
+#: src/lib/error_msgs.c:323
 msgid "Revoked"
 msgstr ""
 
-#: src/lib/error_msgs.c:319
+#: src/lib/error_msgs.c:325
 msgid "Expired"
 msgstr ""
 
-#: src/lib/error_msgs.c:321
+#: src/lib/error_msgs.c:327
 msgid "Already redeemed"
 msgstr ""
 
-#: src/lib/error_msgs.c:323
+#: src/lib/error_msgs.c:329
 msgid "Duplicate request"
 msgstr ""
 
-#: src/lib/error_msgs.c:325
+#: src/lib/error_msgs.c:331
 msgid "Already owned"
 msgstr ""
 
-#: src/lib/error_msgs.c:327
+#: src/lib/error_msgs.c:333
 msgid "IP not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:329
+#: src/lib/error_msgs.c:335
 msgid "Persist failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:331
+#: src/lib/error_msgs.c:337
 msgid "Locking failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:333
+#: src/lib/error_msgs.c:339
 msgid "Logon session replaced"
 msgstr ""
 
-#: src/lib/error_msgs.c:335
+#: src/lib/error_msgs.c:341
 msgid "Connect failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:337
+#: src/lib/error_msgs.c:343
 msgid "Handshake failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:339
+#: src/lib/error_msgs.c:345
 msgid "I/O failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:341
+#: src/lib/error_msgs.c:347
 msgid "Remote disconnect"
 msgstr ""
 
-#: src/lib/error_msgs.c:343
+#: src/lib/error_msgs.c:349
 msgid "Shopping cart not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:345
+#: src/lib/error_msgs.c:351
 msgid "Blocked"
 msgstr ""
 
-#: src/lib/error_msgs.c:347
+#: src/lib/error_msgs.c:353
 msgid "Ignored"
 msgstr ""
 
-#: src/lib/error_msgs.c:349
+#: src/lib/error_msgs.c:355
 msgid "No match"
 msgstr ""
 
-#: src/lib/error_msgs.c:351
+#: src/lib/error_msgs.c:357
 msgid "Account disabled"
 msgstr ""
 
-#: src/lib/error_msgs.c:353
+#: src/lib/error_msgs.c:359
 msgid "Service read-only"
 msgstr ""
 
-#: src/lib/error_msgs.c:355
+#: src/lib/error_msgs.c:361
 msgid "Account not featured"
 msgstr ""
 
-#: src/lib/error_msgs.c:357
+#: src/lib/error_msgs.c:363
 msgid "Administrator OK"
 msgstr ""
 
-#: src/lib/error_msgs.c:359
+#: src/lib/error_msgs.c:365
 msgid "Content version"
 msgstr ""
 
-#: src/lib/error_msgs.c:361
+#: src/lib/error_msgs.c:367
 msgid "Try another Steam CM server"
 msgstr ""
 
-#: src/lib/error_msgs.c:363
+#: src/lib/error_msgs.c:369
 msgid "Password required to kick session"
 msgstr ""
 
-#: src/lib/error_msgs.c:367
+#: src/lib/error_msgs.c:373
 msgid "Suspended"
 msgstr ""
 
-#: src/lib/error_msgs.c:369
+#: src/lib/error_msgs.c:375
 msgid "Cancelled"
 msgstr ""
 
-#: src/lib/error_msgs.c:371
+#: src/lib/error_msgs.c:377
 msgid "Data corruption"
 msgstr ""
 
-#: src/lib/error_msgs.c:373
+#: src/lib/error_msgs.c:379
 msgid "Disk full"
 msgstr ""
 
-#: src/lib/error_msgs.c:375
+#: src/lib/error_msgs.c:381
 msgid "Remote call failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:377
+#: src/lib/error_msgs.c:383
 msgid "Password unset"
 msgstr ""
 
-#: src/lib/error_msgs.c:379
+#: src/lib/error_msgs.c:385
 msgid "External account unlinked"
 msgstr ""
 
-#: src/lib/error_msgs.c:381
+#: src/lib/error_msgs.c:387
 msgid "PSN ticket invalid"
 msgstr ""
 
-#: src/lib/error_msgs.c:383
+#: src/lib/error_msgs.c:389
 msgid "External account already linked"
 msgstr ""
 
-#: src/lib/error_msgs.c:385
+#: src/lib/error_msgs.c:391
 msgid "Remote file conflict"
 msgstr ""
 
-#: src/lib/error_msgs.c:387
+#: src/lib/error_msgs.c:393
 msgid "Illegal password"
 msgstr ""
 
-#: src/lib/error_msgs.c:389
+#: src/lib/error_msgs.c:395
 msgid "Same as previous value"
 msgstr ""
 
-#: src/lib/error_msgs.c:391
+#: src/lib/error_msgs.c:397
 msgid "Account logon denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:393
+#: src/lib/error_msgs.c:399
 msgid "Cannot use old password"
 msgstr ""
 
-#: src/lib/error_msgs.c:395
+#: src/lib/error_msgs.c:401
 msgid "Invalid login auth code"
 msgstr ""
 
-#: src/lib/error_msgs.c:397
+#: src/lib/error_msgs.c:403
 msgid "Account logon denied, no mail"
 msgstr ""
 
-#: src/lib/error_msgs.c:399
+#: src/lib/error_msgs.c:405
 msgid "Hardware not capable of IPT"
 msgstr ""
 
-#: src/lib/error_msgs.c:401
+#: src/lib/error_msgs.c:407
 msgid "IPT initialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:403
+#: src/lib/error_msgs.c:409
 msgid "Parental control restricted"
 msgstr ""
 
-#: src/lib/error_msgs.c:405
+#: src/lib/error_msgs.c:411
 msgid "Facebook query error"
 msgstr ""
 
-#: src/lib/error_msgs.c:407
+#: src/lib/error_msgs.c:413
 msgid "Expired login auth code"
 msgstr ""
 
-#: src/lib/error_msgs.c:409
+#: src/lib/error_msgs.c:415
 msgid "IP login restriction failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:411
+#: src/lib/error_msgs.c:417
 msgid "Account locked down"
 msgstr ""
 
-#: src/lib/error_msgs.c:413
+#: src/lib/error_msgs.c:419
 msgid "Account logon denied, verified email required"
 msgstr ""
 
-#: src/lib/error_msgs.c:415
+#: src/lib/error_msgs.c:421
 msgid "No matching URL"
 msgstr ""
 
-#: src/lib/error_msgs.c:417
+#: src/lib/error_msgs.c:423
 msgid "Bad response"
 msgstr ""
 
-#: src/lib/error_msgs.c:419
+#: src/lib/error_msgs.c:425
 msgid "Require password reentry"
 msgstr ""
 
-#: src/lib/error_msgs.c:421
+#: src/lib/error_msgs.c:427
 msgid "Value out of range"
 msgstr ""
 
-#: src/lib/error_msgs.c:423
+#: src/lib/error_msgs.c:429
 msgid "Unexpected error"
 msgstr ""
 
-#: src/lib/error_msgs.c:425
+#: src/lib/error_msgs.c:431
 msgid "Disabled"
 msgstr ""
 
-#: src/lib/error_msgs.c:427
+#: src/lib/error_msgs.c:433
 msgid "Invalid CEG submission"
 msgstr ""
 
-#: src/lib/error_msgs.c:429
+#: src/lib/error_msgs.c:435
 msgid "Restricted device"
 msgstr ""
 
-#: src/lib/error_msgs.c:431
+#: src/lib/error_msgs.c:437
 msgid "Region locked"
 msgstr ""
 
-#: src/lib/error_msgs.c:433
+#: src/lib/error_msgs.c:439
 msgid "Rate limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:435
+#: src/lib/error_msgs.c:441
 msgid "Account login denied, need two-factor authentication"
 msgstr ""
 
-#: src/lib/error_msgs.c:437
+#: src/lib/error_msgs.c:443
 msgid "Item deleted"
 msgstr ""
 
-#: src/lib/error_msgs.c:439
+#: src/lib/error_msgs.c:445
 msgid "Account login denied, throttle"
 msgstr ""
 
-#: src/lib/error_msgs.c:441
+#: src/lib/error_msgs.c:447
 msgid "Two-factor code mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:443
+#: src/lib/error_msgs.c:449
 msgid "Two-factor activation code mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:445
+#: src/lib/error_msgs.c:451
 msgid "Account associated to multiple partners"
 msgstr ""
 
-#: src/lib/error_msgs.c:447
+#: src/lib/error_msgs.c:453
 msgid "Not modified"
 msgstr ""
 
-#: src/lib/error_msgs.c:449
+#: src/lib/error_msgs.c:455
 msgid "No mobile device"
 msgstr ""
 
-#: src/lib/error_msgs.c:451
+#: src/lib/error_msgs.c:457
 msgid "Time not synced"
 msgstr ""
 
-#: src/lib/error_msgs.c:453
+#: src/lib/error_msgs.c:459
 msgid "SMS code failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:455
+#: src/lib/error_msgs.c:461
 msgid "Account limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:457
+#: src/lib/error_msgs.c:463
 msgid "Account activity limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:459
+#: src/lib/error_msgs.c:465
 msgid "Phone activity limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:461
+#: src/lib/error_msgs.c:467
 msgid "Refund to wallet"
 msgstr ""
 
-#: src/lib/error_msgs.c:463
+#: src/lib/error_msgs.c:469
 msgid "Email send failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:465
+#: src/lib/error_msgs.c:471
 msgid "Not settled"
 msgstr ""
 
-#: src/lib/error_msgs.c:467
+#: src/lib/error_msgs.c:473
 msgid "Need CAPTCHA"
 msgstr ""
 
-#: src/lib/error_msgs.c:469
+#: src/lib/error_msgs.c:475
 msgid "GSLT denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:471
+#: src/lib/error_msgs.c:477
 msgid "GS owner denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:473
+#: src/lib/error_msgs.c:479
 msgid "Invalid item type"
 msgstr ""
 
-#: src/lib/error_msgs.c:475
+#: src/lib/error_msgs.c:481
 msgid "IP banned"
 msgstr ""
 
-#: src/lib/error_msgs.c:477
+#: src/lib/error_msgs.c:483
 msgid "GSLT expired"
 msgstr ""
 
-#: src/lib/error_msgs.c:479
+#: src/lib/error_msgs.c:485
 msgid "Insufficient funds"
 msgstr ""
 
-#: src/lib/error_msgs.c:481
+#: src/lib/error_msgs.c:487
 msgid "Too many pending"
 msgstr ""
 
-#: src/lib/error_msgs.c:483
+#: src/lib/error_msgs.c:489
 msgid "No site licenses found"
 msgstr ""
 
-#: src/lib/error_msgs.c:485
+#: src/lib/error_msgs.c:491
 msgid "WG network send exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:487
+#: src/lib/error_msgs.c:493
 msgid "Account not friends"
 msgstr ""
 
-#: src/lib/error_msgs.c:489
+#: src/lib/error_msgs.c:495
 msgid "Limited user account"
 msgstr ""
 
-#: src/lib/error_msgs.c:491
+#: src/lib/error_msgs.c:497
 msgid "Can't remove item"
 msgstr ""
 
-#: src/lib/error_msgs.c:493
+#: src/lib/error_msgs.c:499
 msgid "Account deleted"
 msgstr ""
 
-#: src/lib/error_msgs.c:495
+#: src/lib/error_msgs.c:501
 msgid "Existing user cancelled license"
 msgstr ""
 
-#: src/lib/error_msgs.c:497
+#: src/lib/error_msgs.c:503
 msgid "Community cooldown"
 msgstr ""
 
-#: src/lib/error_msgs.c:499
+#: src/lib/error_msgs.c:505
 msgid "No launcher specified"
 msgstr ""
 
-#: src/lib/error_msgs.c:501
+#: src/lib/error_msgs.c:507
 msgid "Must agree to Steam Subscriber Agreement"
 msgstr ""
 
-#: src/lib/error_msgs.c:503
+#: src/lib/error_msgs.c:509
 msgid "Launcher migrated"
 msgstr ""
 
-#: src/lib/error_msgs.c:505
+#: src/lib/error_msgs.c:511
 msgid "Steam realm mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:507
+#: src/lib/error_msgs.c:513
 msgid "Invalid signature"
 msgstr ""
 
-#: src/lib/error_msgs.c:509
+#: src/lib/error_msgs.c:515
 msgid "Parse failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:511
+#: src/lib/error_msgs.c:517
 msgid "No verified phone"
 msgstr ""
 
-#: src/lib/error_msgs.c:513
+#: src/lib/error_msgs.c:519
 msgid "Insufficient battery"
 msgstr ""
 
-#: src/lib/error_msgs.c:515
+#: src/lib/error_msgs.c:521
 msgid "Charger required"
 msgstr ""
 
-#: src/lib/error_msgs.c:517
+#: src/lib/error_msgs.c:523
 msgid "Cached credential invalid"
 msgstr ""
 
-#: src/lib/error_msgs.c:519
+#: src/lib/error_msgs.c:525
 msgid "Phone number is VoIP"
 msgstr ""
 
-#: src/lib/error_msgs.c:521
+#: src/lib/error_msgs.c:527
 msgid "Not supported"
 msgstr ""
 
-#: src/lib/error_msgs.c:523
+#: src/lib/error_msgs.c:529
 msgid "Family size limit exceeded"
 msgstr ""
 
+#: src/lib/error_msgs.c:545
+msgid "Checking for existence"
+msgstr ""
+
+#: src/lib/error_msgs.c:547
+msgid "Creating or opening"
+msgstr ""
+
+#: src/lib/error_msgs.c:549
+msgid "Getting type of filesystem entry"
+msgstr ""
+
+#: src/lib/error_msgs.c:551
+msgid "Getting file size"
+msgstr ""
+
+#: src/lib/error_msgs.c:553
+msgid "Truncating"
+msgstr ""
+
+#: src/lib/error_msgs.c:555
+msgid "Reading data"
+msgstr ""
+
+#: src/lib/error_msgs.c:557
+msgid "Writing data"
+msgstr ""
+
+#: src/lib/error_msgs.c:559
+msgid "Setting attributes or permissions"
+msgstr ""
+
+#: src/lib/error_msgs.c:561
+msgid "Copying data"
+msgstr ""
+
+#: src/lib/error_msgs.c:563
+msgid "Moving"
+msgstr ""
+
+#: src/lib/error_msgs.c:567
+msgid "Creating symbolic link"
+msgstr ""
+
+#: src/lib/error_msgs.c:569
+msgid "Registering for asynchronous I/O"
+msgstr ""
+
+#: src/lib/error_msgs.c:571
+msgid "Submitting an asynchronous I/O request"
+msgstr ""
+
+#: src/lib/error_msgs.c:573
+msgid "Waiting for asynchronous I/O completions"
+msgstr ""
+
+#: src/lib/error_msgs.c:589
+msgid "Normal closure"
+msgstr ""
+
+#: src/lib/error_msgs.c:591
+msgid "Going away"
+msgstr ""
+
+#: src/lib/error_msgs.c:593
+msgid "Protocol error"
+msgstr ""
+
+#: src/lib/error_msgs.c:595
+msgid "Unsupported data"
+msgstr ""
+
+#: src/lib/error_msgs.c:597
+msgid "No status code received"
+msgstr ""
+
+#: src/lib/error_msgs.c:599
+msgid "Abnormal closure"
+msgstr ""
+
+#: src/lib/error_msgs.c:601
+msgid "Invalid payload"
+msgstr ""
+
+#: src/lib/error_msgs.c:603
+msgid "Policy violation"
+msgstr ""
+
+#: src/lib/error_msgs.c:605
+msgid "Message too big"
+msgstr ""
+
+#: src/lib/error_msgs.c:607
+msgid "Mandatory extension not supported"
+msgstr ""
+
+#: src/lib/error_msgs.c:609
+msgid "Internal server error"
+msgstr ""
+
+#: src/lib/error_msgs.c:611
+msgid "Service restart"
+msgstr ""
+
+#: src/lib/error_msgs.c:613
+msgid "Try again later"
+msgstr ""
+
+#: src/lib/error_msgs.c:615
+msgid "Bad gateway"
+msgstr ""
+
+#: src/lib/error_msgs.c:617
+msgid "TLS handshake failure"
+msgstr ""
+
+#: src/lib/error_msgs.c:619
+msgid "Steam CM normal closure"
+msgstr ""
+
 #. L18N: An error type
-#: src/lib/error_msgs.c:539
+#: src/lib/error_msgs.c:635
 msgid "Basic"
 msgstr ""
 
+#. L18N: %u is the WebSocket close code number, %s is its string
+#. representation
+#: src/lib/error_msgs.c:640
+#, c-format
+msgid "WebSocket close code: (%u) %s"
+msgstr ""
+
 #. L18N: An error URI kind
-#: src/lib/error_msgs.c:542 src/lib/error_msgs.c:551 src/lib/error_msgs.c:661
+#: src/lib/error_msgs.c:650 src/lib/error_msgs.c:659 src/lib/error_msgs.c:704
 msgid "URL"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:547
+#: src/lib/error_msgs.c:655
 msgid "Compound"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:556
+#: src/lib/error_msgs.c:664
 msgid "Steam CM response"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:561
+#: src/lib/error_msgs.c:669
 msgid "OS"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:568
-msgid "Checking for existence"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:572
-msgid "Creating or opening"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:576
-msgid "Getting type of filesystem entry"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:580
-msgid "Getting file size"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:584
-msgid "Truncating"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:588
-msgid "Reading data"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:592
-msgid "Writing data"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:596
-msgid "Setting attributes or permissions"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:600
-msgid "Copying data"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:604
-msgid "Moving"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:612
-msgid "Creating symbolic link"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:616
-msgid "Registering for asynchronous I/O"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:620
-msgid "Submitting an asynchronous I/O request"
-msgstr ""
-
-#. L18N: An I/O operation type
-#: src/lib/error_msgs.c:624
-msgid "Waiting for asynchronous I/O completions"
 msgstr ""
 
 #. L18N: %u is the I/O operation type code, %s is its string
 #. representation
-#: src/lib/error_msgs.c:632
+#: src/lib/error_msgs.c:675
 #, c-format
 msgid "I/O operation type: (%u) %s"
 msgstr ""
 
 #. L18N: An error URI kind
-#: src/lib/error_msgs.c:642 src/lib/error_msgs.c:675
+#: src/lib/error_msgs.c:685 src/lib/error_msgs.c:718
 msgid "Path"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:647
+#: src/lib/error_msgs.c:690
 msgid "libcurl-easy"
 msgstr ""
 
 #. L18N: %u is the status code number
-#: src/lib/error_msgs.c:651
+#: src/lib/error_msgs.c:694
 #, c-format
 msgid "HTTP status code: %u"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:666
+#: src/lib/error_msgs.c:709
 msgid "libcurl-multi"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:671
+#: src/lib/error_msgs.c:714
 msgid "SQLite"
 msgstr ""
