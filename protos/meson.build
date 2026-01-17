@@ -11,6 +11,7 @@ proto_src = [
   'tek/steamclient/cm/msg_payloads/get_manifest_request_code.proto',
   'tek/steamclient/cm/msg_payloads/get_password_rsa_public_key.proto',
   'tek/steamclient/cm/msg_payloads/get_servers_for_steampipe.proto',
+  'tek/steamclient/cm/msg_payloads/heartbeat.proto',
   'tek/steamclient/cm/msg_payloads/hello.proto',
   'tek/steamclient/cm/msg_payloads/license_list.proto',
   'tek/steamclient/cm/msg_payloads/logoff.proto',

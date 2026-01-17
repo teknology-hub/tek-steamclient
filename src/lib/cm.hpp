@@ -250,6 +250,10 @@ public:
   std::atomic_bool delete_pending{};
   /// Value indicating whether it's currently safe to delete the instance.
   std::atomic_bool safe_to_delete{true};
+  /// Value indicating whether @ref heartbeat_timer has been initialized.
+  bool heartbeat_active{};
+  /// libuv timer handle for heartbeat.
+  uv_timer_t heartbeat_timer;
 
   constexpr cm_conn(lib_ctx &ctx, void *_Nullable user_data) noexcept
       : ws_conn{ctx}, user_data{user_data} {}
