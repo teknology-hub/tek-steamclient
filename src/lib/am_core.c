@@ -18,6 +18,7 @@
 #include "os.h"
 #include "tek-steamclient/am.h"
 #include "tek-steamclient/base.h"
+#include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
 #include "tek-steamclient/sp.h"

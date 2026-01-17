@@ -20,6 +20,7 @@
 #include "os.h"
 #include "tek-steamclient/am.h"
 #include "tek-steamclient/base.h"
+#include "tek-steamclient/cm.h"
 #include "tek-steamclient/error.h"
 #ifdef TEK_SCB_S3C
 #include "tek-steamclient/s3c.h"
