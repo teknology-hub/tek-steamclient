@@ -440,7 +440,8 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
     } // for (auto it{lics_a_entries.before_begin()};;)
   } // license timeout processing scope
   tek_sc_err res;
-  if (code == TSCI_WS_CLOSE_CODE_NORMAL &&
+  if ((code == TSCI_WS_CLOSE_CODE_NORMAL ||
+       code == TSCI_WS_CLOSE_CODE_STEAM_NORMAL) &&
       disconnection_reason == TEK_SC_ERRC_ok) {
     res = tsc_err_ok();
   } else {

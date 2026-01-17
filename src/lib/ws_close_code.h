@@ -47,7 +47,9 @@ enum tsci_ws_close_code : uint16_t {
   /// Bad gateway.
   TSCI_WS_CLOSE_CODE_BAD_GATEWAY = 1014,
   /// TLS handshake failure.
-  TSCI_WS_CLOSE_CODE_TLS_HANDSHAKE = 1015
+  TSCI_WS_CLOSE_CODE_TLS_HANDSHAKE = 1015,
+  /// Steam CM servers return this code for normal closure.
+  TSCI_WS_CLOSE_CODE_STEAM_NORMAL = 59395
 };
 /// @copydoc tsci_ws_close_code
 typedef enum tsci_ws_close_code tsci_ws_close_code;
