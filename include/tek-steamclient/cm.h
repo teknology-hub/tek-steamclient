@@ -852,6 +852,28 @@ void tek_sc_cm_get_mrc(tek_sc_cm_client *_Nonnull client,
                        tek_sc_cm_data_mrc *_Nonnull data,
                        tek_sc_cm_callback_func *_Nonnull cb, long timeout_ms);
 
+/// Get request code for specified manifest in specified branch.
+///
+/// @param [in, out] client
+///    Pointer to the CM client instance that will perform the request.
+/// @param [in, out] data
+///    Pointer to the request/response data.
+/// @param cb
+///    Pointer to the function that will be called when the response is
+///    received or timed out. `data` will be @p data.
+/// @param timeout_ms
+///    Timeout for the response message, in milliseconds.
+/// @param [in] branch
+///    Name of the branch that the manifest belongs to, as a null-terminated
+///    UTF-8 string.
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3, 5), gnu::access(read_write, 1),
+  gnu::access(read_write, 2), gnu::access(read_only, 5),
+  gnu::null_terminated_string_arg(5), clang::callback(cb, __, __, __)]]
+void tek_sc_cm_get_mrc_branch(tek_sc_cm_client *_Nonnull client,
+                              tek_sc_cm_data_mrc *_Nonnull data,
+                              tek_sc_cm_callback_func *_Nonnull cb,
+                              long timeout_ms, const char *_Nonnull branch);
+
 /// Get SteamPipe server list.
 ///
 /// @param [in, out] client

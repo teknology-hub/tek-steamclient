@@ -352,6 +352,13 @@ void tek_sc_cm_get_dp_info(tek_sc_cm_client *client,
 
 void tek_sc_cm_get_mrc(tek_sc_cm_client *client, tek_sc_cm_data_mrc *data,
                        tek_sc_cm_callback_func *cb, long timeout_ms) {
+  tek_sc_cm_get_mrc_branch(client, data, cb, timeout_ms, "public");
+}
+
+void tek_sc_cm_get_mrc_branch(tek_sc_cm_client *client,
+                              tek_sc_cm_data_mrc *data,
+                              tek_sc_cm_callback_func *cb, long timeout_ms,
+                              const char *branch) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
   if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
@@ -370,7 +377,7 @@ void tek_sc_cm_get_mrc(tek_sc_cm_client *client, tek_sc_cm_data_mrc *data,
   msg.payload.set_app_id(data->app_id);
   msg.payload.set_depot_id(data->depot_id);
   msg.payload.set_manifest_id(data->manifest_id);
-  msg.payload.set_app_branch("public");
+  msg.payload.set_app_branch(branch);
   // Send the request message
   const auto it{conn.setup_a_entry(job_id, handle_gmrc, cb, timeout_mrc, data)};
   if (const auto res{conn.send_message<TEK_SC_ERRC_cm_mrc>(
