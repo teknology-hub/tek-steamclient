@@ -341,7 +341,7 @@ static void tscl_job_sig_handler() { tek_sc_am_pause_job(tscl_job_desc); }
 
 //===-- Internal function -------------------------------------------------===//
 
-bool tscl_run_cmd(const tscl_command *cmd) {
+tscl_cmd_res tscl_run_cmd(const tscl_command *cmd) {
   switch (cmd->type) {
   case TSCL_CMD_TYPE_help:
     // L18N: output of tek-sc-cli's "help" command (main part)
@@ -407,14 +407,14 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         "specified URL, i.e. fetch its depot decryption keys and update list "
         "of apps/depots that it can provide manifest request codes for"));
 #endif // def TEK_SCB_S3C
-    return true;
+    return TSCL_CMD_RES_ok;
 #ifdef TEK_SCB_AM
   case TSCL_CMD_TYPE_am_init:
     if (tscl_g_ctx.am) {
       fputs(tsc_gettext("Error: There is already an initialized application "
                         "manager instance\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     } else {
       auto path = cmd->am_init.path;
       const bool use_cwd = !path[0];
@@ -430,7 +430,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
               tsc_gettext("Failed to get current working directory: (%u) %s\n"),
               (unsigned)errc, msg);
           free(msg);
-          return false;
+          return TSCL_CMD_RES_fail;
         }
       }
       auto const path_size = sizeof *path * (tscl_os_strlen(path) + 1);
@@ -445,7 +445,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
       }
       if (!tscl_g_ctx.am) {
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       if (tscl_g_ctx.interactive) {
         // L18N: This message is followed by path to the application manager
@@ -454,9 +454,9 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                tsc_gettext("Initialized application manager instance at"),
                tscl_g_ctx.am_path);
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     }
-    return false;
+    return TSCL_CMD_RES_fail;
   case TSCL_CMD_TYPE_am_close:
     if (tscl_g_ctx.am) {
       tek_sc_am_destroy(tscl_g_ctx.am);
@@ -466,12 +466,12 @@ bool tscl_run_cmd(const tscl_command *cmd) {
       if (tscl_g_ctx.interactive) {
         puts(tsc_gettext("Application manager instance has been closed"));
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to close\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
   case TSCL_CMD_TYPE_am_set_workshop_dir:
     if (tscl_g_ctx.am) {
@@ -479,7 +479,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
           tek_sc_am_set_ws_dir(tscl_g_ctx.am, cmd->am_set_workshop_dir.path);
       if (!tek_sc_err_success(&res)) {
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       if (tscl_g_ctx.interactive) {
         // L18N: This message is followed by path to the workshop directory
@@ -487,12 +487,12 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                tsc_gettext("Workshop directory has been set to"),
                cmd->am_set_workshop_dir.path);
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to set workshop directory for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
   case TSCL_CMD_TYPE_am_status:
     if (tscl_g_ctx.am) {
@@ -528,29 +528,29 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         }
       }
       tek_sc_am_item_descs_unlock(tscl_g_ctx.am);
-      return true;
+      return TSCL_CMD_RES_ok;
     } else { // if (tscl_g_ctx.am)
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to get status of\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     } // if (tscl_g_ctx.am) else
   case TSCL_CMD_TYPE_am_check_for_updates:
     if (tscl_g_ctx.am) {
       auto const res = tek_sc_am_check_for_upds(tscl_g_ctx.am, 20000);
       if (!tek_sc_err_success(&res)) {
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       if (tscl_g_ctx.interactive) {
         puts(tsc_gettext("Check for updates succeeded"));
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     } else { // if (tscl_g_ctx.am)
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to check for updates for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     } // if (tscl_g_ctx.am) else
   case TSCL_CMD_TYPE_am_create_job:
     if (tscl_g_ctx.am) {
@@ -560,17 +560,17 @@ bool tscl_run_cmd(const tscl_command *cmd) {
                                cmd->am_create_job.force_verify, nullptr);
       if (!tek_sc_err_success(&res)) {
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       if (tscl_g_ctx.interactive) {
         puts(tsc_gettext("The job has been created successfully"));
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to create job for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
   case TSCL_CMD_TYPE_am_run_job:
     if (tscl_g_ctx.am) {
@@ -588,7 +588,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       tscl_job_desc = desc;
       const bool verification = !desc->job.source_manifest_id;
@@ -598,24 +598,24 @@ bool tscl_run_cmd(const tscl_command *cmd) {
       switch (res.primary) {
       case TEK_SC_ERRC_ok:
         puts(tsc_gettext("The job has finished successfully"));
-        return true;
+        return TSCL_CMD_RES_ok;
       case TEK_SC_ERRC_paused:
         puts(tsc_gettext("The job has been paused successfully"));
-        return true;
+        return TSCL_CMD_RES_pause;
       case TEK_SC_ERRC_up_to_date:
         puts(verification ? tsc_gettext("No mismatches have been found")
                           : tsc_gettext("The item is already up to date"));
-        return true;
+        return TSCL_CMD_RES_ok;
       default:
         puts("");
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to run job for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
   case TSCL_CMD_TYPE_am_cancel_job:
     if (tscl_g_ctx.am) {
@@ -633,22 +633,22 @@ bool tscl_run_cmd(const tscl_command *cmd) {
             tsc_gettext(
                 "Error: Application manager doesn't have state for item %s\n"),
             item_id);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       auto const res = tek_sc_am_cancel_job(tscl_g_ctx.am, desc);
       if (!tek_sc_err_success(&res)) {
         tscl_print_err(&res);
-        return false;
+        return TSCL_CMD_RES_fail;
       }
       if (tscl_g_ctx.interactive) {
         puts(tsc_gettext("The job has been cancelled successfully"));
       }
-      return true;
+      return TSCL_CMD_RES_ok;
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to cancel job for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
 #ifdef TEK_SCB_CLI_DUMP
   case TSCL_CMD_TYPE_am_dump:
@@ -656,21 +656,26 @@ bool tscl_run_cmd(const tscl_command *cmd) {
       switch (cmd->am_dump.type) {
       case TSCL_DUMP_TYPE_manifest:
         return tscl_dump_manifest(&cmd->am_dump.item_id,
-                                  cmd->am_dump.manifest_id);
+                                  cmd->am_dump.manifest_id)
+                   ? TSCL_CMD_RES_ok
+                   : TSCL_CMD_RES_fail;
       case TSCL_DUMP_TYPE_patch:
-        return tscl_dump_patch(&cmd->am_dump.item_id);
+        return tscl_dump_patch(&cmd->am_dump.item_id) ? TSCL_CMD_RES_ok
+                                                      : TSCL_CMD_RES_fail;
       case TSCL_DUMP_TYPE_vcache:
-        return tscl_dump_vcache(&cmd->am_dump.item_id);
+        return tscl_dump_vcache(&cmd->am_dump.item_id) ? TSCL_CMD_RES_ok
+                                                       : TSCL_CMD_RES_fail;
       case TSCL_DUMP_TYPE_delta:
-        return tscl_dump_delta(&cmd->am_dump.item_id);
+        return tscl_dump_delta(&cmd->am_dump.item_id) ? TSCL_CMD_RES_ok
+                                                      : TSCL_CMD_RES_fail;
       default:
-        return false;
+        return TSCL_CMD_RES_fail;
       }
     } else {
       fputs(tsc_gettext("Error: There is no initialized application manager "
                         "instance to dump for\n"),
             stderr);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
 #endif // def TEK_SCB_CLI_DUMP
 #endif // def TEK_SCB_AM
@@ -680,7 +685,7 @@ bool tscl_run_cmd(const tscl_command *cmd) {
         tscl_g_ctx.lib_ctx, cmd->s3c_sync_manifest.url, 30000);
     if (!tek_sc_err_success(&res)) {
       tscl_print_err(&res);
-      return false;
+      return TSCL_CMD_RES_fail;
     }
     if (tscl_g_ctx.interactive) {
       // L18N: %s is the server URL entered by the user
@@ -688,10 +693,10 @@ bool tscl_run_cmd(const tscl_command *cmd) {
           tsc_gettext("Successfully synchronized tek-s3 manifest for \"%s\"\n"),
           cmd->s3c_sync_manifest.url);
     }
-    return true;
+    return TSCL_CMD_RES_ok;
   }
 #endif // def TEK_SCB_S3C
   default:
-    return false;
+    return TSCL_CMD_RES_fail;
   } // switch (cmd->type)
 }

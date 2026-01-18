@@ -53,8 +53,9 @@ int main(int argc, char *argv[]) {
   int res;
   if (argc > 1) {
     for (int i = 0; i < num_cmds; i++) {
-      if (!tscl_run_cmd(&cmds[i])) {
-        res = EXIT_FAILURE;
+      auto const cmd_res = tscl_run_cmd(&cmds[i]);
+      if (cmd_res != TSCL_CMD_RES_ok) {
+        res = cmd_res == TSCL_CMD_RES_pause ? EXIT_SUCCESS : EXIT_FAILURE;
         goto cleanup;
       }
       if (atomic_load_explicit(&tscl_g_ctx.terminating, memory_order_relaxed)) {
