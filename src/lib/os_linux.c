@@ -47,12 +47,6 @@
 #include <unistd.h>
 #include <wordexp.h>
 
-/// @def TSCP_IO_URING_MMAP_SIZE
-/// Size of the mapping allocated for io_uring when `IORING_SETUP_NO_MMAP` is
-///    available. In tek-steamclient's use cases, neither of the queues should
-///    ever exceed page size.
-#define TSCP_IO_URING_MMAP_SIZE 0x2000
-
 //===-- General functions -------------------------------------------------===//
 
 void tsci_os_close_handle(tek_sc_os_handle handle) { close(handle); }
@@ -709,14 +703,15 @@ tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, int num_reqs,
   int res;
   if (ver_num >= 6005) {
     flags |= IORING_SETUP_NO_MMAP | IORING_SETUP_REGISTERED_FD_ONLY;
-    ctx->buf = mmap(nullptr, TSCP_IO_URING_MMAP_SIZE, PROT_READ | PROT_WRITE,
+    const int buf_size = sysconf(_SC_PAGESIZE) * 2;
+    ctx->buf = mmap(nullptr, buf_size, PROT_READ | PROT_WRITE,
                     MAP_SHARED | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (ctx->buf == MAP_FAILED) {
       return errno;
     }
     res = io_uring_queue_init_mem(num_reqs, &ctx->ring,
                                   &(struct io_uring_params){.flags = flags},
-                                  ctx->buf, TSCP_IO_URING_MMAP_SIZE);
+                                  ctx->buf, buf_size);
   } else {
     ctx->buf = MAP_FAILED;
     res = io_uring_queue_init(num_reqs, &ctx->ring, flags);
@@ -750,7 +745,7 @@ tek_sc_os_errc tsci_os_aio_ctx_init(tsci_os_aio_ctx *ctx, int num_reqs,
 fail:
   io_uring_queue_exit(&ctx->ring);
   if (ctx->buf != MAP_FAILED) {
-    munmap(ctx->buf, TSCP_IO_URING_MMAP_SIZE);
+    munmap(ctx->buf, sysconf(_SC_PAGESIZE) * 2);
   }
   return -res;
 skip_uring:
@@ -766,7 +761,7 @@ void tsci_os_aio_ctx_destroy(tsci_os_aio_ctx *ctx) {
   if (ctx->num_reqs < 0) {
     io_uring_queue_exit(&ctx->ring);
     if (ctx->buf != MAP_FAILED) {
-      munmap(ctx->buf, TSCP_IO_URING_MMAP_SIZE);
+      munmap(ctx->buf, sysconf(_SC_PAGESIZE) * 2);
     }
     return;
   }
