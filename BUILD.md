@@ -1,16 +1,15 @@
 # Building tek-steamclient
 
-This guide assumes that you have installed `curl` program, and `tar` or `git`, which in most systems are either pre-installed or can be easily acquired. On Windows, using [MSYS2](https://www.msys2.org/) is required, preferably with CLANG64 environment as the most tested during development.
+This guide assumes that you have installed `curl` program, and `tar` or `git`, which in most systems are either pre-installed or can be easily acquired. On Windows, using [MSYS2](https://www.msys2.org/) is required, preferably with [TEK-X86_64 environment](https://github.com/teknology-hub/MinGW-env) that is tuned for building TEK software.
 
 ## 1. Install dependencies
 
-Package names and commands used to install them vary across systems, so they will net be given here for the time being.
+Package names and commands used to install them vary across systems, so they will not be given here for the time being.
 
 ### Toolchain requirements
 
 - C and C++ compilers with decent support for C23/C++23 with GNU extensions (i.e. `-std=gnu23` and `-std=gnu++23`), most notable are GCC 13+ and Clang 18+.
-- [Meson build system](https://mesonbuild.com) - must be installed to build the project.
-- [CMake](https://cmake.org) - may be required to be present to correctly find certain dependencies.
+- [Meson build system](https://mesonbuild.com) - build system used by the project.
 
 ### Dependencies
 
@@ -22,8 +21,7 @@ Here's the list of libraries that tek-steamclient depends on:
 |-|-|
 |libcrypto from [OpenSSL](https://www.openssl.org)|AES-256 CBC and ECB decryption, SHA-1 hashing, RSA encryption|
 |[libcurl](https://curl.se)|HTTP(S) downloads and WebSocket connections|
-|[libuv](https://libuv.org/)|CM event loop and synchronization primitives|
-|[libwebsockets](https://libwebsockets.org)|WebSocket connections for Steam CM client|
+|[libuv](https://libuv.org/)|Event loop for CM client's WebSocket connections|
 |protobuf-lite from [Protobuf](https://protobuf.dev)|Serialization and deserialization of Protobuf messages used by Steam|
 |[RapidJSON](https://rapidjson.org/)|JSON parsing|
 |[SQLite3](https://sqlite.org/index.html)|Cache and state storage in database files|
@@ -79,4 +77,4 @@ On Windows in MSYS2 you way also want to set prefix to the one matching your env
 ```sh
 meson install -C build
 ```
-This will compile source files and install binaries into system locations, after which you can use them. If you're on MSYS2, keep in in mind that these binaries cannot be used outside of MSYS2 environment unless you copy **all** DLLs that they depends on into their directory. To circumvent that, you'd have to link all dependencies statically, which is not possible with official MSYS2 packages at the moment of writing this due to some of them not providing static library files, or correct package metadata for static linking, so those would have to be rebuilt with custom options. Doing so is possible (release binaries are built this way), but it's way out of the scope of this guide.
+This will compile source files and install binaries into system locations, after which you can use them. If you're on MSYS2, keep in in mind that these binaries cannot be used outside of MSYS2 environment unless you copy **all** DLLs that they depend on into their directory, or use static linking.
