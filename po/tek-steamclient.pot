@@ -625,12 +625,12 @@ msgid ""
 "for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:670
+#: src/cli/cmd_runner.c:675
 msgid ""
 "Error: There is no initialized application manager instance to dump for\n"
 msgstr ""
 
-#: src/cli/cmd_runner.c:688
+#: src/cli/cmd_runner.c:693
 #, c-format
 msgid "Successfully synchronized tek-s3 manifest for \"%s\"\n"
 msgstr ""
@@ -1050,18 +1050,18 @@ msgstr ""
 msgid "Failed to initialize tek-steamclient library context\n"
 msgstr ""
 
-#: src/cli/main.c:69
+#: src/cli/main.c:70
 #, c-format
 msgid ""
 "tek-steamclient %s\n"
 "Enter \"help\" to list available commands\n"
 msgstr ""
 
-#: src/cli/main.c:74
+#: src/cli/main.c:75
 msgid "Failed to read input string\n"
 msgstr ""
 
-#: src/cli/main.c:140
+#: src/cli/main.c:141
 #, c-format
 msgid "Error: The command is missing closing %c character\n"
 msgstr ""

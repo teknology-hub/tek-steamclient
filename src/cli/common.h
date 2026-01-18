@@ -126,6 +126,18 @@ enum tscl_cmd_type {
 /// @copydoc tscl_cmd_type
 typedef enum tscl_cmd_type tscl_cmd_type;
 
+/// Command result values.
+enum tscl_cmd_res {
+  /// Command succeeded.
+  TSCL_CMD_RES_ok,
+  /// Command failed.
+  TSCL_CMD_RES_fail,
+  /// Command execution has been paused.
+  TSCL_CMD_RES_pause
+};
+/// @copydoc tscl_cmd_res
+typedef enum tscl_cmd_res tscl_cmd_res;
+
 /// Command descriptor.
 typedef struct tscl_command tscl_command;
 /// @copydoc tscl_command
@@ -242,6 +254,6 @@ int tscl_parse_cmd(int argc, tek_sc_os_char *_Nonnull *_Nonnull argv, int ind,
 ///
 /// @param [in] cmd
 ///    Pointer to the descriptor of the command to run.
-/// @return Value indicating whether execution succeeded.
+/// @return Code indicating the result of command execution.
 [[gnu::visibility("internal"), gnu::nonnull(1), gnu::access(read_only, 1)]]
-bool tscl_run_cmd(const tscl_command *_Nonnull cmd);
+tscl_cmd_res tscl_run_cmd(const tscl_command *_Nonnull cmd);
