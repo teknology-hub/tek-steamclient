@@ -1,0 +1,109 @@
+# Maintainer: Nuclearist <nuclearist@teknology-hub.com>
+
+_realname="tek-steamclient"
+pkgbase="mingw-w64-${_realname}"
+pkgname=(
+  "${MINGW_PACKAGE_PREFIX}-${_realname}"
+  "${MINGW_PACKAGE_PREFIX}-${_realname}-dist"
+)
+pkgdesc="An open-source partial Steam client implementation"
+pkgver=
+pkgrel=1
+arch=("x86_64")
+mingw_arch=("tek-x86_64")
+url="https://github.com/teknology-hub/tek-steamclient"
+license=("GPL-3.0-or-later")
+depends=(
+  "${MINGW_PACKAGE_PREFIX}-curl"
+  "${MINGW_PACKAGE_PREFIX}-gettext-runtime"
+  "${MINGW_PACKAGE_PREFIX}-libuv"
+  "${MINGW_PACKAGE_PREFIX}-minizip-ng"
+  "${MINGW_PACKAGE_PREFIX}-openssl"
+  "${MINGW_PACKAGE_PREFIX}-protobuf"
+  "${MINGW_PACKAGE_PREFIX}-sqlite3"
+  "${MINGW_PACKAGE_PREFIX}-xz"
+  "${MINGW_PACKAGE_PREFIX}-zlib-ng"
+  "${MINGW_PACKAGE_PREFIX}-zstd"
+)
+makedepends=(
+  "${MINGW_PACKAGE_PREFIX}-cc"
+  "${MINGW_PACKAGE_PREFIX}-gettext-tools"
+  "${MINGW_PACKAGE_PREFIX}-meson"
+  "${MINGW_PACKAGE_PREFIX}-rapidjson"
+)
+source=(
+  "https://github.com/teknology-hub/tek-steamclient/releases/download/v${pkgver}/${_realname}-${pkgver}.tar.zst"{,.sig}
+  "https://github.com/TinyTinni/ValveFileVDF/archive/refs/tags/v1.1.1.tar.gz"
+)
+sha256sums=(
+  "37096371984223dffd5c81991142cb239ef63246a9bdcf872b82bd88a179b0cd"
+  "SKIP"
+  "de16a199c535c3b49f2aa0bd17e3154e02b32fa7b0949053ba6d981f8c32197f"
+)
+validpgpkeys=("F021C4E2C06A2D2AE01688EFA5B1020268A1093A") # Nuclearist
+
+prepare() {
+  mv "${srcdir}/ValveFileVDF-1.1.1" "${srcdir}/${_realname}-${pkgver}/subprojects/"
+	cp "${srcdir}/${_realname}-${pkgver}/subprojects/packagefiles/ValveFileVDF/meson.build" \
+     "${srcdir}/${_realname}-${pkgver}/subprojects/ValveFileVDF-1.1.1/"
+}
+
+build() {
+  local _common_config=(
+    --prefix="${MINGW_PREFIX}" \
+    --buildtype=debugoptimized \
+    --default-library=both \
+    -Db_lto=true \
+    -Db_lto_mode=thin \
+    -Db_ndebug=true \
+  )
+  MSYS2_ARG_CONV_EXCL="--prefix=" \
+  "${MINGW_PREFIX}/bin/meson" setup \
+    "${_common_config[@]}" \
+    "${srcdir}/build-${MSYSTEM}" \
+    "${srcdir}/${_realname}-${pkgver}"
+  CFLAGS="${CFLAGS} -gcodeview" \
+  CXXFLAGS="${CXXFLAGS} -gcodeview" \
+  LDFLAGS="${LDFLAGS} -static -Wl,--pdb=" \
+  PKG_CONFIG="${MINGW_PREFIX}/bin/pkgconf --static" \
+  MSYS2_ARG_CONV_EXCL="--prefix=" \
+  "${MINGW_PREFIX}/bin/meson" setup \
+    --default-both-libraries=static \
+    -Dprefer_static=true \
+    "${_common_config[@]}" \
+    "${srcdir}/build-${MSYSTEM}-dist" \
+    "${srcdir}/${_realname}-${pkgver}"
+  "${MINGW_PREFIX}/bin/meson" compile -C "${srcdir}/build-${MSYSTEM}"
+  "${MINGW_PREFIX}/bin/meson" compile -C "${srcdir}/build-${MSYSTEM}-dist"
+}
+
+package_tek-steamclient() {
+  "${MINGW_PREFIX}/bin/meson" install -C "${srcdir}/build-${MSYSTEM}" --destdir "${pkgdir}"
+}
+
+package_tek-steamclient-dist() {
+  pkgdesc+=" (release binaries)"
+  depends=()
+
+  mkdir -p "${pkgdir}/var/dist/tek-steamclient/${pkgver}"
+  cd "${pkgdir}/var/dist/tek-steamclient/${pkgver}"
+  cp "${srcdir}/build-${MSYSTEM}-dist/libtek-steamclient.a" ./
+  cp "${srcdir}/build-${MSYSTEM}-dist/libtek-steamclient.dll.a" ./
+  cp "${srcdir}/build-${MSYSTEM}-dist/libtek-steamclient-${pkgver::1}.dll" ./
+  "${MINGW_PREFIX}/bin/strip" --strip-unneeded "libtek-steamclient-${pkgver::1}.dll"
+  cp "${srcdir}/build-${MSYSTEM}-dist/libtek-steamclient-${pkgver::1}.pdb" ./
+  cp "${srcdir}/build-${MSYSTEM}-dist/tek-sc-cli.exe" ./
+  "${MINGW_PREFIX}/bin/strip" --strip-unneeded tek-sc-cli.exe
+  cp "${srcdir}/build-${MSYSTEM}-dist/tek-sc-cli.pdb" ./
+}
+
+# template start; name=mingw-w64-splitpkg-wrappers; version=1.0;
+# vim: set ft=bash :
+
+# generate wrappers
+for _name in "${pkgname[@]}"; do
+  _short="package_${_name#${MINGW_PACKAGE_PREFIX}-}"
+  _func="$(declare -f "${_short}")"
+  eval "${_func/#${_short}/package_${_name}}"
+done
+# template end;
