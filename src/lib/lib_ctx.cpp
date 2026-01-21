@@ -80,7 +80,7 @@ static void ws_poll_cb(uv_poll_t *_Nonnull poll, int status, int events) {
   if (events & UV_WRITABLE) {
     if (conn.send() != CURLE_OK) {
       conn.handle_disconnection(TSCI_WS_CLOSE_CODE_ABNORMAL);
-    } else if (!(events & UV_WRITABLE)) {
+    } else if (!(conn.poll_events & UV_WRITABLE)) {
       uv_poll_start(poll, conn.poll_events, ws_poll_cb);
     }
   }
