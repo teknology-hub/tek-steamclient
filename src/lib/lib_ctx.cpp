@@ -139,12 +139,12 @@ static void async_cb(uv_async_t *_Nonnull async) {
     auto &conn{*ctx.writable_queue.front()};
     for (const std::scoped_lock msg_lock{conn.pending_msgs_mtx};
          auto &msg : conn.pending_msgs) {
-      if (msg.timer && !*msg.timer_active) {
+      if (msg.timer && *msg.state == timer_state::inactive) {
         if (uv_timer_init(&ctx.loop, msg.timer) == 0) {
           uv_handle_set_data(reinterpret_cast<uv_handle_t *>(msg.timer),
                              msg.data);
           uv_timer_start(msg.timer, msg.timer_cb, msg.timeout, 0);
-          *msg.timer_active = true;
+          *msg.state = timer_state::active;
           ++conn.ref_count;
         }
       }

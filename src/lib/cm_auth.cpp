@@ -118,7 +118,13 @@ static void release_auth_ctx(cm_conn &conn) {
   if (!actx) {
     return;
   }
-  if (actx->status_timer.timer_active) {
+  switch (actx->status_timer.state) {
+  case timer_state::inactive:
+    delete actx;
+    break;
+  case timer_state::closing:
+    break;
+  case timer_state::active:
     uv_close(reinterpret_cast<uv_handle_t *>(&actx->status_timer.timer),
              [](auto timer) {
                auto &actx{*reinterpret_cast<auth_session_ctx *>(
@@ -133,8 +139,7 @@ static void release_auth_ctx(cm_conn &conn) {
                  }
                }
              });
-  } else {
-    delete actx;
+    break;
   }
 }
 
@@ -210,7 +215,7 @@ static bool handle_basvc(cm_conn &conn, const MessageHeader &header,
     return true;
   }
   ++conn.ref_count;
-  actx->status_timer.timer_active = true;
+  actx->status_timer.state = timer_state::active;
   uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&actx->status_timer.timer),
                      actx);
   if (uv_timer_start(&actx->status_timer.timer, send_status_req,
@@ -286,7 +291,7 @@ static bool handle_basvq(cm_conn &conn, const MessageHeader &,
     return true;
   }
   ++conn.ref_count;
-  actx->status_timer.timer_active = true;
+  actx->status_timer.state = timer_state::active;
   if (uv_timer_start(&actx->status_timer.timer, send_status_req,
                      actx->polling_interval, 0) != 0) {
     release_auth_ctx(conn);
@@ -700,7 +705,8 @@ void tek_sc_cm_auth_credentials(tek_sc_cm_client *client,
       .account_name{account_name},
       .password{password},
       .timeout_ms = static_cast<std::uint64_t>(timeout_ms),
-      .status_timer{.conn{conn}, .cb = cb, .timer{}, .timer_active{}}}};
+      .status_timer{
+          .conn{conn}, .cb = cb, .state = timer_state::inactive, .timer{}}}};
   // Report an error if there is already another incomplete auth session
   if (auth_session_ctx *expected{}; !conn.auth_ctx.compare_exchange_strong(
           expected, actx, std::memory_order::release,
@@ -753,7 +759,8 @@ void tek_sc_cm_auth_qr(tek_sc_cm_client *client, const char *device_name,
       .account_name{},
       .password{},
       .timeout_ms{},
-      .status_timer{.conn{conn}, .cb = cb, .timer{}, .timer_active{}}}};
+      .status_timer{
+          .conn{conn}, .cb = cb, .state = timer_state::inactive, .timer{}}}};
   // Report an error if there is already another incomplete auth session
   if (auth_session_ctx *expected{}; !conn.auth_ctx.compare_exchange_strong(
           expected, actx, std::memory_order::release,

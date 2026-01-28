@@ -79,10 +79,16 @@ void cm_conn::handle_logon(const MessageHeader &header, const void *data,
   }
   const auto cb{entry->cb};
   // Cancel the timeout
-  if (entry->timer_active) {
-    uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), close_cb);
-  } else {
+  switch (entry->state) {
+  case timer_state::inactive:
     delete entry;
+    break;
+  case timer_state::closing:
+    break;
+  case timer_state::active:
+    entry->state = timer_state::closing;
+    uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), close_cb);
+    break;
   }
   // Parse the payload
   msg_payloads::LogonResponse payload;
@@ -183,8 +189,8 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
     return;
   }
   // Create and attempt to acquire the sign-in entry
-  const auto entry{
-      new await_entry{.conn{conn}, .cb = cb, .timer{}, .timer_active{}}};
+  const auto entry{new await_entry{
+      .conn{conn}, .cb = cb, .state = timer_state::inactive, .timer{}}};
   if (await_entry *expected{}; !conn.sign_in_entry.compare_exchange_strong(
           expected, entry, std::memory_order::release,
           std::memory_order::relaxed)) {
@@ -198,7 +204,7 @@ void tek_sc_cm_sign_in(tek_sc_cm_client *client, const char *token,
                  .size = static_cast<int>(msg_size),
                  .frame_type = CURLWS_BINARY,
                  .timer = &entry->timer,
-                 .timer_active = &entry->timer_active,
+                 .state = &entry->state,
                  .timer_cb = timeout,
                  .timeout = static_cast<std::uint64_t>(timeout_ms),
                  .data = entry});
@@ -234,8 +240,8 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
     return;
   }
   // Create and attempt to acquire the sign-in entry
-  const auto entry{
-      new await_entry{.conn{conn}, .cb = cb, .timer{}, .timer_active{}}};
+  const auto entry{new await_entry{
+      .conn{conn}, .cb = cb, .state = timer_state::inactive, .timer{}}};
   if (await_entry *expected{}; !conn.sign_in_entry.compare_exchange_strong(
           expected, entry, std::memory_order::release,
           std::memory_order::relaxed)) {
@@ -249,7 +255,7 @@ void tek_sc_cm_sign_in_anon(tek_sc_cm_client *client,
                  .size = static_cast<int>(msg_size),
                  .frame_type = CURLWS_BINARY,
                  .timer = &entry->timer,
-                 .timer_active = &entry->timer_active,
+                 .state = &entry->state,
                  .timer_cb = timeout,
                  .timeout = static_cast<std::uint64_t>(timeout_ms),
                  .data = entry});

@@ -230,7 +230,7 @@ void cm_conn::handle_connection(CURLcode code) {
                 .size = static_cast<int>(msg_size),
                 .frame_type = CURLWS_BINARY,
                 .timer{},
-                .timer_active{},
+                .state{},
                 .timer_cb{},
                 .timeout{},
                 .data{}});
@@ -326,8 +326,17 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
     const std::scoped_lock lock{a_entries_mtx};
     for (auto it{a_entries.begin()}; it != a_entries.end();) {
       auto &entry{it->second};
+      if (entry.state == timer_state::closing) {
+        ++it;
+        continue;
+      }
       entry.timeout_cb(entry.conn, entry);
-      if (entry.timer_active) {
+      switch (entry.state) {
+      case timer_state::inactive:
+        it = a_entries.erase(it);
+        break;
+      case timer_state::active:
+        entry.state = timer_state::closing;
         uv_close(reinterpret_cast<uv_handle_t *>(&entry.timer), [](auto timer) {
           auto &entry{
               *reinterpret_cast<msg_await_entry *>(uv_handle_get_data(timer))};
@@ -349,9 +358,10 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
             }
           }
         });
+        [[fallthrough]];
+      case timer_state::closing:
         ++it;
-      } else {
-        it = a_entries.erase(it);
+        break;
       }
     }
   }
@@ -364,7 +374,14 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
         .token{},
         .result{tsc_err_sub(TEK_SC_ERRC_cm_auth, TEK_SC_ERRC_cm_timeout)}};
     actx->status_timer.cb(&*this, &data, user_data);
-    if (actx->status_timer.timer_active) {
+    switch (actx->status_timer.state) {
+    case timer_state::inactive:
+      delete actx;
+      break;
+    case timer_state::closing:
+      break;
+    case timer_state::active:
+      actx->status_timer.state = timer_state::closing;
       uv_close(reinterpret_cast<uv_handle_t *>(&actx->status_timer.timer),
                [](auto timer) {
                  auto &actx{*reinterpret_cast<auth_session_ctx *>(
@@ -380,15 +397,21 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
                    }
                  }
                });
-    } else {
-      delete actx;
+      break;
     }
   }
   const auto entry{sign_in_entry.exchange(nullptr, std::memory_order::relaxed)};
   if (entry) {
     auto res{tsc_err_sub(TEK_SC_ERRC_cm_sign_in, TEK_SC_ERRC_cm_timeout)};
     entry->cb(&*this, &res, user_data);
-    if (entry->timer_active) {
+    switch (entry->state) {
+    case timer_state::inactive:
+      delete entry;
+      break;
+    case timer_state::closing:
+      break;
+    case timer_state::active:
+      entry->state = timer_state::closing;
       uv_close(reinterpret_cast<uv_handle_t *>(&entry->timer), [](auto timer) {
         auto &entry{
             *reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
@@ -402,8 +425,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
           }
         }
       });
-    } else {
-      delete entry;
+      break;
     }
   }
   {
@@ -418,7 +440,14 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
                                .result = tsc_err_sub(TEK_SC_ERRC_cm_licenses,
                                                      TEK_SC_ERRC_cm_timeout)};
       it->cb(&*this, &data, user_data);
-      if (it->timer_active) {
+      switch (it->state) {
+      case timer_state::inactive:
+        it = lics_a_entries.erase_after(prev_it);
+        break;
+      case timer_state::closing:
+        break;
+      case timer_state::active:
+        it->state = timer_state::closing;
         uv_close(reinterpret_cast<uv_handle_t *>(&it->timer), [](auto timer) {
           auto &entry{
               *reinterpret_cast<await_entry *>(uv_handle_get_data(timer))};
@@ -444,11 +473,10 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
             }
           }
         });
-      } else {
-        it = lics_a_entries.erase_after(prev_it);
-        if (it == lics_a_entries.end()) {
-          break;
-        }
+        break;
+      }
+      if (it == lics_a_entries.end()) {
+        break;
       }
     } // for (auto it{lics_a_entries.before_begin()};;)
   } // license timeout processing scope
@@ -578,29 +606,47 @@ void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
       }
     }
     auto &entry{it->second};
+    if (entry.state == timer_state::closing) {
+      break;
+    }
     // Process the response
     if (entry.proc(*this, header, data_ptr, payload_size, entry.cb,
                    entry.inout_data)) {
       // Cancel the timeout and remove the await entry afterwards
-      if (entry.timer_active) {
+      switch (entry.state) {
+      case timer_state::inactive: {
+        const std::scoped_lock lock{a_entries_mtx};
+        a_entries.erase(it);
+        break;
+      }
+      case timer_state::closing:
+        break;
+      case timer_state::active:
+        entry.state = timer_state::closing;
         uv_close(reinterpret_cast<uv_handle_t *>(&entry.timer), [](auto timer) {
           auto &entry{
               *reinterpret_cast<msg_await_entry *>(uv_handle_get_data(timer))};
           auto &conn{entry.conn};
-          --conn.ref_count;
-          const std::scoped_lock lock{conn.a_entries_mtx};
-          using val_type = decltype(conn.a_entries)::value_type;
-          conn.a_entries.erase(
-              reinterpret_cast<const val_type *>(
-                  reinterpret_cast<const unsigned char *>(&entry) -
-                  offsetof(val_type, second))
-                  ->first);
+          {
+            const std::scoped_lock lock{conn.a_entries_mtx};
+            using val_type = decltype(conn.a_entries)::value_type;
+            conn.a_entries.erase(
+                reinterpret_cast<const val_type *>(
+                    reinterpret_cast<const unsigned char *>(&entry) -
+                    offsetof(val_type, second))
+                    ->first);
+          }
+          if (!--conn.ref_count) {
+            if (conn.delete_pending.load(std::memory_order::relaxed)) {
+              delete &conn;
+            } else {
+              conn.safe_to_delete.store(true, std::memory_order::relaxed);
+            }
+          }
         });
-      } else {
-        const std::scoped_lock lock{a_entries_mtx};
-        a_entries.erase(it);
+        break;
       }
-    }
+    } // if (entry.proc(...))
   } // default
   } // switch (hdr.emsg())
 }
