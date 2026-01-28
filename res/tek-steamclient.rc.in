@@ -22,7 +22,7 @@ BEGIN
       VALUE "FileDescription", "TEK Steam Client"
       VALUE "FileVersion", "@pretty_version@"
       VALUE "InternalName", "tek-steamclient"
-      VALUE "LegalCopyright", "Copyright (c) 2025 Nuclearist"
+      VALUE "LegalCopyright", "Copyright (c) 2025-2026 Nuclearist"
       VALUE "OriginalFilename", "libtek-steamclient-@soversion@.dll"
       VALUE "ProductName", "TEK Steam Client"
       VALUE "ProductVersion", "@pretty_version@"
