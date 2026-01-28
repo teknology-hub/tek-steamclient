@@ -24,7 +24,7 @@ BEGIN
       VALUE "FileDescription", "TEK Steam Client CLI"
       VALUE "FileVersion", "@pretty_version@"
       VALUE "InternalName", "tek-sc-cli"
-      VALUE "LegalCopyright", "Copyright (c) 2025 Nuclearist"
+      VALUE "LegalCopyright", "Copyright (c) 2025-2026 Nuclearist"
       VALUE "OriginalFilename", "tek-sc-cli.exe"
       VALUE "ProductName", "TEK Steam Client"
       VALUE "ProductVersion", "@pretty_version@"
