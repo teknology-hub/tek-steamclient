@@ -90,10 +90,10 @@ struct await_entry {
   cm_conn &conn;
   /// Pointer to the callback function.
   cb_func *_Nonnull cb;
+  /// Current state of @ref timer.
+  timer_state state;
   /// libuv timer handle for timeout.
   uv_timer_t timer;
-  /// Value indicating whether @ref timer has been initialized.
-  bool timer_active;
 };
 
 /// Prototype of CM response message processing function.
@@ -138,10 +138,10 @@ struct msg_await_entry {
   void *_Nullable inout_data;
   /// Pointer to the timeout (or disconnection) handling function.
   timeout_proc *_Nonnull timeout_cb;
+  /// Current state of @ref timer.
+  timer_state state;
   /// libuv timer handle for timeout.
   uv_timer_t timer;
-  /// Value indicating whether @ref timer has been initialized.
-  bool timer_active;
 };
 
 /// Authentication session context.
@@ -387,7 +387,7 @@ public:
               .size = static_cast<int>(msg_size),
               .frame_type = CURLWS_BINARY,
               .timer{},
-              .timer_active{},
+              .state{},
               .timer_cb{},
               .timeout{},
               .data{}});
@@ -422,7 +422,7 @@ public:
          .size = static_cast<int>(msg_size),
          .frame_type = CURLWS_BINARY,
          .timer = &entry.timer,
-         .timer_active = &entry.timer_active,
+         .state = &entry.state,
          .timer_cb =
              [](auto timer) {
                const auto handle{reinterpret_cast<uv_handle_t *>(timer)};
@@ -482,8 +482,8 @@ public:
                                          .cb = cb,
                                          .inout_data = inout_data,
                                          .timeout_cb = timeout_cb,
-                                         .timer{},
-                                         .timer_active{}})
+                                         .state = timer_state::inactive,
+                                         .timer{}})
         .first;
   }
 

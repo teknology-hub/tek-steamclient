@@ -679,12 +679,13 @@ void tek_sc_cm_get_licenses(tek_sc_cm_client *client,
     return;
   }
   // Setup and submit the await entry
-  auto &entry{conn.lics_a_entries.emplace_front(conn, cb)};
+  auto &entry{
+      conn.lics_a_entries.emplace_front(conn, cb, timer_state::inactive)};
   conn.send_msg({.buf{},
                  .size{},
                  .frame_type{},
                  .timer = &entry.timer,
-                 .timer_active = &entry.timer_active,
+                 .state = &entry.state,
                  .timer_cb = timeout_lics,
                  .timeout = static_cast<std::uint64_t>(timeout_ms),
                  .data = &entry});

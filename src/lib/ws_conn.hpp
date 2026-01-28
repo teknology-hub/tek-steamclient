@@ -31,6 +31,18 @@
 
 namespace tek::steamclient {
 
+/// libuv timer handle state values.
+enum class timer_state {
+  /// The timer is not attached to a libuv event loop and may safely be freed.
+  inactive,
+  /// The timer has been requested to be closed; neither freeing its memory not
+  ///    requesting it to close again is allowed.
+  closing,
+  /// The timer is attach to a libuv loop and must be closed before its memory
+  ///    can be freed.
+  active
+};
+
 /// WebSocket connection interface.
 class [[gnu::visibility("internal")]] ws_conn {
 public:
@@ -46,9 +58,8 @@ public:
     /// Optional pointer to the timer handle to initialize and start after
     ///    sending the message.
     uv_timer_t *_Nullable timer;
-    /// If @ref timer is set, pointer to the value indicating whether timer
-    ///    handle has been initialized.
-    bool *_Nullable timer_active;
+    /// If @ref timer is set, pointer to the value indicating its state.
+    timer_state *_Nullable state;
     /// If @ref timer is set, pointer to the callback procedure that the timer
     ///    will invoke.
     uv_timer_cb _Nullable timer_cb;
