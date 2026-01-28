@@ -370,11 +370,7 @@ tek_sc_os_char *tsci_os_get_cache_dir(void) {
                            &path) != S_OK) {
     return nullptr;
   }
-  auto const buf_size = (wcslen(path) + 1) * sizeof *path;
-  WCHAR *const buf = malloc(buf_size);
-  if (buf) {
-    memcpy(buf, path, buf_size);
-  }
+  auto const buf = _wcsdup(path);
   CoTaskMemFree(path);
   return buf;
 }
@@ -386,12 +382,10 @@ char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
                                 FORMAT_MESSAGE_FROM_SYSTEM,
                             nullptr, errc, 0, (LPWSTR)&msg, 0, nullptr);
   if (!res) {
-    static const char unk_msg[] = "Unknown error";
-    char *const buf = malloc(sizeof unk_msg);
+    auto const buf = _strdup("Unknown error");
     if (!buf) {
       abort();
     }
-    memcpy(buf, unk_msg, sizeof unk_msg);
     return buf;
   }
   // Remove trailing CRLF
