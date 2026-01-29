@@ -21,6 +21,7 @@
 #include "tek-steamclient/error.h"
 #include "tek/steamclient/cm/emsg.pb.h"
 #include "tek/steamclient/cm/message_header.pb.h"
+#include "tek/steamclient/cm/msg_payloads/get_cdn_auth_token.pb.h"
 #include "tek/steamclient/cm/msg_payloads/get_depot_decryption_key.pb.h"
 #include "tek/steamclient/cm/msg_payloads/get_depot_patch_info.pb.h"
 #include "tek/steamclient/cm/msg_payloads/get_manifest_request_code.pb.h"
@@ -40,6 +41,14 @@ namespace tek::steamclient::cm {
 namespace {
 
 //===-- Private functions -------------------------------------------------===//
+
+/// Handle a CDN auth token response message timeout.
+static void timeout_cat(cm_conn &conn, msg_await_entry &entry) {
+  tek_sc_cm_data_cdn_auth_token data;
+  data.result =
+      tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token, TEK_SC_ERRC_cm_timeout);
+  entry.cb(&conn, &data, conn.user_data);
+}
 
 /// Handle a depot decryption key response message timeout.
 static void timeout_ddk(cm_conn &conn, msg_await_entry &entry) {
@@ -69,6 +78,48 @@ static void timeout_gss(cm_conn &conn, msg_await_entry &entry) {
   tek_sc_cm_data_sp_servers data;
   data.result = tsc_err_sub(TEK_SC_ERRC_cm_sp_servers, TEK_SC_ERRC_cm_timeout);
   entry.cb(&conn, &data, conn.user_data);
+}
+
+/// Handle "ContentServerDirectory.GetCDNAuthToken#1" response message.
+///
+/// @param [in, out] conn
+///    CM connection instance that received the message.
+/// @param [in] header
+///    Header of the received message.
+/// @param [in] data
+///    Pointer to serialized message payload data.
+/// @param size
+///    Size of the message payload, in bytes.
+/// @param cb
+///    Pointer to the callback function.
+/// @return `true`.
+[[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
+  clang::callback(cb, __, __, __)]]
+static bool handle_gcat(cm_conn &conn, const MessageHeader &header,
+                        const void *_Nonnull data, int size,
+                        cb_func *_Nonnull cb, void *) {
+  tek_sc_cm_data_cdn_auth_token data_cat;
+  if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
+      eresult != TEK_SC_CM_ERESULT_ok) {
+    data_cat.result = err(TEK_SC_ERRC_cm_cdn_auth_token, eresult);
+    cb(&conn, &data_cat, conn.user_data);
+    return true;
+  }
+  msg_payloads::GetCdnAuthTokenResponse payload;
+  if (payload.ParseFromArray(data, size)) {
+    if (payload.has_token() && payload.token().size()) {
+      data_cat = {.token = payload.token().data(),
+                  .expires = payload.expiration_time(),
+                  .result{tsc_err_ok()}};
+    } else {
+      data_cat = {.token{}, .expires{}, .result{tsc_err_ok()}};
+    }
+  } else {
+    data_cat.result = tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token,
+                                  TEK_SC_ERRC_protobuf_deserialize);
+  }
+  cb(&conn, &data_cat, conn.user_data);
+  return true;
 }
 
 /// Handle `EMSG_CLIENT_GET_DEPOT_DECRYPTION_KEY_RESPONSE` response message.
@@ -165,16 +216,16 @@ static bool handle_gmrc(cm_conn &conn, const MessageHeader &header,
                         const void *_Nonnull data, int size,
                         cb_func *_Nonnull cb, void *_Nonnull inout_data) {
   auto &data_mrc{*reinterpret_cast<tek_sc_cm_data_mrc *>(inout_data)};
+  if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
+      eresult != TEK_SC_CM_ERESULT_ok) {
+    data_mrc.result = err(TEK_SC_ERRC_cm_mrc, eresult);
+    cb(&conn, &data_mrc, conn.user_data);
+    return true;
+  }
   msg_payloads::GetManifestRequestCodeResponse payload;
   if (!payload.ParseFromArray(data, size)) {
     data_mrc.result =
         tsc_err_sub(TEK_SC_ERRC_cm_mrc, TEK_SC_ERRC_protobuf_deserialize);
-    cb(&conn, &data_mrc, conn.user_data);
-    return true;
-  }
-  if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
-      eresult != TEK_SC_CM_ERESULT_ok) {
-    data_mrc.result = err(TEK_SC_ERRC_cm_mrc, eresult);
     cb(&conn, &data_mrc, conn.user_data);
     return true;
   }
@@ -203,17 +254,17 @@ static bool handle_gmrc(cm_conn &conn, const MessageHeader &header,
 static bool handle_gsfsp(cm_conn &conn, const MessageHeader &header,
                          const void *_Nonnull data, int size,
                          cb_func *_Nonnull cb, void *) {
-  msg_payloads::GetServersForSteamPipeResponse payload;
   tek_sc_cm_data_sp_servers data_sp;
-  if (!payload.ParseFromArray(data, size)) {
-    data_sp.result = tsc_err_sub(TEK_SC_ERRC_cm_sp_servers,
-                                 TEK_SC_ERRC_protobuf_deserialize);
-    cb(&conn, &data_sp, conn.user_data);
-    return true;
-  }
   if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_sp.result = err(TEK_SC_ERRC_cm_sp_servers, eresult);
+    cb(&conn, &data_sp, conn.user_data);
+    return true;
+  }
+  msg_payloads::GetServersForSteamPipeResponse payload;
+  if (!payload.ParseFromArray(data, size)) {
+    data_sp.result = tsc_err_sub(TEK_SC_ERRC_cm_sp_servers,
+                                 TEK_SC_ERRC_protobuf_deserialize);
     cb(&conn, &data_sp, conn.user_data);
     return true;
   }
@@ -268,6 +319,46 @@ static bool handle_gsfsp(cm_conn &conn, const MessageHeader &header,
 using namespace tek::steamclient::cm;
 
 extern "C" {
+
+void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *client,
+                                  const tek_sc_item_id *item_id,
+                                  const char *hostname,
+                                  tek_sc_cm_callback_func *cb,
+                                  long timeout_ms) {
+  auto &conn{client->conn};
+  // Ensure that the client is signed in
+  if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
+    tek_sc_cm_data_dp_info data;
+    data.result = tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token,
+                              TEK_SC_ERRC_cm_not_signed_in);
+    cb(&conn, &data, conn.user_data);
+    return;
+  }
+  const auto job_id{gen_job_id()};
+  // Prepare the request message
+  message<msg_payloads::GetCdnAuthTokenRequest> msg;
+  msg.type = EMsg::EMSG_SERVICE_METHOD;
+  msg.header.set_source_job_id(job_id);
+  msg.header.set_target_job_name("ContentServerDirectory.GetCDNAuthToken#1");
+  msg.payload.set_app_id(item_id->app_id);
+  msg.payload.set_depot_id(item_id->depot_id);
+  msg.payload.set_hostname(hostname);
+  // Send the request message
+  const auto it{conn.setup_a_entry(job_id, handle_gcat, cb, timeout_cat)};
+  if (const auto res{conn.send_message<TEK_SC_ERRC_cm_cdn_auth_token>(
+          std::move(msg), it->second, timeout_ms)};
+      !tek_sc_err_success(&res)) {
+    // Remove the await entry
+    {
+      const std::scoped_lock lock{conn.a_entries_mtx};
+      conn.a_entries.erase(it);
+    }
+    // Report error via callback
+    tek_sc_cm_data_cdn_auth_token data;
+    data.result = res;
+    cb(&conn, &data, conn.user_data);
+  }
+}
 
 void tek_sc_cm_get_depot_key(tek_sc_cm_client *client,
                              tek_sc_cm_data_depot_key *data,

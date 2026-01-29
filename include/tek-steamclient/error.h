@@ -249,7 +249,9 @@ enum tek_sc_errc {
   /// (93) Failed to get depot decryption key from a tek-s3 server.
   TEK_SC_ERRC_s3c_depot_key,
   /// (94) Failed to get PICS access token from a tek-s3 server.
-  TEK_SC_ERRC_s3c_pics_at
+  TEK_SC_ERRC_s3c_pics_at,
+  /// (95) Failed to get CDN auth token.
+  TEK_SC_ERRC_cm_cdn_auth_token
 };
 /// @copydoc tek_sc_errc
 typedef enum tek_sc_errc tek_sc_errc;
