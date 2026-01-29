@@ -255,6 +255,8 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
     return tsc_gettext("Failed to get depot decryption key from tek-s3 server");
   case TEK_SC_ERRC_s3c_pics_at:
     return tsc_gettext("Failed to get PICS access token from tek-s3 server");
+  case TEK_SC_ERRC_cm_cdn_auth_token:
+    return tsc_gettext("Failed to get CDN auth token");
   default:
     return tsc_gettext("Unknown");
   } // switch (errc)

@@ -1,0 +1,33 @@
+//===-- get_cdn_auth_token.proto - request & response payloads ------------===//
+//
+// Copyright (c) 2026 Nuclearist <nuclearist@teknology-hub.com>
+// Part of tek-steamclient, under the GNU General Public License v3.0 or later
+// See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
+//    license information.
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+//===----------------------------------------------------------------------===//
+syntax = "proto3";
+
+package tek.steamclient.cm.msg_payloads;
+
+option optimize_for = LITE_RUNTIME;
+
+// Request message payload for "ContentServerDirectory.GetCDNAuthToken#1".
+message GetCdnAuthTokenRequest {
+  // ID of the depot to get token for.
+  optional uint32 depot_id = 1;
+  // Hostname of the server to get token for.
+  optional string hostname = 2;
+  // ID of the application that the depot belongs to.
+  optional uint32 app_id = 3;
+}
+
+// Response message payload for "ContentServerDirectory.GetCDNAuthToken#1".
+message GetCdnAuthTokenResponse {
+  // Ready-to-use argument that should be appended to all request URLs for the
+  //    server.
+	optional string token = 1;
+  // Unix timestamp indicating when the token expires.
+	optional uint32 expiration_time = 2;
+}

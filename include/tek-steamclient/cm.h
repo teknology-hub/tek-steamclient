@@ -1,6 +1,6 @@
 //===-- cm.h - Steam CM client interface ----------------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -309,13 +309,25 @@ struct tek_sc_cm_data_auth_polling {
   const char *_Nullable url;
   /// Authentication token, as a null-terminated UTF-8 string, if @ref status is
   ///    @ref TEK_SC_CM_AUTH_STATUS_completed and @ref result indicates success.
-  /// Not returned for tek-s3 client responses, the token stays on the server.
+  ///    The pointer stays valid during the callback and should not be freed.
   const char *_Nullable token;
   /// Result codes for the session, if @ref status is
   ///    @ref TEK_SC_CM_AUTH_STATUS_completed.
-  /// For tek-s3 client responses, if it indicates success and the token is
-  ///    non-renewable, `auxiliary` encodes the lower half and `extra` encodes
-  ///    the higher half of the expiration time (`time_t`).
+  tek_sc_err result;
+};
+
+/// Data for CDN auth token callbacks.
+typedef struct tek_sc_cm_data_cdn_auth_token tek_sc_cm_data_cdn_auth_token;
+/// @copydoc tek_sc_cm_data_cdn_auth_token
+struct tek_sc_cm_data_cdn_auth_token {
+  /// Ready-to-use argument that must be appended to all request URLs for the
+  ///    server, as a null-terminated UTF-8 string. The pointer stays valid
+  ///    during the callback and should not be freed. If null, that means that
+  ///    the server doesn't need auth tokens.
+  const char *_Nullable token;
+  /// If @ref token is provided, timestamp indicating when it expires.
+  time_t expires;
+  /// Result codes for the response.
   tek_sc_err result;
 };
 
@@ -791,6 +803,30 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *_Nonnull client,
                            long timeout_ms);
 
 //===--- SteamPipe --------------------------------------------------------===//
+
+/// Get CDN auth token for specified SteamPipe server.
+///
+/// @param [in, out] client
+///    Pointer to the CM client instance that will perform the request.
+/// @param [in] item_id
+///    Pointer to the ID of the item to get token for.
+/// @param [in] hostname
+///    Hostname of the server to get token for, as a null-terminated UTF-8
+///    string.
+/// @param cb
+///    Pointer to the function that will be called when the response is
+///    received or timed out. `data` will point to a
+///    @ref tek_sc_cm_data_cdn_auth_token.
+/// @param timeout_ms
+///    Timeout for the response message, in milliseconds.
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3, 4), gnu::access(read_write, 1),
+  gnu::access(read_only, 2), gnu::access(read_only, 3),
+  gnu::null_terminated_string_arg(3), clang::callback(cb, __, __, __)]]
+void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *_Nonnull client,
+                                  const tek_sc_item_id *_Nonnull item_id,
+                                  const char *_Nonnull hostname,
+                                  tek_sc_cm_callback_func *_Nonnull cb,
+                                  long timeout_ms);
 
 /// Get AES-256 decryption key for specified depot.
 ///
