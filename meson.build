@@ -37,9 +37,11 @@ if is_windows
   if num_elems == 3
     rc_version += ',0'
   endif # num_elems == 3
-else # is_windows
+elif is_macos # is_windows
+  add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
+else # is_windows elif is_macos
   add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
-endif # is_windows else
+endif # is_windows elif is_macos else
 compiler = meson.get_compiler('c')
 # -Wno-attributes: Project code uses many attributes that are supported only by
 #    specific compilers or even specific compiler versions
@@ -60,9 +62,6 @@ add_project_arguments(
   meson.get_compiler('cpp').get_supported_arguments('-Wno-invalid-offsetof'),
   language: 'cpp'
 )
-if is_macos
-  add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
-endif
 if is_windows
   # These libraries aren't linked automatically in MSYS2 environment
   win_deps = [
