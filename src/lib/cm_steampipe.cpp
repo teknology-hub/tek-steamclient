@@ -44,10 +44,11 @@ namespace {
 
 /// Handle a CDN auth token response message timeout.
 static void timeout_cat(cm_conn &conn, msg_await_entry &entry) {
-  tek_sc_cm_data_cdn_auth_token data;
-  data.result =
+  const auto data{
+      reinterpret_cast<tek_sc_cm_data_cdn_auth_token *>(entry.inout_data)};
+  data->result =
       tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token, TEK_SC_ERRC_cm_timeout);
-  entry.cb(&conn, &data, conn.user_data);
+  entry.cb(&conn, data, conn.user_data);
 }
 
 /// Handle a depot decryption key response message timeout.
@@ -92,13 +93,16 @@ static void timeout_gss(cm_conn &conn, msg_await_entry &entry) {
 ///    Size of the message payload, in bytes.
 /// @param cb
 ///    Pointer to the callback function.
+/// @param [in, out] inout_data
+///    Pointer to the @ref tek_sc_cm_data_cdn_auth_token.
 /// @return `true`.
-[[gnu::nonnull(3, 5), gnu::access(read_only, 3, 4),
-  clang::callback(cb, __, __, __)]]
+[[gnu::nonnull(3, 5, 6), gnu::access(read_only, 3, 4),
+  gnu::access(read_write, 6), clang::callback(cb, __, __, __)]]
 static bool handle_gcat(cm_conn &conn, const MessageHeader &header,
                         const void *_Nonnull data, int size,
-                        cb_func *_Nonnull cb, void *) {
-  tek_sc_cm_data_cdn_auth_token data_cat;
+                        cb_func *_Nonnull cb, void *_Nonnull inout_data) {
+  auto &data_cat{
+      *reinterpret_cast<tek_sc_cm_data_cdn_auth_token *>(inout_data)};
   if (const auto eresult{static_cast<tek_sc_cm_eresult>(header.eresult())};
       eresult != TEK_SC_CM_ERESULT_ok) {
     data_cat.result = err(TEK_SC_ERRC_cm_cdn_auth_token, eresult);
@@ -108,12 +112,12 @@ static bool handle_gcat(cm_conn &conn, const MessageHeader &header,
   msg_payloads::GetCdnAuthTokenResponse payload;
   if (payload.ParseFromArray(data, size)) {
     if (payload.has_token() && payload.token().size()) {
-      data_cat = {.token = payload.token().data(),
-                  .expires = payload.expiration_time(),
-                  .result{tsc_err_ok()}};
+      data_cat.token = payload.token().data();
+      data_cat.expires = payload.expiration_time();
     } else {
-      data_cat = {.token{}, .expires{}, .result{tsc_err_ok()}};
+      data_cat.token = nullptr;
     }
+    data_cat.result = tsc_err_ok();
   } else {
     data_cat.result = tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token,
                                   TEK_SC_ERRC_protobuf_deserialize);
@@ -297,6 +301,7 @@ static bool handle_gsfsp(cm_conn &conn, const MessageHeader &header,
   for (auto cur_host{reinterpret_cast<char *>(&cur_entry[srvs.size()])};
        auto srv : srvs) {
     *cur_entry++ = {.host = cur_host,
+                    .auth_token{},
                     .supports_https = srv->https_support() != "unavailable"};
     cur_host = std::ranges::copy(srv->vhost().begin(), srv->vhost().end() + 1,
                                  cur_host)
@@ -321,17 +326,15 @@ using namespace tek::steamclient::cm;
 extern "C" {
 
 void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *client,
-                                  const tek_sc_item_id *item_id,
-                                  const char *hostname,
+                                  tek_sc_cm_data_cdn_auth_token *data,
                                   tek_sc_cm_callback_func *cb,
                                   long timeout_ms) {
   auto &conn{client->conn};
   // Ensure that the client is signed in
   if (conn.state.load(std::memory_order::relaxed) != conn_state::signed_in) {
-    tek_sc_cm_data_dp_info data;
-    data.result = tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token,
-                              TEK_SC_ERRC_cm_not_signed_in);
-    cb(&conn, &data, conn.user_data);
+    data->result = tsc_err_sub(TEK_SC_ERRC_cm_cdn_auth_token,
+                               TEK_SC_ERRC_cm_not_signed_in);
+    cb(&conn, data, conn.user_data);
     return;
   }
   const auto job_id{gen_job_id()};
@@ -340,11 +343,10 @@ void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *client,
   msg.type = EMsg::EMSG_SERVICE_METHOD;
   msg.header.set_source_job_id(job_id);
   msg.header.set_target_job_name("ContentServerDirectory.GetCDNAuthToken#1");
-  msg.payload.set_app_id(item_id->app_id);
-  msg.payload.set_depot_id(item_id->depot_id);
-  msg.payload.set_hostname(hostname);
+  msg.payload.set_depot_id(data->depot_id);
+  msg.payload.set_hostname(data->hostname);
   // Send the request message
-  const auto it{conn.setup_a_entry(job_id, handle_gcat, cb, timeout_cat)};
+  const auto it{conn.setup_a_entry(job_id, handle_gcat, cb, timeout_cat, data)};
   if (const auto res{conn.send_message<TEK_SC_ERRC_cm_cdn_auth_token>(
           std::move(msg), it->second, timeout_ms)};
       !tek_sc_err_success(&res)) {
@@ -354,9 +356,8 @@ void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *client,
       conn.a_entries.erase(it);
     }
     // Report error via callback
-    tek_sc_cm_data_cdn_auth_token data;
-    data.result = res;
-    cb(&conn, &data, conn.user_data);
+    data->result = res;
+    cb(&conn, data, conn.user_data);
   }
 }
 

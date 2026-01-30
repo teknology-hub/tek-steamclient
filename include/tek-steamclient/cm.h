@@ -316,14 +316,19 @@ struct tek_sc_cm_data_auth_polling {
   tek_sc_err result;
 };
 
-/// Data for CDN auth token callbacks.
+/// Data for CDN auth token requests and callbacks.
 typedef struct tek_sc_cm_data_cdn_auth_token tek_sc_cm_data_cdn_auth_token;
 /// @copydoc tek_sc_cm_data_cdn_auth_token
 struct tek_sc_cm_data_cdn_auth_token {
-  /// Ready-to-use argument that must be appended to all request URLs for the
-  ///    server, as a null-terminated UTF-8 string. The pointer stays valid
-  ///    during the callback and should not be freed. If null, that means that
-  ///    the server doesn't need auth tokens.
+  /// ID of the depot to get token for.
+  uint32_t depot_id;
+  /// Hostname of the server to get token for, as a null-terminated UTF-8
+  ///    string.
+  const char *_Nonnull hostname;
+  /// On success, ready-to-use argument that must be appended to all request
+  ///    URLs for the server, as a null-terminated UTF-8 string. The pointer
+  ///    stays valid during the callback and should not be freed. If null, that
+  ///    means that the server doesn't need auth tokens.
   const char *_Nullable token;
   /// If @ref token is provided, timestamp indicating when it expires.
   time_t expires;
@@ -808,23 +813,17 @@ void tek_sc_cm_get_changes(tek_sc_cm_client *_Nonnull client,
 ///
 /// @param [in, out] client
 ///    Pointer to the CM client instance that will perform the request.
-/// @param [in] item_id
-///    Pointer to the ID of the item to get token for.
-/// @param [in] hostname
-///    Hostname of the server to get token for, as a null-terminated UTF-8
-///    string.
+/// @param [in, out] data
+///    Pointer to the request/response data.
 /// @param cb
 ///    Pointer to the function that will be called when the response is
-///    received or timed out. `data` will point to a
-///    @ref tek_sc_cm_data_cdn_auth_token.
+///    received or timed out. `data` will be @p data.
 /// @param timeout_ms
 ///    Timeout for the response message, in milliseconds.
-[[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3, 4), gnu::access(read_write, 1),
-  gnu::access(read_only, 2), gnu::access(read_only, 3),
-  gnu::null_terminated_string_arg(3), clang::callback(cb, __, __, __)]]
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2, 3), gnu::access(read_write, 1),
+  gnu::access(read_write, 2), clang::callback(cb, __, __, __)]]
 void tek_sc_cm_get_cdn_auth_token(tek_sc_cm_client *_Nonnull client,
-                                  const tek_sc_item_id *_Nonnull item_id,
-                                  const char *_Nonnull hostname,
+                                  tek_sc_cm_data_cdn_auth_token *_Nonnull data,
                                   tek_sc_cm_callback_func *_Nonnull cb,
                                   long timeout_ms);
 
