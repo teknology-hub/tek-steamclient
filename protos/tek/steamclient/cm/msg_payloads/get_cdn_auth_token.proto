@@ -19,8 +19,6 @@ message GetCdnAuthTokenRequest {
   optional uint32 depot_id = 1;
   // Hostname of the server to get token for.
   optional string hostname = 2;
-  // ID of the application that the depot belongs to.
-  optional uint32 app_id = 3;
 }
 
 // Response message payload for "ContentServerDirectory.GetCDNAuthToken#1".
