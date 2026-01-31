@@ -292,6 +292,8 @@ static bool handle_basvq(cm_conn &conn, const MessageHeader &,
   }
   ++conn.ref_count;
   actx->status_timer.state = timer_state::active;
+  uv_handle_set_data(reinterpret_cast<uv_handle_t *>(&actx->status_timer.timer),
+                     actx);
   if (uv_timer_start(&actx->status_timer.timer, send_status_req,
                      actx->polling_interval, 0) != 0) {
     release_auth_ctx(conn);
