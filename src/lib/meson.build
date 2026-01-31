@@ -36,7 +36,12 @@ if get_option('content')
   )
 endif # get_option('content')
 if get_option('steampipe')
-  lib_src += files('sp.c')
+  lib_src += files(
+    'sp_common.c',
+    'sp_decode.c',
+    'sp_multi.c',
+    'sp_simple.c'
+  )
 endif # get_option('steampipe')
 if get_option('app_manager')
   lib_src += files(

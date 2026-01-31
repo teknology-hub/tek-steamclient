@@ -321,6 +321,7 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   sp_common->num_srvs = ctx->num_sp_srvs;
   sp_common->progress_handler = tscp_am_sp_handle_progress_dm;
   sp_common->depot_id = item_id->depot_id;
+  sp_common->cm_client = am->cm_client;
   sp_ctx.data.manifest_id = manifest_id;
 // Get manifest request code
 #ifdef TEK_SCB_S3C
@@ -504,6 +505,7 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
   sp_common->num_srvs = ctx->num_sp_srvs;
   sp_common->progress_handler = tscp_am_sp_handle_progress_dp;
   sp_common->depot_id = item_id->depot_id;
+  sp_common->cm_client = am->cm_client;
   sp_ctx.data.src_manifest_id = job->source_manifest_id;
   sp_ctx.data.tgt_manifest_id = job->target_manifest_id;
   sp_ctx.item_desc = &desc->desc;
@@ -1021,6 +1023,11 @@ free_ctx:
     tsci_os_close_handle(ctx.dir_handle);
   }
   if (ctx.num_sp_srvs) {
+    for (int i = 0; i < ctx.num_sp_srvs; ++i) {
+      if (ctx.sp_srvs[i].auth_token) {
+        free((void *)ctx.sp_srvs[i].auth_token);
+      }
+    }
     free(ctx.sp_srvs);
   }
   atomic_store_explicit(&desc->sp_cancel_flag, false, memory_order_relaxed);

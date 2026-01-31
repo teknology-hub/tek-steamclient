@@ -1,6 +1,6 @@
 //===-- sp.h - SteamPipe downloader interface -----------------------------===//
 //
-// Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
+// Copyright (c) 2025-2026 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
 // See https://github.com/teknology-hub/tek-steamclient/blob/main/COPYING for
 //    license information.
@@ -45,7 +45,7 @@ struct tek_sc_sp_data {
   ///    attempt downloading from the first server in the list, and resort to
   ///    others in case of a connection timeout or server reporting being
   ///    unavailable.
-  const tek_sc_cm_sp_srv_entry *_Nonnull srvs;
+  tek_sc_cm_sp_srv_entry *_Nonnull srvs;
   /// [In] Number of entries pointed to by @ref srvs.
   int num_srvs;
   /// [In] Optional pointer to the progress handler function.
@@ -57,6 +57,10 @@ struct tek_sc_sp_data {
   int data_size;
   /// [In] ID of the depot that the file to download belongs to.
   uint32_t depot_id;
+  /// [In] Optional pointer to CM client instance that will be used to get CDN
+  ///    auth token if a server from @ref srvs requires one. The instance must
+  ///    be connected and signed into an account beforehand.
+  tek_sc_cm_client *_Nullable cm_client;
 };
 
 /// Input/output data for depot manifest downloads.
@@ -99,6 +103,10 @@ struct tek_sc_sp_data_chunk {
   uint32_t depot_id;
   /// [In] Pointer to the manifest entry for the chunk to download.
   const tek_sc_dm_chunk *_Nonnull chunk;
+  /// [In] Optional pointer to CM client instance that will be used to get CDN
+  ///    auth token if a server from @ref srvs requires one. The instance must
+  ///    be connected and signed into an account beforehand.
+  tek_sc_cm_client *_Nullable cm_client;
 };
 
 /// Opaque context for chunk decryption and decompression. Intended to be reused
@@ -137,7 +145,7 @@ struct tek_sc_sp_multi_dlr_desc {
   int num_srvs;
   /// Pointer to the array of entries for SteamPipe servers to download chunks
   ///    from. The downloader will evenly assign them to threads.
-  const tek_sc_cm_sp_srv_entry *_Nonnull srvs;
+  tek_sc_cm_sp_srv_entry *_Nonnull srvs;
   /// Current download progress value accumulated from all requests.
   _Atomic(int64_t) progress;
   /// Optional pointer to the progress handler function.
@@ -149,6 +157,10 @@ struct tek_sc_sp_multi_dlr_desc {
   ///    concurrent requests for the last thread, may be equal to or smaller
   ///    than @ref num_reqs_per_thread.
   int num_reqs_last_thread;
+  /// Optional pointer to CM client instance that will be used to get CDN auth
+  ///    token if a server from @ref srvs requires one. The instance must be
+  ///    connected and signed into an account beforehand.
+  tek_sc_cm_client *_Nullable cm_client;
 };
 
 /// Chunk download and decode request/response data for multi downloader.
@@ -220,9 +232,9 @@ tek_sc_err tek_sc_sp_download_dp(tek_sc_sp_data_dp *_Nonnull data,
 ///    Optional pointer to the flag that may be set by another thread to cancel
 ///    the operation.
 /// @return A @ref tek_sc_err indicating the result of operation.
-[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_only, 1),
+[[gnu::TEK_SC_API, gnu::nonnull(1, 2), gnu::access(read_write, 1),
   gnu::access(read_write, 2), gnu::access(read_only, 4)]]
-tek_sc_err tek_sc_sp_download_chunk(const tek_sc_cm_sp_srv_entry *_Nonnull srv,
+tek_sc_err tek_sc_sp_download_chunk(tek_sc_cm_sp_srv_entry *_Nonnull srv,
                                     tek_sc_sp_data_chunk *_Nonnull data,
                                     long timeout_ms,
                                     const atomic_bool *_Nullable cancel_flag);
@@ -358,10 +370,10 @@ tek_sc_sp_multi_dlr_submit_req(const tek_sc_sp_multi_dlr *_Nonnull dlr,
 ///    requests if there are any. `nullptr` is returned when there are no more
 ///    requests to process for now, or an error has occurred (which is indicated
 ///    by @p err).
-[[gnu::TEK_SC_API, gnu::nonnull(1, 4), gnu::access(read_only, 1),
+[[gnu::TEK_SC_API, gnu::nonnull(1, 4), gnu::access(read_write, 1),
   gnu::access(write_only, 4)]]
 tek_sc_sp_multi_chunk_req *_Nullable tek_sc_sp_multi_dlr_process(
-    const tek_sc_sp_multi_dlr *_Nonnull dlr, int thrd_index, bool poll,
+    tek_sc_sp_multi_dlr *_Nonnull dlr, int thrd_index, bool poll,
     tek_sc_err *_Nonnull err);
 
 /// Cancel all running downloads on multi downloader. This will also prevent
