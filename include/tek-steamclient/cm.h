@@ -262,6 +262,12 @@ struct tek_sc_cm_sp_srv_entry {
   /// Hostname of the server, as a null-terminated UTF-8 string.
   /// Located in the same buffer as the entry, should not be freed on its own.
   const char *_Nonnull host;
+  /// If the server requires a CDN auth token, user should provide it as a
+  ///    null-terminated UTF-8 string. SteamPipe downloader interface functions
+  ///    may obtain it automatically when provided with a CM client instance. In
+  ///    that case, you must free it with `free` after you're done using
+  ///    SteamPipe downloader interface functions.
+  const char *_Nullable auth_token;
   /// Value indicating whether the server supports HTTPS.
   bool supports_https;
 };

@@ -753,7 +753,8 @@ tek_sc_err tsci_am_job_download(tek_sc_am *am, tsci_am_item_desc *desc,
   tek_sc_sp_multi_dlr_desc dlr_desc = {.num_threads = ctx->nproc,
                                        .num_srvs = ctx->num_sp_srvs,
                                        .srvs = ctx->sp_srvs,
-                                       .progress = job->progress_current};
+                                       .progress = job->progress_current,
+                                       .cm_client = am->cm_client};
   dwctx.dlr = tek_sc_sp_multi_dlr_create(&dlr_desc, depot_id, depot_key, &res);
   if (!dwctx.dlr) {
     goto close_cb_file;
