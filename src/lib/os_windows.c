@@ -194,6 +194,10 @@ tscp_nt_open_file([[clang::use_handle("os")]] HANDLE parent_dir_handle,
   if (NT_SUCCESS(status)) {
     return handle;
   }
+  if (status == STATUS_OBJECT_PATH_NOT_FOUND) {
+    // To match behavior of Unix-like systems with one ENOENT to rule them all
+    status = STATUS_OBJECT_NAME_NOT_FOUND;
+  }
   SetLastError(RtlNtStatusToDosError(status));
   return INVALID_HANDLE_VALUE;
 }
