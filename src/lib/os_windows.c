@@ -181,7 +181,7 @@ tscp_nt_open_file([[clang::use_handle("os")]] HANDLE parent_dir_handle,
   const USHORT name_size = wcslen(name) * sizeof *name;
   IO_STATUS_BLOCK isb;
   HANDLE handle;
-  auto const status =
+  auto status =
       NtOpenFile(&handle, access,
                  &(OBJECT_ATTRIBUTES){
                      .Length = sizeof(OBJECT_ATTRIBUTES),
