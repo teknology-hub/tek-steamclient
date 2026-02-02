@@ -294,6 +294,12 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   }
   tek_sc_aes256_key key;
   if (!tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)) {
+    if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
+      job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
+      if (upd_handler) {
+        upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+      }
+    }
     /// Get depot decryption key
 #ifdef TEK_SCB_S3C
     auto const res =
@@ -489,15 +495,25 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
       }
     }
     /// Get depot decryption key
-    auto const res = tsci_am_get_depot_key(am, item_id);
-    if (!tek_sc_err_success(&res)) {
+#ifdef TEK_SCB_S3C
+    auto const res =
+        tek_sc_s3c_ctx_get_depot_key(am->lib_ctx, 8000, item_id->depot_id, key);
+    if (tek_sc_err_success(&res)) {
+    } else if (!tscp_am_s3_not_found(&res)) {
       return res;
+    } else
+#endif // def TEK_SCB_S3C
+    {
+      auto const res = tsci_am_get_depot_key(am, item_id);
+      if (!tek_sc_err_success(&res)) {
+        return res;
+      }
+      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
+          TEK_SC_AM_JOB_STATE_pause_pending) {
+        return tsc_err_basic(TEK_SC_ERRC_paused);
+      }
+      tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
     }
-    if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-        TEK_SC_AM_JOB_STATE_pause_pending) {
-      return tsc_err_basic(TEK_SC_ERRC_paused);
-    }
-    tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
   }
   tscp_am_sp_ctx_dp sp_ctx;
   auto const sp_common = &sp_ctx.data.common;
