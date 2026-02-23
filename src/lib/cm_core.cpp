@@ -316,7 +316,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
         if (conn.delete_pending.load(std::memory_order::relaxed)) {
           delete &conn;
         } else {
-          conn.safe_to_delete.store(true, std::memory_order::relaxed);
+          conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
         }
       }
     });
@@ -354,7 +354,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
             if (conn.delete_pending.load(std::memory_order::relaxed)) {
               delete &conn;
             } else {
-              conn.safe_to_delete.store(true, std::memory_order::relaxed);
+              conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
             }
           }
         });
@@ -392,8 +392,8 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
                    if (conn.delete_pending.load(std::memory_order::relaxed)) {
                      delete &conn;
                    } else {
-                     conn.safe_to_delete.store(true,
-                                               std::memory_order::relaxed);
+                     conn.conn_ref_count.fetch_sub(1,
+                                                   std::memory_order::relaxed);
                    }
                  }
                });
@@ -421,7 +421,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
           if (conn.delete_pending.load(std::memory_order::relaxed)) {
             delete &conn;
           } else {
-            conn.safe_to_delete.store(true, std::memory_order::relaxed);
+            conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
           }
         }
       });
@@ -469,7 +469,7 @@ void cm_conn::handle_disconnection(tsci_ws_close_code code) {
             if (conn.delete_pending.load(std::memory_order::relaxed)) {
               delete &conn;
             } else {
-              conn.safe_to_delete.store(true, std::memory_order::relaxed);
+              conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
             }
           }
         });
@@ -506,7 +506,7 @@ void cm_conn::handle_post_disconnection() {
     if (delete_pending.load(std::memory_order::relaxed)) {
       delete this;
     } else {
-      safe_to_delete.store(true, std::memory_order::relaxed);
+      conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
     }
   }
 }
@@ -640,7 +640,7 @@ void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
             if (conn.delete_pending.load(std::memory_order::relaxed)) {
               delete &conn;
             } else {
-              conn.safe_to_delete.store(true, std::memory_order::relaxed);
+              conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
             }
           }
         });
@@ -654,7 +654,7 @@ void cm_conn::handle_msg(const std::span<const unsigned char> &&data,
 //===-- CM API methods ----------------------------------------------------===//
 
 void cm_conn::destroy() {
-  if (safe_to_delete.load(std::memory_order::relaxed)) {
+  if (!conn_ref_count.load(std::memory_order::relaxed)) {
     delete this;
     return;
   }
@@ -698,7 +698,7 @@ void cm_conn::connect(cb_func *connection_cb, long fetch_timeout_ms,
   num_conn_retries = 0;
   this->connection_cb = connection_cb;
   this->disconnection_cb = disconnection_cb;
-  safe_to_delete.store(false, std::memory_order::relaxed);
+  conn_ref_count.fetch_add(1, std::memory_order::relaxed);
   {
     auto url{std::format(std::locale::classic(), "wss://{}:{}/cmsocket/",
                          cur_server->hostname.data(), cur_server->port)};

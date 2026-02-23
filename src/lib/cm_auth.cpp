@@ -135,7 +135,7 @@ static void release_auth_ctx(cm_conn &conn) {
                  if (conn.delete_pending.load(std::memory_order::relaxed)) {
                    delete &conn;
                  } else {
-                   conn.safe_to_delete.store(true, std::memory_order::relaxed);
+                   conn.conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
                  }
                }
              });
