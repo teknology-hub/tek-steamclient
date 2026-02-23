@@ -408,9 +408,16 @@ tek_sc_lib_ctx *tek_sc_lib_init(bool, bool) {
     return nullptr;
   }
   scope_exit curl_cleanup{curl_global_cleanup};
-  std::unique_ptr<tek_sc_lib_ctx> ctx{new (std::nothrow) tek_sc_lib_ctx()};
+  std::unique_ptr<tek_sc_lib_ctx> ctx{new (std::nothrow) tek_sc_lib_ctx{}};
   if (!ctx) {
     return nullptr;
+  }
+  const auto curl_info{curl_version_info(CURLVERSION_NOW)};
+  for (auto proto{curl_info->protocols}; *proto; ++proto) {
+    if (std::string_view{*proto} == "wss") {
+      ctx->wss_supported = true;
+      break;
+    }
   }
   // Create the event loop thread
   if (uv_thread_create(&ctx->loop_thread, event_loop, ctx.get()) != 0) {

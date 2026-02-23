@@ -669,6 +669,12 @@ void cm_conn::destroy() {
 
 void cm_conn::connect(cb_func *connection_cb, long fetch_timeout_ms,
                       cb_func *disconnection_cb) {
+  if (!ctx.wss_supported) {
+    state.store(conn_state::disconnected, std::memory_order::relaxed);
+    auto res{tsc_err_sub(TEK_SC_ERRC_cm_connect, TEK_SC_ERRC_cm_wss_unsupp)};
+    connection_cb(&*this, &res, user_data);
+    return;
+  }
   if (auto expected{conn_state::disconnected}; !state.compare_exchange_strong(
           expected, conn_state::connecting, std::memory_order::relaxed,
           std::memory_order::relaxed)) {

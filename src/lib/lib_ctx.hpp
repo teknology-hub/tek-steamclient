@@ -158,6 +158,8 @@ struct tek_sc_lib_ctx {
   ///    back to the cache file. Holds a @ref tek::steamclient::dirty_flag
   ///    value.
   std::atomic_int dirty_flags;
+  /// Pre-checked value indicating whether loaded libcurl supports WSS protocol.
+  bool wss_supported;
   /// libuv event loop running CM clients.
   uv_loop_t loop;
   /// Async handle for interrupting @ref loop to stop it or initiate

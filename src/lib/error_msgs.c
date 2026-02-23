@@ -257,6 +257,8 @@ static inline const char *tscp_msg_errc(tek_sc_errc errc) {
     return tsc_gettext("Failed to get PICS access token from tek-s3 server");
   case TEK_SC_ERRC_cm_cdn_auth_token:
     return tsc_gettext("Failed to get CDN auth token");
+  case TEK_SC_ERRC_cm_wss_unsupp:
+    return tsc_gettext("Loaded libcurl version does not support WSS protocol");
   default:
     return tsc_gettext("Unknown");
   } // switch (errc)

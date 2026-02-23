@@ -251,7 +251,9 @@ enum tek_sc_errc {
   /// (94) Failed to get PICS access token from a tek-s3 server.
   TEK_SC_ERRC_s3c_pics_at,
   /// (95) Failed to get CDN auth token.
-  TEK_SC_ERRC_cm_cdn_auth_token
+  TEK_SC_ERRC_cm_cdn_auth_token,
+  /// (96) Loaded libcurl version does not support WSS protocol.
+  TEK_SC_ERRC_cm_wss_unsupp
 };
 /// @copydoc tek_sc_errc
 typedef enum tek_sc_errc tek_sc_errc;
