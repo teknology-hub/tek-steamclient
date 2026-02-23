@@ -506,11 +506,11 @@ bool tscl_os_fgets(tek_sc_os_char *str, int size) {
   return fgetws(str, size, stdin) != nullptr;
 }
 
-tek_sc_os_char *tscl_os_strchr(const tek_sc_os_char *str, tek_sc_os_char c) {
+tek_sc_os_char *tscl_os_strchr(tek_sc_os_char *str, tek_sc_os_char c) {
   return wcschr(str, c);
 }
 
-tek_sc_os_char *tscl_os_strrchr(const tek_sc_os_char *str, tek_sc_os_char c) {
+tek_sc_os_char *tscl_os_strrchr(tek_sc_os_char *str, tek_sc_os_char c) {
   return wcsrchr(str, c);
 }
 
