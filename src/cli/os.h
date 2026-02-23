@@ -302,7 +302,7 @@ tscl_os_fgets(tek_sc_os_char *_Nonnull str, int size);
 ///    otherwise `nullptr`.
 [[gnu::visibility("internal"), gnu::nonnull(1), gnu::access(read_only, 1),
   gnu::null_terminated_string_arg(1)]]
-tek_sc_os_char *_Nullable tscl_os_strchr(const tek_sc_os_char *_Nonnull str,
+tek_sc_os_char *_Nullable tscl_os_strchr(tek_sc_os_char *_Nonnull str,
                                          tek_sc_os_char c);
 
 /// Find the last occurrence of a character in an OS string.
@@ -315,7 +315,7 @@ tek_sc_os_char *_Nullable tscl_os_strchr(const tek_sc_os_char *_Nonnull str,
 ///    `nullptr`.
 [[gnu::visibility("internal"), gnu::nonnull(1), gnu::access(read_only, 1),
   gnu::null_terminated_string_arg(1)]]
-tek_sc_os_char *_Nullable tscl_os_strrchr(const tek_sc_os_char *_Nonnull str,
+tek_sc_os_char *_Nullable tscl_os_strrchr(tek_sc_os_char *_Nonnull str,
                                           tek_sc_os_char c);
 
 /// Three-way compare two null-terminated OS strings.
