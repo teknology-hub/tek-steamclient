@@ -245,11 +245,13 @@ private:
   std::atomic<std::atomic_uint32_t *> destroy_futex{};
 
 public:
+  /// Number of connection sessions referencing the instance. Only one of them
+  ///    can be active, the rest is contributed by pending connection requests
+  ///    and sessions that were disconnected but not fully cleaned up yet.
+  std::atomic_int conn_ref_count{};
   /// Value indicating whether the instance should be deleted after being
   ///    disconnected.
   std::atomic_bool delete_pending{};
-  /// Value indicating whether it's currently safe to delete the instance.
-  std::atomic_bool safe_to_delete{true};
   /// Value indicating whether @ref heartbeat_timer has been initialized.
   bool heartbeat_active{};
   /// libuv timer handle for heartbeat.
