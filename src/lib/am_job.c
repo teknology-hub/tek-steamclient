@@ -176,6 +176,58 @@ static void tscp_am_sp_handle_progress_dp(void *_Nonnull data, int current,
   }
 }
 
+/// Get depot decryption key from the cache, or fetch it if necessary.
+///
+/// @param [in, out] am
+///    Pointer to the application manager instance.
+/// @param [in, out] desc
+///    Pointer to the state descriptor of the item to get depot decryption key
+///    for.
+/// @param [out] key
+///    Address of variable that receives the decryption key on success.
+/// @return A @ref tek_sc_err indicating the result of operation.
+[[gnu::nonnull(1, 2, 3), gnu::access(read_write, 1), gnu::access(read_write, 2),
+  gnu::access(write_only, 3)]]
+static tek_sc_err tscp_am_get_depot_key(tek_sc_am *_Nonnull am,
+                                        tsci_am_item_desc *_Nonnull desc,
+                                        tek_sc_aes256_key _Nonnull key) {
+  auto const item_id = &desc->desc.id;
+  if (tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)) {
+    return tsc_err_ok();
+  }
+  auto const job = &desc->desc.job;
+  if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
+    job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
+    auto const upd_handler = desc->job_upd_handler;
+    if (upd_handler) {
+      upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
+    }
+  }
+  /// Get depot decryption key
+#ifdef TEK_SCB_S3C
+  auto const res =
+      tek_sc_s3c_ctx_get_depot_key(am->lib_ctx, 8000, item_id->depot_id, key);
+  if (tek_sc_err_success(&res)) {
+    return tsc_err_ok();
+  } else if (!tscp_am_s3_not_found(&res)) {
+    return res;
+  } else
+#endif // def TEK_SCB_S3C
+  {
+    auto const res = tsci_am_get_depot_key(am, item_id);
+    if (!tek_sc_err_success(&res)) {
+      return res;
+    }
+    if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
+        TEK_SC_AM_JOB_STATE_pause_pending) {
+      return tsc_err_basic(TEK_SC_ERRC_paused);
+    }
+    return tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)
+               ? tsc_err_ok()
+               : tsc_err_basic(TEK_SC_ERRC_depot_key_not_found);
+  }
+}
+
 /// Load specified manifest from the file if present, or download it from
 ///    SteamPipe if not.
 ///
@@ -293,33 +345,9 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
     }
   }
   tek_sc_aes256_key key;
-  if (!tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)) {
-    if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
-      job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
-      if (upd_handler) {
-        upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
-      }
-    }
-    /// Get depot decryption key
-#ifdef TEK_SCB_S3C
-    auto const res =
-        tek_sc_s3c_ctx_get_depot_key(am->lib_ctx, 8000, item_id->depot_id, key);
-    if (tek_sc_err_success(&res)) {
-    } else if (!tscp_am_s3_not_found(&res)) {
-      return res;
-    } else
-#endif // def TEK_SCB_S3C
-    {
-      auto const res = tsci_am_get_depot_key(am, item_id);
-      if (!tek_sc_err_success(&res)) {
-        return res;
-      }
-      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-          TEK_SC_AM_JOB_STATE_pause_pending) {
-        return tsc_err_basic(TEK_SC_ERRC_paused);
-      }
-      tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
-    }
+  auto res = tscp_am_get_depot_key(am, desc, key);
+  if (!tek_sc_err_success(&res)) {
+    return res;
   }
   tscp_am_sp_ctx_dm sp_ctx;
   auto const sp_common = &sp_ctx.data.common;
@@ -361,7 +389,7 @@ tscp_am_load_manifest(tek_sc_am *_Nonnull am, tsci_am_item_desc *_Nonnull desc,
   if (upd_handler) {
     upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
   }
-  auto res = tek_sc_sp_download_dm(&sp_ctx.data, 600000, &desc->sp_cancel_flag);
+  res = tek_sc_sp_download_dm(&sp_ctx.data, 600000, &desc->sp_cancel_flag);
   if (!tek_sc_err_success(&res)) {
     return res;
   }
@@ -485,42 +513,17 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
       return tsc_err_basic(TEK_SC_ERRC_paused);
     }
   }
-  auto const item_id = &desc->desc.id;
   tek_sc_aes256_key key;
-  if (!tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key)) {
-    if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
-      job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
-      if (upd_handler) {
-        upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
-      }
-    }
-    /// Get depot decryption key
-#ifdef TEK_SCB_S3C
-    auto const res =
-        tek_sc_s3c_ctx_get_depot_key(am->lib_ctx, 8000, item_id->depot_id, key);
-    if (tek_sc_err_success(&res)) {
-    } else if (!tscp_am_s3_not_found(&res)) {
-      return res;
-    } else
-#endif // def TEK_SCB_S3C
-    {
-      auto const res = tsci_am_get_depot_key(am, item_id);
-      if (!tek_sc_err_success(&res)) {
-        return res;
-      }
-      if (atomic_load_explicit(&job->state, memory_order_relaxed) ==
-          TEK_SC_AM_JOB_STATE_pause_pending) {
-        return tsc_err_basic(TEK_SC_ERRC_paused);
-      }
-      tek_sc_lib_get_depot_key(am->lib_ctx, item_id->depot_id, key);
-    }
+  auto res = tscp_am_get_depot_key(am, desc, key);
+  if (!tek_sc_err_success(&res)) {
+    return res;
   }
   tscp_am_sp_ctx_dp sp_ctx;
   auto const sp_common = &sp_ctx.data.common;
   sp_common->srvs = ctx->sp_srvs;
   sp_common->num_srvs = ctx->num_sp_srvs;
   sp_common->progress_handler = tscp_am_sp_handle_progress_dp;
-  sp_common->depot_id = item_id->depot_id;
+  sp_common->depot_id = desc->desc.id.depot_id;
   sp_common->cm_client = am->cm_client;
   sp_ctx.data.src_manifest_id = job->source_manifest_id;
   sp_ctx.data.tgt_manifest_id = job->target_manifest_id;
@@ -533,8 +536,7 @@ static tek_sc_err tscp_am_load_patch(tek_sc_am *_Nonnull am,
   if (upd_handler) {
     upd_handler(&desc->desc, TEK_SC_AM_UPD_TYPE_stage);
   }
-  auto res =
-      tek_sc_sp_download_dp(&sp_ctx.data, 3600000, &desc->sp_cancel_flag);
+  res = tek_sc_sp_download_dp(&sp_ctx.data, 3600000, &desc->sp_cancel_flag);
   if (!tek_sc_err_success(&res)) {
     return res;
   }
@@ -950,6 +952,12 @@ tek_sc_err tek_sc_am_run_job(tek_sc_am *am, tek_sc_am_item_desc *item_desc,
     }
   }
   if (ctx.delta.stage == TEK_SC_DD_STAGE_downloading) {
+    // Make sure depot decryption key is present in the cache
+    tek_sc_aes256_key key;
+    res = tscp_am_get_depot_key(am, desc, key);
+    if (!tek_sc_err_success(&res)) {
+      return res;
+    }
     if (!ctx.sp_srvs) {
       if (job->stage != TEK_SC_AM_JOB_STAGE_fetching_data) {
         job->stage = TEK_SC_AM_JOB_STAGE_fetching_data;
