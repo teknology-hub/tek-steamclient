@@ -588,7 +588,7 @@ bool tsci_os_dir_move(tek_sc_os_handle src_dir_handle,
     SetLastError(RtlNtStatusToDosError(status));
     return false;
   }
-  auto const info_size = offsetof(FILE_RENAME_INFO, FileName) + name_size;
+  auto const info_size = sizeof(FILE_RENAME_INFO) + name_size;
   FILE_RENAME_INFO *const info = malloc(info_size);
   if (!info) {
     NtClose(handle);
@@ -985,7 +985,7 @@ bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
     SetLastError(RtlNtStatusToDosError(status));
     return false;
   }
-  auto const info_size = offsetof(FILE_RENAME_INFO, FileName) + name_size;
+  auto const info_size = sizeof(FILE_RENAME_INFO) + name_size;
   FILE_RENAME_INFO *const info = malloc(info_size);
   if (!info) {
     NtClose(handle);
