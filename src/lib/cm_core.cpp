@@ -246,6 +246,11 @@ void cm_conn::handle_connection(CURLcode code) {
         if (!tek_sc_err_success(&res)) {
           lock.unlock();
           connection_cb(&*this, &res, user_data);
+          if (delete_pending.load(std::memory_order::relaxed)) {
+            delete this;
+          } else {
+            conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
+          }
           return;
         }
         ++num_conn_retries;
@@ -298,6 +303,8 @@ void cm_conn::handle_connection(CURLcode code) {
     connection_cb(&*this, &res, user_data);
     if (delete_pending.load(std::memory_order::relaxed)) {
       delete this;
+    } else {
+      conn_ref_count.fetch_sub(1, std::memory_order::relaxed);
     }
   } // if (code == CURLE_OK) else
 }
