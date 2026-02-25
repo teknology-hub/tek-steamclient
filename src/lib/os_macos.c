@@ -16,7 +16,6 @@
 #include "os.h"
 
 #include "common/error.h"
-#include "common/ulock.h"
 #include "tek-steamclient/content.h"
 #include "tek-steamclient/error.h"
 #include "tek-steamclient/os.h"
@@ -25,6 +24,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <os/os_sync_wait_on_address.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <stdatomic.h>
@@ -692,20 +692,17 @@ void tsci_os_mem_free(const void *addr, size_t size) {
 
 bool tsci_os_futex_wait(const _Atomic(uint32_t) *addr, uint32_t old,
                         uint32_t timeout_ms) {
-  if (timeout_ms == UINT32_MAX) {
-    timeout_ms = 0;
-  }
-  do {
-    if (__ulock_wait(UL_COMPARE_AND_WAIT, (void *)addr, old,
-                     timeout_ms * 1000) < 0) {
-      return errno == EAGAIN;
-    }
-  } while (atomic_load_explicit(addr, memory_order_relaxed) == old);
-  return true;
+  return timeout_ms == UINT32_MAX
+             ? os_sync_wait_on_address(addr, old, sizeof old,
+                                       OS_SYNC_WAIT_ON_ADDRESS_NONE) >= 0
+             : os_sync_wait_on_address_with_timeout(
+                   addr, old, sizeof old, OS_SYNC_WAIT_ON_ADDRESS_NONE,
+                   OS_CLOCK_MACH_ABSOLUTE_TIME,
+                   (uint64_t)timeout_ms * 1000000) >= 0;
 }
 
 void tsci_os_futex_wake(_Atomic(uint32_t) *addr) {
-  __ulock_wake(UL_COMPARE_AND_WAIT | ULF_WAKE_ALL, addr, 0);
+  os_sync_wake_by_address_all(addr, sizeof *addr, OS_SYNC_WAKE_BY_ADDRESS_NONE);
 }
 
 //===-- Pathname string functions -----------------------------------------===//
