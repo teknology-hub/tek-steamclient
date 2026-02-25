@@ -192,6 +192,7 @@ libtek_steamclient = library(
   cpp_args: lib_args,
   c_static_args: '-DTEK_SC_STATIC',
   cpp_static_args: '-DTEK_SC_STATIC',
+  darwin_versions: [f'@soversion@.0.0', meson.project_version()],
   dependencies: lib_deps,
   gnu_symbol_visibility: 'hidden',
   include_directories: common_includes,
