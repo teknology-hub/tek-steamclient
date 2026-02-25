@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tek-steamclient\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-17 22:59+0300\n"
+"POT-Creation-Date: 2026-02-25 09:01+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -657,7 +657,7 @@ msgid " (%.2f KiB)"
 msgstr ""
 
 #. L18N: One of possible job entry status values
-#: src/cli/dump.c:184 src/lib/error_msgs.c:315
+#: src/cli/dump.c:184 src/lib/error_msgs.c:319
 msgid "Pending"
 msgstr ""
 
@@ -995,7 +995,7 @@ msgid "Installing"
 msgstr ""
 
 #. L18N: Delta stage value
-#: src/cli/dump.c:1416 src/lib/error_msgs.c:565
+#: src/cli/dump.c:1416 src/lib/error_msgs.c:569
 msgid "Deleting"
 msgstr ""
 
@@ -1471,701 +1471,709 @@ msgstr ""
 msgid "Failed to get PICS access token from tek-s3 server"
 msgstr ""
 
+#: src/lib/error_msgs.c:259
+msgid "Failed to get CDN auth token"
+msgstr ""
+
+#: src/lib/error_msgs.c:261
+msgid "Loaded libcurl version does not support WSS protocol"
+msgstr ""
+
 #. L18N: An error type
-#: src/lib/error_msgs.c:259 src/lib/error_msgs.c:531 src/lib/error_msgs.c:575
-#: src/lib/error_msgs.c:621 src/lib/error_msgs.c:723
+#: src/lib/error_msgs.c:263 src/lib/error_msgs.c:535 src/lib/error_msgs.c:579
+#: src/lib/error_msgs.c:625 src/lib/error_msgs.c:727
 msgid "Unknown"
 msgstr ""
 
-#: src/lib/error_msgs.c:273
+#: src/lib/error_msgs.c:277
 msgid "Invalid EResult value"
 msgstr ""
 
-#: src/lib/error_msgs.c:275
+#: src/lib/error_msgs.c:279
 msgid "OK"
 msgstr ""
 
-#: src/lib/error_msgs.c:277
+#: src/lib/error_msgs.c:281
 msgid "Failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:279
+#: src/lib/error_msgs.c:283
 msgid "No connection"
 msgstr ""
 
-#: src/lib/error_msgs.c:281
+#: src/lib/error_msgs.c:285
 msgid "Invalid password"
 msgstr ""
 
-#: src/lib/error_msgs.c:283 src/lib/error_msgs.c:371
+#: src/lib/error_msgs.c:287 src/lib/error_msgs.c:375
 msgid "Already logged in elsewhere"
 msgstr ""
 
-#: src/lib/error_msgs.c:285
+#: src/lib/error_msgs.c:289
 msgid "Invalid protocol version"
 msgstr ""
 
-#: src/lib/error_msgs.c:287
+#: src/lib/error_msgs.c:291
 msgid "Invalid parameter"
 msgstr ""
 
-#: src/lib/error_msgs.c:289
+#: src/lib/error_msgs.c:293
 msgid "File not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:291
+#: src/lib/error_msgs.c:295
 msgid "Busy"
 msgstr ""
 
-#: src/lib/error_msgs.c:293
+#: src/lib/error_msgs.c:297
 msgid "Invalid state"
 msgstr ""
 
-#: src/lib/error_msgs.c:295
+#: src/lib/error_msgs.c:299
 msgid "Invalid name"
 msgstr ""
 
-#: src/lib/error_msgs.c:297
+#: src/lib/error_msgs.c:301
 msgid "Invalid email address"
 msgstr ""
 
-#: src/lib/error_msgs.c:299
+#: src/lib/error_msgs.c:303
 msgid "Duplicate name"
 msgstr ""
 
-#: src/lib/error_msgs.c:301
+#: src/lib/error_msgs.c:305
 msgid "Access denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:303
+#: src/lib/error_msgs.c:307
 msgid "Timeout"
 msgstr ""
 
-#: src/lib/error_msgs.c:305
+#: src/lib/error_msgs.c:309
 msgid "Banned"
 msgstr ""
 
-#: src/lib/error_msgs.c:307
+#: src/lib/error_msgs.c:311
 msgid "Account not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:309
+#: src/lib/error_msgs.c:313
 msgid "Invalid Steam ID"
 msgstr ""
 
-#: src/lib/error_msgs.c:311
+#: src/lib/error_msgs.c:315
 msgid "Service unavailable"
 msgstr ""
 
-#: src/lib/error_msgs.c:313
+#: src/lib/error_msgs.c:317
 msgid "Not logged on"
 msgstr ""
 
-#: src/lib/error_msgs.c:317
+#: src/lib/error_msgs.c:321
 msgid "Encryption failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:319
+#: src/lib/error_msgs.c:323
 msgid "Insufficient privilege"
 msgstr ""
 
-#: src/lib/error_msgs.c:321
+#: src/lib/error_msgs.c:325
 msgid "Limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:323
+#: src/lib/error_msgs.c:327
 msgid "Revoked"
 msgstr ""
 
-#: src/lib/error_msgs.c:325
+#: src/lib/error_msgs.c:329
 msgid "Expired"
 msgstr ""
 
-#: src/lib/error_msgs.c:327
+#: src/lib/error_msgs.c:331
 msgid "Already redeemed"
 msgstr ""
 
-#: src/lib/error_msgs.c:329
+#: src/lib/error_msgs.c:333
 msgid "Duplicate request"
 msgstr ""
 
-#: src/lib/error_msgs.c:331
+#: src/lib/error_msgs.c:335
 msgid "Already owned"
 msgstr ""
 
-#: src/lib/error_msgs.c:333
+#: src/lib/error_msgs.c:337
 msgid "IP not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:335
+#: src/lib/error_msgs.c:339
 msgid "Persist failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:337
+#: src/lib/error_msgs.c:341
 msgid "Locking failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:339
+#: src/lib/error_msgs.c:343
 msgid "Logon session replaced"
 msgstr ""
 
-#: src/lib/error_msgs.c:341
+#: src/lib/error_msgs.c:345
 msgid "Connect failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:343
+#: src/lib/error_msgs.c:347
 msgid "Handshake failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:345
+#: src/lib/error_msgs.c:349
 msgid "I/O failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:347
+#: src/lib/error_msgs.c:351
 msgid "Remote disconnect"
 msgstr ""
 
-#: src/lib/error_msgs.c:349
+#: src/lib/error_msgs.c:353
 msgid "Shopping cart not found"
 msgstr ""
 
-#: src/lib/error_msgs.c:351
+#: src/lib/error_msgs.c:355
 msgid "Blocked"
 msgstr ""
 
-#: src/lib/error_msgs.c:353
+#: src/lib/error_msgs.c:357
 msgid "Ignored"
 msgstr ""
 
-#: src/lib/error_msgs.c:355
+#: src/lib/error_msgs.c:359
 msgid "No match"
 msgstr ""
 
-#: src/lib/error_msgs.c:357
+#: src/lib/error_msgs.c:361
 msgid "Account disabled"
 msgstr ""
 
-#: src/lib/error_msgs.c:359
+#: src/lib/error_msgs.c:363
 msgid "Service read-only"
 msgstr ""
 
-#: src/lib/error_msgs.c:361
+#: src/lib/error_msgs.c:365
 msgid "Account not featured"
 msgstr ""
 
-#: src/lib/error_msgs.c:363
+#: src/lib/error_msgs.c:367
 msgid "Administrator OK"
 msgstr ""
 
-#: src/lib/error_msgs.c:365
+#: src/lib/error_msgs.c:369
 msgid "Content version"
 msgstr ""
 
-#: src/lib/error_msgs.c:367
+#: src/lib/error_msgs.c:371
 msgid "Try another Steam CM server"
 msgstr ""
 
-#: src/lib/error_msgs.c:369
+#: src/lib/error_msgs.c:373
 msgid "Password required to kick session"
 msgstr ""
 
-#: src/lib/error_msgs.c:373
+#: src/lib/error_msgs.c:377
 msgid "Suspended"
 msgstr ""
 
-#: src/lib/error_msgs.c:375
+#: src/lib/error_msgs.c:379
 msgid "Cancelled"
 msgstr ""
 
-#: src/lib/error_msgs.c:377
+#: src/lib/error_msgs.c:381
 msgid "Data corruption"
 msgstr ""
 
-#: src/lib/error_msgs.c:379
+#: src/lib/error_msgs.c:383
 msgid "Disk full"
 msgstr ""
 
-#: src/lib/error_msgs.c:381
+#: src/lib/error_msgs.c:385
 msgid "Remote call failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:383
+#: src/lib/error_msgs.c:387
 msgid "Password unset"
 msgstr ""
 
-#: src/lib/error_msgs.c:385
+#: src/lib/error_msgs.c:389
 msgid "External account unlinked"
 msgstr ""
 
-#: src/lib/error_msgs.c:387
+#: src/lib/error_msgs.c:391
 msgid "PSN ticket invalid"
 msgstr ""
 
-#: src/lib/error_msgs.c:389
+#: src/lib/error_msgs.c:393
 msgid "External account already linked"
 msgstr ""
 
-#: src/lib/error_msgs.c:391
+#: src/lib/error_msgs.c:395
 msgid "Remote file conflict"
 msgstr ""
 
-#: src/lib/error_msgs.c:393
+#: src/lib/error_msgs.c:397
 msgid "Illegal password"
 msgstr ""
 
-#: src/lib/error_msgs.c:395
+#: src/lib/error_msgs.c:399
 msgid "Same as previous value"
 msgstr ""
 
-#: src/lib/error_msgs.c:397
+#: src/lib/error_msgs.c:401
 msgid "Account logon denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:399
+#: src/lib/error_msgs.c:403
 msgid "Cannot use old password"
 msgstr ""
 
-#: src/lib/error_msgs.c:401
+#: src/lib/error_msgs.c:405
 msgid "Invalid login auth code"
 msgstr ""
 
-#: src/lib/error_msgs.c:403
+#: src/lib/error_msgs.c:407
 msgid "Account logon denied, no mail"
 msgstr ""
 
-#: src/lib/error_msgs.c:405
+#: src/lib/error_msgs.c:409
 msgid "Hardware not capable of IPT"
 msgstr ""
 
-#: src/lib/error_msgs.c:407
+#: src/lib/error_msgs.c:411
 msgid "IPT initialization error"
 msgstr ""
 
-#: src/lib/error_msgs.c:409
+#: src/lib/error_msgs.c:413
 msgid "Parental control restricted"
 msgstr ""
 
-#: src/lib/error_msgs.c:411
+#: src/lib/error_msgs.c:415
 msgid "Facebook query error"
 msgstr ""
 
-#: src/lib/error_msgs.c:413
+#: src/lib/error_msgs.c:417
 msgid "Expired login auth code"
 msgstr ""
 
-#: src/lib/error_msgs.c:415
+#: src/lib/error_msgs.c:419
 msgid "IP login restriction failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:417
+#: src/lib/error_msgs.c:421
 msgid "Account locked down"
 msgstr ""
 
-#: src/lib/error_msgs.c:419
+#: src/lib/error_msgs.c:423
 msgid "Account logon denied, verified email required"
 msgstr ""
 
-#: src/lib/error_msgs.c:421
+#: src/lib/error_msgs.c:425
 msgid "No matching URL"
 msgstr ""
 
-#: src/lib/error_msgs.c:423
+#: src/lib/error_msgs.c:427
 msgid "Bad response"
 msgstr ""
 
-#: src/lib/error_msgs.c:425
+#: src/lib/error_msgs.c:429
 msgid "Require password reentry"
 msgstr ""
 
-#: src/lib/error_msgs.c:427
+#: src/lib/error_msgs.c:431
 msgid "Value out of range"
 msgstr ""
 
-#: src/lib/error_msgs.c:429
+#: src/lib/error_msgs.c:433
 msgid "Unexpected error"
 msgstr ""
 
-#: src/lib/error_msgs.c:431
+#: src/lib/error_msgs.c:435
 msgid "Disabled"
 msgstr ""
 
-#: src/lib/error_msgs.c:433
+#: src/lib/error_msgs.c:437
 msgid "Invalid CEG submission"
 msgstr ""
 
-#: src/lib/error_msgs.c:435
+#: src/lib/error_msgs.c:439
 msgid "Restricted device"
 msgstr ""
 
-#: src/lib/error_msgs.c:437
+#: src/lib/error_msgs.c:441
 msgid "Region locked"
 msgstr ""
 
-#: src/lib/error_msgs.c:439
+#: src/lib/error_msgs.c:443
 msgid "Rate limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:441
+#: src/lib/error_msgs.c:445
 msgid "Account login denied, need two-factor authentication"
 msgstr ""
 
-#: src/lib/error_msgs.c:443
+#: src/lib/error_msgs.c:447
 msgid "Item deleted"
 msgstr ""
 
-#: src/lib/error_msgs.c:445
+#: src/lib/error_msgs.c:449
 msgid "Account login denied, throttle"
 msgstr ""
 
-#: src/lib/error_msgs.c:447
+#: src/lib/error_msgs.c:451
 msgid "Two-factor code mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:449
+#: src/lib/error_msgs.c:453
 msgid "Two-factor activation code mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:451
+#: src/lib/error_msgs.c:455
 msgid "Account associated to multiple partners"
 msgstr ""
 
-#: src/lib/error_msgs.c:453
+#: src/lib/error_msgs.c:457
 msgid "Not modified"
 msgstr ""
 
-#: src/lib/error_msgs.c:455
+#: src/lib/error_msgs.c:459
 msgid "No mobile device"
 msgstr ""
 
-#: src/lib/error_msgs.c:457
+#: src/lib/error_msgs.c:461
 msgid "Time not synced"
 msgstr ""
 
-#: src/lib/error_msgs.c:459
+#: src/lib/error_msgs.c:463
 msgid "SMS code failed"
 msgstr ""
 
-#: src/lib/error_msgs.c:461
+#: src/lib/error_msgs.c:465
 msgid "Account limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:463
+#: src/lib/error_msgs.c:467
 msgid "Account activity limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:465
+#: src/lib/error_msgs.c:469
 msgid "Phone activity limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:467
+#: src/lib/error_msgs.c:471
 msgid "Refund to wallet"
 msgstr ""
 
-#: src/lib/error_msgs.c:469
+#: src/lib/error_msgs.c:473
 msgid "Email send failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:471
+#: src/lib/error_msgs.c:475
 msgid "Not settled"
 msgstr ""
 
-#: src/lib/error_msgs.c:473
+#: src/lib/error_msgs.c:477
 msgid "Need CAPTCHA"
 msgstr ""
 
-#: src/lib/error_msgs.c:475
+#: src/lib/error_msgs.c:479
 msgid "GSLT denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:477
+#: src/lib/error_msgs.c:481
 msgid "GS owner denied"
 msgstr ""
 
-#: src/lib/error_msgs.c:479
+#: src/lib/error_msgs.c:483
 msgid "Invalid item type"
 msgstr ""
 
-#: src/lib/error_msgs.c:481
+#: src/lib/error_msgs.c:485
 msgid "IP banned"
 msgstr ""
 
-#: src/lib/error_msgs.c:483
+#: src/lib/error_msgs.c:487
 msgid "GSLT expired"
 msgstr ""
 
-#: src/lib/error_msgs.c:485
+#: src/lib/error_msgs.c:489
 msgid "Insufficient funds"
 msgstr ""
 
-#: src/lib/error_msgs.c:487
+#: src/lib/error_msgs.c:491
 msgid "Too many pending"
 msgstr ""
 
-#: src/lib/error_msgs.c:489
+#: src/lib/error_msgs.c:493
 msgid "No site licenses found"
 msgstr ""
 
-#: src/lib/error_msgs.c:491
+#: src/lib/error_msgs.c:495
 msgid "WG network send exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:493
+#: src/lib/error_msgs.c:497
 msgid "Account not friends"
 msgstr ""
 
-#: src/lib/error_msgs.c:495
+#: src/lib/error_msgs.c:499
 msgid "Limited user account"
 msgstr ""
 
-#: src/lib/error_msgs.c:497
+#: src/lib/error_msgs.c:501
 msgid "Can't remove item"
 msgstr ""
 
-#: src/lib/error_msgs.c:499
+#: src/lib/error_msgs.c:503
 msgid "Account deleted"
 msgstr ""
 
-#: src/lib/error_msgs.c:501
+#: src/lib/error_msgs.c:505
 msgid "Existing user cancelled license"
 msgstr ""
 
-#: src/lib/error_msgs.c:503
+#: src/lib/error_msgs.c:507
 msgid "Community cooldown"
 msgstr ""
 
-#: src/lib/error_msgs.c:505
+#: src/lib/error_msgs.c:509
 msgid "No launcher specified"
 msgstr ""
 
-#: src/lib/error_msgs.c:507
+#: src/lib/error_msgs.c:511
 msgid "Must agree to Steam Subscriber Agreement"
 msgstr ""
 
-#: src/lib/error_msgs.c:509
+#: src/lib/error_msgs.c:513
 msgid "Launcher migrated"
 msgstr ""
 
-#: src/lib/error_msgs.c:511
+#: src/lib/error_msgs.c:515
 msgid "Steam realm mismatch"
 msgstr ""
 
-#: src/lib/error_msgs.c:513
+#: src/lib/error_msgs.c:517
 msgid "Invalid signature"
 msgstr ""
 
-#: src/lib/error_msgs.c:515
+#: src/lib/error_msgs.c:519
 msgid "Parse failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:517
+#: src/lib/error_msgs.c:521
 msgid "No verified phone"
 msgstr ""
 
-#: src/lib/error_msgs.c:519
+#: src/lib/error_msgs.c:523
 msgid "Insufficient battery"
 msgstr ""
 
-#: src/lib/error_msgs.c:521
+#: src/lib/error_msgs.c:525
 msgid "Charger required"
 msgstr ""
 
-#: src/lib/error_msgs.c:523
+#: src/lib/error_msgs.c:527
 msgid "Cached credential invalid"
 msgstr ""
 
-#: src/lib/error_msgs.c:525
+#: src/lib/error_msgs.c:529
 msgid "Phone number is VoIP"
 msgstr ""
 
-#: src/lib/error_msgs.c:527
+#: src/lib/error_msgs.c:531
 msgid "Not supported"
 msgstr ""
 
-#: src/lib/error_msgs.c:529
+#: src/lib/error_msgs.c:533
 msgid "Family size limit exceeded"
 msgstr ""
 
-#: src/lib/error_msgs.c:545
+#: src/lib/error_msgs.c:549
 msgid "Checking for existence"
 msgstr ""
 
-#: src/lib/error_msgs.c:547
+#: src/lib/error_msgs.c:551
 msgid "Creating or opening"
 msgstr ""
 
-#: src/lib/error_msgs.c:549
+#: src/lib/error_msgs.c:553
 msgid "Getting type of filesystem entry"
 msgstr ""
 
-#: src/lib/error_msgs.c:551
+#: src/lib/error_msgs.c:555
 msgid "Getting file size"
 msgstr ""
 
-#: src/lib/error_msgs.c:553
+#: src/lib/error_msgs.c:557
 msgid "Truncating"
 msgstr ""
 
-#: src/lib/error_msgs.c:555
+#: src/lib/error_msgs.c:559
 msgid "Reading data"
 msgstr ""
 
-#: src/lib/error_msgs.c:557
+#: src/lib/error_msgs.c:561
 msgid "Writing data"
 msgstr ""
 
-#: src/lib/error_msgs.c:559
+#: src/lib/error_msgs.c:563
 msgid "Setting attributes or permissions"
 msgstr ""
 
-#: src/lib/error_msgs.c:561
+#: src/lib/error_msgs.c:565
 msgid "Copying data"
 msgstr ""
 
-#: src/lib/error_msgs.c:563
+#: src/lib/error_msgs.c:567
 msgid "Moving"
 msgstr ""
 
-#: src/lib/error_msgs.c:567
+#: src/lib/error_msgs.c:571
 msgid "Creating symbolic link"
 msgstr ""
 
-#: src/lib/error_msgs.c:569
+#: src/lib/error_msgs.c:573
 msgid "Registering for asynchronous I/O"
 msgstr ""
 
-#: src/lib/error_msgs.c:571
+#: src/lib/error_msgs.c:575
 msgid "Submitting an asynchronous I/O request"
 msgstr ""
 
-#: src/lib/error_msgs.c:573
+#: src/lib/error_msgs.c:577
 msgid "Waiting for asynchronous I/O completions"
 msgstr ""
 
-#: src/lib/error_msgs.c:589
+#: src/lib/error_msgs.c:593
 msgid "Normal closure"
 msgstr ""
 
-#: src/lib/error_msgs.c:591
+#: src/lib/error_msgs.c:595
 msgid "Going away"
 msgstr ""
 
-#: src/lib/error_msgs.c:593
+#: src/lib/error_msgs.c:597
 msgid "Protocol error"
 msgstr ""
 
-#: src/lib/error_msgs.c:595
+#: src/lib/error_msgs.c:599
 msgid "Unsupported data"
 msgstr ""
 
-#: src/lib/error_msgs.c:597
+#: src/lib/error_msgs.c:601
 msgid "No status code received"
 msgstr ""
 
-#: src/lib/error_msgs.c:599
+#: src/lib/error_msgs.c:603
 msgid "Abnormal closure"
 msgstr ""
 
-#: src/lib/error_msgs.c:601
+#: src/lib/error_msgs.c:605
 msgid "Invalid payload"
 msgstr ""
 
-#: src/lib/error_msgs.c:603
+#: src/lib/error_msgs.c:607
 msgid "Policy violation"
 msgstr ""
 
-#: src/lib/error_msgs.c:605
+#: src/lib/error_msgs.c:609
 msgid "Message too big"
 msgstr ""
 
-#: src/lib/error_msgs.c:607
+#: src/lib/error_msgs.c:611
 msgid "Mandatory extension not supported"
 msgstr ""
 
-#: src/lib/error_msgs.c:609
+#: src/lib/error_msgs.c:613
 msgid "Internal server error"
 msgstr ""
 
-#: src/lib/error_msgs.c:611
+#: src/lib/error_msgs.c:615
 msgid "Service restart"
 msgstr ""
 
-#: src/lib/error_msgs.c:613
+#: src/lib/error_msgs.c:617
 msgid "Try again later"
 msgstr ""
 
-#: src/lib/error_msgs.c:615
+#: src/lib/error_msgs.c:619
 msgid "Bad gateway"
 msgstr ""
 
-#: src/lib/error_msgs.c:617
+#: src/lib/error_msgs.c:621
 msgid "TLS handshake failure"
 msgstr ""
 
-#: src/lib/error_msgs.c:619
+#: src/lib/error_msgs.c:623
 msgid "Steam CM normal closure"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:635
+#: src/lib/error_msgs.c:639
 msgid "Basic"
 msgstr ""
 
 #. L18N: %u is the WebSocket close code number, %s is its string
 #. representation
-#: src/lib/error_msgs.c:640
+#: src/lib/error_msgs.c:644
 #, c-format
 msgid "WebSocket close code: (%u) %s"
 msgstr ""
 
 #. L18N: An error URI kind
-#: src/lib/error_msgs.c:650 src/lib/error_msgs.c:659 src/lib/error_msgs.c:704
+#: src/lib/error_msgs.c:654 src/lib/error_msgs.c:663 src/lib/error_msgs.c:708
 msgid "URL"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:655
+#: src/lib/error_msgs.c:659
 msgid "Compound"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:664
+#: src/lib/error_msgs.c:668
 msgid "Steam CM response"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:669
+#: src/lib/error_msgs.c:673
 msgid "OS"
 msgstr ""
 
 #. L18N: %u is the I/O operation type code, %s is its string
 #. representation
-#: src/lib/error_msgs.c:675
+#: src/lib/error_msgs.c:679
 #, c-format
 msgid "I/O operation type: (%u) %s"
 msgstr ""
 
 #. L18N: An error URI kind
-#: src/lib/error_msgs.c:685 src/lib/error_msgs.c:718
+#: src/lib/error_msgs.c:689 src/lib/error_msgs.c:722
 msgid "Path"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:690
+#: src/lib/error_msgs.c:694
 msgid "libcurl-easy"
 msgstr ""
 
 #. L18N: %u is the status code number
-#: src/lib/error_msgs.c:694
+#: src/lib/error_msgs.c:698
 #, c-format
 msgid "HTTP status code: %u"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:709
+#: src/lib/error_msgs.c:713
 msgid "libcurl-multi"
 msgstr ""
 
 #. L18N: An error type
-#: src/lib/error_msgs.c:714
+#: src/lib/error_msgs.c:718
 msgid "SQLite"
 msgstr ""
