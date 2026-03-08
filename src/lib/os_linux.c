@@ -31,6 +31,7 @@
 #include <linux/limits.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <sched.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -41,9 +42,6 @@
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
-#ifdef __GLIBC__
-#include <sys/sysinfo.h>
-#endif // def __GLIBC__
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -156,11 +154,11 @@ char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
 tek_sc_os_errc tsci_os_get_last_error(void) { return errno; }
 
 int tsci_os_get_nproc(void) {
-#ifdef __GLIBC__
-  return get_nprocs_conf();
-#else  // def __GLIBC__
-  return sysconf(_SC_NPROCESSORS_CONF);
-#endif // def __GLIBC__ else
+  cpu_set_t set;
+  if (sched_getaffinity(0, sizeof set, &set) < 0) {
+    return 1;
+  }
+  return CPU_COUNT(&set);
 }
 
 uint64_t tsci_os_get_ticks(void) {
