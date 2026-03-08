@@ -181,10 +181,7 @@ bool tscl_os_file_read(tek_sc_os_handle handle, void *buf, size_t n) {
 
 size_t tscl_os_file_get_size(tek_sc_os_handle handle) {
   struct stat st;
-  if (fstat(handle, &st) < 0) {
-    return SIZE_MAX;
-  }
-  return st.st_size;
+  return fstat(handle, &st) < 0 ? SIZE_MAX : st.st_size;
 }
 
 //===-- Virtual memory functions ------------------------------------------===//

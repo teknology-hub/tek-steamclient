@@ -174,14 +174,20 @@ tsci_os_version tsci_os_get_version(void) {
 time_t tsci_os_get_process_start_time(void) {
   char proc_path[17];
   snprintf(proc_path, sizeof proc_path, "/proc/%u", getpid());
+  // stx_ctim/st_ctime of /proc/<pid> in most cases is the time of process
+  //    creation, even if it's not, or the syscall fails, the use cases of this
+  //    function don't require the precise time and will work just fine with any
+  //    other number, so using more complicated methods is not justified
+#ifdef TEK_SCB_STATX
   struct statx stx;
-  // stx_ctim of /proc/<pid> in most cases is the time of process creation, even
-  //    if it's not, or the syscall fails, the use cases of this function don't
-  //    require the precise time and will work just fine with any other number,
-  //    so using more complicated methods is not justified
   if (statx(-1, proc_path, 0, STATX_CTIME, &stx) == 0 &&
       (stx.stx_mask & STATX_CTIME)) {
     return stx.stx_ctime.tv_sec;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  if (stat(proc_path, &st) == 0) {
+    return st.st_ctime;
+#endif // def TEK_SCB_STATX else
   } else {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -286,8 +292,12 @@ tek_sc_os_handle tsci_os_dir_open_at(tek_sc_os_handle parent_dir_handle,
 bool tsci_os_dir_move(tek_sc_os_handle src_dir_handle,
                       tek_sc_os_handle tgt_dir_handle,
                       const tek_sc_os_char *name) {
+#ifdef TEK_SCB_RENAMEAT2
   return !renameat2(src_dir_handle, name, tgt_dir_handle, name,
                     RENAME_NOREPLACE);
+#else  // def TEK_SCB_RENAMEAT2
+  return !renameat(src_dir_handle, name, tgt_dir_handle, name);
+#endif // def TEK_SCB_RENAMEAT2 else
 }
 
 bool tsci_os_dir_delete_at(tek_sc_os_handle parent_dir_handle,
@@ -323,6 +333,7 @@ tek_sc_err tsci_os_dir_delete_at_rec(tek_sc_os_handle parent_dir_handle,
     }
     if (ent->d_type == DT_UNKNOWN) {
       // Determine file type
+#ifdef TEK_SCB_STATX
       struct statx stx;
       if (statx(fd, ent->d_name, AT_SYMLINK_NOFOLLOW, STATX_MODE, &stx) < 0) {
         res = tsci_os_io_err_at(fd, ent->d_name, errc, errno,
@@ -335,6 +346,15 @@ tek_sc_err tsci_os_dir_delete_at_rec(tek_sc_os_handle parent_dir_handle,
         goto close_dir;
       }
       ent->d_type = S_ISDIR(stx.stx_mode) ? DT_DIR : DT_REG;
+#else  // def TEK_SCB_STATX
+      struct stat st;
+      if (fstatat(fd, ent->d_name, &st, AT_SYMLINK_NOFOLLOW) < 0) {
+        res = tsci_os_io_err_at(fd, ent->d_name, errc, errno,
+                                TEK_SC_ERR_IO_TYPE_get_type);
+        goto close_dir;
+      }
+      ent->d_type = S_ISDIR(st.st_mode) ? DT_DIR : DT_REG;
+#endif // def TEK_SCB_STATX else
     }
     if (ent->d_type == DT_DIR) {
       res = tsci_os_dir_delete_at_rec(fd, ent->d_name, errc);
@@ -470,6 +490,7 @@ bool tsci_os_file_write_at(tek_sc_os_handle handle, const void *buf, size_t n,
 //===--- File get/set size ------------------------------------------------===//
 
 size_t tsci_os_file_get_size(tek_sc_os_handle handle) {
+#ifdef TEK_SCB_STATX
   struct statx stx;
   if (statx(handle, "", AT_EMPTY_PATH, STATX_SIZE, &stx) < 0) {
     return SIZE_MAX;
@@ -479,10 +500,15 @@ size_t tsci_os_file_get_size(tek_sc_os_handle handle) {
     return SIZE_MAX;
   }
   return stx.stx_size;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  return fstat(handle, &st) < 0 ? SIZE_MAX : st.st_size;
+#endif // def TEK_SCB_STATX else
 }
 
 size_t tsci_os_file_get_size_at(tek_sc_os_handle parent_dir_handle,
                                 const tek_sc_os_char *name) {
+#ifdef TEK_SCB_STATX
   struct statx stx;
   if (statx(parent_dir_handle, name, 0, STATX_SIZE, &stx) < 0) {
     return SIZE_MAX;
@@ -492,6 +518,10 @@ size_t tsci_os_file_get_size_at(tek_sc_os_handle parent_dir_handle,
     return SIZE_MAX;
   }
   return stx.stx_size;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  return fstatat(parent_dir_handle, name, &st, 0) < 0 ? SIZE_MAX : st.st_size;
+#endif // def TEK_SCB_STATX else
 }
 
 bool tsci_os_file_truncate(tek_sc_os_handle handle, int64_t new_size) {
@@ -502,6 +532,7 @@ bool tsci_os_file_truncate(tek_sc_os_handle handle, int64_t new_size) {
 
 bool tsci_os_file_apply_flags(tek_sc_os_handle handle,
                               tek_sc_dm_file_flag flags) {
+#ifdef TEK_SCB_STATX
   struct statx stx;
   if (statx(handle, "", AT_EMPTY_PATH, STATX_MODE, &stx) < 0) {
     return false;
@@ -511,6 +542,13 @@ bool tsci_os_file_apply_flags(tek_sc_os_handle handle,
     return false;
   }
   const int perms = stx.stx_mode & ACCESSPERMS;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  if (fstat(handle, &st) < 0) {
+    return false;
+  }
+  const int perms = st.st_mode & ACCESSPERMS;
+#endif // def TEK_SCB_STATX else
   if (flags & TEK_SC_DM_FILE_FLAG_executable) {
     if (perms & 0100) {
       return true;
@@ -527,6 +565,7 @@ bool tsci_os_file_apply_flags(tek_sc_os_handle handle,
 bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
                                  const tek_sc_os_char *name,
                                  tek_sc_dm_file_flag flags) {
+#ifdef TEK_SCB_STATX
   struct statx stx;
   if (statx(parent_dir_handle, name, 0, STATX_MODE, &stx) < 0) {
     return false;
@@ -536,6 +575,13 @@ bool tsci_os_file_apply_flags_at(tek_sc_os_handle parent_dir_handle,
     return false;
   }
   const int perms = stx.stx_mode & ACCESSPERMS;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  if (fstatat(parent_dir_handle, name, &st, 0) < 0) {
+    return false;
+  }
+  const int perms = st.st_mode & ACCESSPERMS;
+#endif // def TEK_SCB_STATX else
   if (flags & TEK_SC_DM_FILE_FLAG_executable) {
     if (perms & 0100) {
       return true;
@@ -557,12 +603,12 @@ bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
   const int tgt_fd = args->tgt_handle;
   auto const buf = args->buf;
   auto const buf_size = args->buf_size;
-  const int64_t src_end = src_offset + size;
-  const int64_t tgt_end = tgt_offset + size;
+#ifdef TEK_SCB_CFR
   // Copying within the same file requires intermediate RAM buffer as well if
   //    source and target regions overlap
-  bool xdev = args->not_same_dev || (src_fd == tgt_fd && src_offset < tgt_end &&
-                                     tgt_offset < src_end);
+  bool xdev = args->not_same_dev ||
+              (src_fd == tgt_fd && src_offset < (int64_t)(tgt_offset + size) &&
+               tgt_offset < (int64_t)(src_offset + size));
   while (size) {
     ssize_t bytes_copied;
     if (xdev) {
@@ -598,6 +644,27 @@ bool tsci_os_file_copy_chunk(tsci_os_copy_args *args, int64_t src_offset,
     }
     size -= bytes_copied;
   } // while (size)
+#else  // def TEK_SCB_CFR
+  while (size) {
+    auto const bytes_read =
+        pread(src_fd, buf, size > buf_size ? buf_size : size, src_offset);
+    if (bytes_read <= 0) {
+      if (!bytes_read) {
+        // Intentionally picked an errno value unused by pread(), this branch
+        //    helps avoiding a deadlock if early EOF is encountered
+        errno = ERANGE;
+      }
+      return false;
+    }
+    auto const bytes_written = pwrite(tgt_fd, buf, bytes_read, tgt_offset);
+    if (bytes_written < 0) {
+      return false;
+    }
+    src_offset += bytes_written;
+    tgt_offset += bytes_written;
+    size -= bytes_written;
+  } // while (size)
+#endif // def TEK_SCB_CFR else
   return true;
 }
 
@@ -617,8 +684,9 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
     close(src_fd);
     return false;
   }
-  bool xdev = args->not_same_dev;
   bool res = true;
+#ifdef TEK_SCB_CFR
+  bool xdev = args->not_same_dev;
   while (size) {
     auto const bytes_copied =
         xdev ? sendfile(tgt_fd, src_fd, nullptr, size)
@@ -645,6 +713,18 @@ bool tsci_os_file_copy(tsci_os_copy_args *args, const tek_sc_os_char *name,
     }
     size -= bytes_copied;
   } // while (size)
+#else  // def TEK_SCB_CFR
+  while (size) {
+    auto const bytes_copied = sendfile(tgt_fd, src_fd, nullptr, size);
+    if (bytes_copied <= 0) {
+      args->error = tsci_os_io_err(src_fd, errc, bytes_copied ? errno : ERANGE,
+                                   TEK_SC_ERR_IO_TYPE_copy);
+      res = false;
+      break;
+    }
+    size -= bytes_copied;
+  } // while (size)
+#endif // def TEK_SCB_CFR else
   close(tgt_fd);
   close(src_fd);
   return res;

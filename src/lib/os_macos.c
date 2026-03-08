@@ -447,19 +447,13 @@ bool tsci_os_file_write_at(tek_sc_os_handle handle, const void *buf, size_t n,
 
 size_t tsci_os_file_get_size(tek_sc_os_handle handle) {
   struct stat st;
-  if (fstat(handle, &st) < 0) {
-    return SIZE_MAX;
-  }
-  return st.st_size;
+  return fstat(handle, &st) < 0 ? SIZE_MAX : st.st_size;
 }
 
 size_t tsci_os_file_get_size_at(tek_sc_os_handle parent_dir_handle,
                                 const tek_sc_os_char *name) {
   struct stat st;
-  if (fstatat(parent_dir_handle, name, &st, 0) < 0) {
-    return SIZE_MAX;
-  }
-  return st.st_size;
+  return fstatat(parent_dir_handle, name, &st, 0) < 0 ? SIZE_MAX : st.st_size;
 }
 
 bool tsci_os_file_truncate(tek_sc_os_handle handle, int64_t new_size) {

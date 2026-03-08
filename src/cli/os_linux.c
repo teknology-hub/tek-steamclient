@@ -15,6 +15,7 @@
 #include "os.h"
 
 #include "common.h"
+#include "config.h" // IWYU pragma: keep
 #include "tek-steamclient/os.h"
 
 #include <errno.h>
@@ -173,6 +174,7 @@ bool tscl_os_file_read(tek_sc_os_handle handle, void *buf, size_t n) {
 }
 
 size_t tscl_os_file_get_size(tek_sc_os_handle handle) {
+#ifdef TEK_SCB_STATX
   struct statx stx;
   if (statx(handle, "", AT_EMPTY_PATH, STATX_SIZE, &stx) < 0) {
     return SIZE_MAX;
@@ -182,6 +184,10 @@ size_t tscl_os_file_get_size(tek_sc_os_handle handle) {
     return SIZE_MAX;
   }
   return stx.stx_size;
+#else  // def TEK_SCB_STATX
+  struct stat st;
+  return fstat(handle, &st) < 0 ? SIZE_MAX : st.st_size;
+#endif // def TEK_SCB_STATX else
 }
 
 //===-- Virtual memory functions ------------------------------------------===//

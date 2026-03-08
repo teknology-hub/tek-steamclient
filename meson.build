@@ -22,7 +22,6 @@ add_project_arguments('-DTEK_SC_IMPL', language: ['c', 'cpp'])
 is_linux = host_machine.system() == 'linux' or host_machine.system() == 'android'
 is_windows = host_machine.system() == 'windows'
 is_macos = host_machine.system() == 'darwin'
-compiler = meson.get_compiler('c')
 if is_linux
   add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
 elif is_windows # is_linux
@@ -46,6 +45,7 @@ elif is_macos # is_linux elif is_windows
 else # is_linux elif is_windows elif is_macos
   error('Unsupported host machine OS')
 endif # is_linux elif is_windows elif is_macos else
+compiler = meson.get_compiler('c')
 # -Wno-attributes: Project code uses many attributes that are supported only by
 #    specific compilers or even specific compiler versions
 # -Wno-nullability-extension: Fallbacks for these attributes are provided by
@@ -88,22 +88,32 @@ if liburing_valid
   liburing_dep = dependency('liburing', required: get_option('io_uring'))
 endif # liburing_valid
 soversion = meson.project_version().split('.')[0]
+config = {
+  'TEK_SC_VERSION': '"' + meson.project_version() + '"',
+  'TEK_SC_UA': '"tek-steamclient/' + meson.project_version() + '"',
+  'TEK_SCB_ZNG': zlib_dep.name() == 'zlib-ng',
+  'TEK_SCB_GETTEXT': get_option('gettext'),
+  'TEK_SCB_S3C': get_option('s3_client'),
+  'TEK_SCB_CONTENT': get_option('content'),
+  'TEK_SCB_SP': get_option('steampipe'),
+  'TEK_SCB_CHUNKS_PER_SRV': get_option('chunks_per_srv'),
+  'TEK_SCB_AM': get_option('app_manager'),
+  'TEK_SCB_CLI_DUMP': get_option('cli_dump')
+}
+if is_linux
+  config += {
+    'TEK_SCB_CFR': compiler.has_function('copy_file_range',
+      args: '-D_GNU_SOURCE', prefix: '#include <unistd.h>'),
+    'TEK_SCB_RENAMEAT2': compiler.has_function('renameat2',
+      args: '-D_GNU_SOURCE', prefix: '#include <stdio.h>'),
+    'TEK_SCB_STATX': compiler.has_function('statx', args: '-D_GNU_SOURCE',
+      prefix: '#include <sys/stat.h>'),
+    'TEK_SCB_IO_URING': liburing_dep.found(),
+  }
+endif # is_linux
 configure_file(
   output: 'config.h',
-  configuration: {
-    'TEK_SC_VERSION': '"' + meson.project_version() + '"',
-    'TEK_SC_UA': '"tek-steamclient/' + meson.project_version() + '"',
-    'TEK_SCB_SOVERSION': f'"@soversion@"',
-    'TEK_SCB_ZNG': zlib_dep.name() == 'zlib-ng',
-    'TEK_SCB_GETTEXT': get_option('gettext'),
-    'TEK_SCB_S3C': get_option('s3_client'),
-    'TEK_SCB_CONTENT': get_option('content'),
-    'TEK_SCB_SP': get_option('steampipe'),
-    'TEK_SCB_CHUNKS_PER_SRV': get_option('chunks_per_srv'),
-    'TEK_SCB_AM': get_option('app_manager'),
-    'TEK_SCB_IO_URING': liburing_valid and liburing_dep.found(),
-    'TEK_SCB_CLI_DUMP': get_option('cli_dump')
-  }
+  configuration: config
 )
 subdir('include')
 common_includes = include_directories('include', 'src')
