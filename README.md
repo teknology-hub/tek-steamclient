@@ -3,7 +3,7 @@
 
 **Disclaimer**: This project is not affiliated with Valve Corporation and their official Steam client
 
-tek-steamclient is an open-source C library that implements some parts of a Steam client, most notably the application manager, that allows downloading, verifying and updating Steam applications. It is written in C and C++ and can be built for Windows, Linux and MacOS.
+tek-steamclient is an open-source C library that implements some parts of a Steam client, most notably the application manager, that allows downloading, verifying and updating Steam applications. It is written in C and C++ and can be built for Windows, Linux (including Android via e.g. Termux) and MacOS.
 
 This repository also provides tek-sc-cli, simple command-line interface on top of tek-steamclient, somewhat similar to steamcmd in functionality.
 
@@ -19,7 +19,7 @@ This repository also provides tek-sc-cli, simple command-line interface on top o
 
 ### Windows
 
-There are statically linked binaries for libtek-steamclient-X.dll and tek-sc-cli.exe in [releases](https://github.com/teknology-hub/tek-steamclient/releases), in archives marked as win-x86_64-static. They do not have any external dependencies other than Windows system DLLs, and are recommended for regular use. These binaries are built in MSYS2 [TEK-X86_64 environment](https://github.com/teknology-hub/MinGW-env) and signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
+There are statically linked binaries for libtek-steamclient-X.dll and tek-sc-cli.exe in [releases](https://github.com/teknology-hub/tek-steamclient/releases), in archive named `tek-steamclient-X.Y.Z-win-x86_64.zip`. They do not have any external dependencies other than Windows system DLLs, and are recommended for regular use. These binaries are built in MSYS2 [TEK-X86_64 environment](https://github.com/teknology-hub/MinGW-env) and signed by Nuclearist's code signing certificate, which in turn is signed by [TEK CA](https://teknology-hub.com/public-keys/ca.crt), so they will be trusted by OS if TEK CA certificate is.
 
 ### Linux
 

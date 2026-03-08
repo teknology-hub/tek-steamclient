@@ -1,3 +1,4 @@
+option('android_wordexp_lib', description: 'Name of the library to link to on Android for the wordexp function', type: 'string', value: 'android-wordexp')
 option('zlib_ng', description: 'Use zlib-ng instead of zlib', type: 'feature')
 option('gettext', description: 'Build localization files and libintl support (requires gettext utilities)', type: 'boolean', value: true)
 option('s3_client', description: 'Build tek-s3 client side API declared in s3c.h', type: 'boolean', value: true)

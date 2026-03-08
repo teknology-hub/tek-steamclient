@@ -164,7 +164,12 @@ if get_option('app_manager')
   endif # liburing_valid and liburing_dep.found()
 endif # get_option('app_manager')
 subdir('src/lib')
-if is_windows
+if is_linux
+  if not compiler.has_function('wordexp', args: '-D_GNU_SOURCE',
+    prefix: '#include <wordexp.h>')
+    lib_deps += compiler.find_library(get_option('android_wordexp_lib'))
+  endif # not compiler.has_function('wordexp', ...)
+elif is_windows # is_linux
   lib_deps += win_deps
   # Build localization .mo files for including as resources
   loc_list = []
@@ -200,7 +205,7 @@ if is_windows
       depends: loc_tgts
     )
   endif # get_option('default_library') != 'static'
-endif # is_windows
+endif # is_linux elif is_windows
 subdir('protos')
 libtek_steamclient = library(
   'tek-steamclient',
