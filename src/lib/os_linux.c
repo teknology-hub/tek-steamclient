@@ -1,4 +1,4 @@
-//===-- os_linux.c - GNU/Linux OS functions implementation ----------------===//
+//===-- os_linux.c - Linux OS functions implementation ----------------===//
 //
 // Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file
-/// GNU/Linux implementation of @ref os.h.
+/// Linux implementation of @ref os.h.
 ///
 //===----------------------------------------------------------------------===//
 #include "os.h"
@@ -41,11 +41,21 @@
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#ifdef __GLIBC__
 #include <sys/sysinfo.h>
+#endif // def __GLIBC__
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
 #include <wordexp.h>
+
+//===-- Conditional function declarations ---------------------------------===//
+
+#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 17)
+#define tscp_getenv secure_getenv
+#else // defined(__GLIBC__) && __GLIBC_PREREQ(2, 17)
+#define tscp_getenv getenv
+#endif // defined(__GLIBC__) && __GLIBC_PREREQ(2, 17) else
 
 //===-- General functions -------------------------------------------------===//
 
@@ -53,7 +63,7 @@ void tsci_os_close_handle(tek_sc_os_handle handle) { close(handle); }
 
 tek_sc_os_char *tsci_os_get_cache_dir(void) {
   // Try getting value of $XDG_CACHE_HOME first
-  auto const xdg_cache_home = secure_getenv("XDG_CACHE_HOME");
+  auto const xdg_cache_home = tscp_getenv("XDG_CACHE_HOME");
   if (xdg_cache_home) {
     if (!xdg_cache_home[0]) {
       goto try_home;
@@ -76,7 +86,7 @@ tek_sc_os_char *tsci_os_get_cache_dir(void) {
     return strdup("/var/cache");
   }
 try_home:
-  auto const home = secure_getenv("HOME");
+  auto const home = tscp_getenv("HOME");
   static const char rel_path[] = "/.cache";
   if (home && home[0]) {
     auto const path_size = strlen(home) + sizeof rel_path;
@@ -145,7 +155,13 @@ char *tsci_os_get_err_msg(tek_sc_os_errc errc) {
 
 tek_sc_os_errc tsci_os_get_last_error(void) { return errno; }
 
-int tsci_os_get_nproc(void) { return get_nprocs_conf(); }
+int tsci_os_get_nproc(void) {
+#ifdef __GLIBC__
+  return get_nprocs_conf();
+#else  // def __GLIBC__
+  return sysconf(_SC_NPROCESSORS_CONF);
+#endif // def __GLIBC__ else
+}
 
 uint64_t tsci_os_get_ticks(void) {
   struct timespec ts;

@@ -1,4 +1,4 @@
-//===-- os_linux.c - GNU/Linux OS functions implementation ----------------===//
+//===-- os_linux.c - Linux OS functions implementation ----------------===//
 //
 // Copyright (c) 2025 Nuclearist <nuclearist@teknology-hub.com>
 // Part of tek-steamclient, under the GNU General Public License v3.0 or later
@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file
-/// GNU/Linux implementation of @ref os.h.
+/// Linux implementation of @ref os.h.
 ///
 //===----------------------------------------------------------------------===//
 #include "os.h"
@@ -58,7 +58,21 @@ static void tscl_sig_handler(int sig) {
 
 void tscl_os_close_handle(tek_sc_os_handle handle) { close(handle); }
 
-tek_sc_os_char *tscl_os_get_cwd(void) { return get_current_dir_name(); }
+tek_sc_os_char *tscl_os_get_cwd(void) {
+#ifdef __GLIBC__
+  return get_current_dir_name();
+#else  // def __GLIBC__
+  char buf[PATH_MAX];
+  if (!getcwd(buf, sizeof buf)) {
+    return nullptr;
+  }
+  auto const res = strdup(buf);
+  if (!res) {
+    errno = ENOMEM;
+  }
+  return res;
+#endif // def __GLIBC__ else
+}
 
 int64_t tscl_os_get_disk_free_space(const tek_sc_os_char *path) {
   struct statvfs stvfs;
