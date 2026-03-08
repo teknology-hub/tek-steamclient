@@ -11,12 +11,12 @@ lib_src = files(
   'ws_conn.cpp'
 )
 
-if is_windows
+if is_linux
+  lib_src += files('os_linux.c')
+elif is_windows
   lib_src += files('os_windows.c')
 elif is_macos
   lib_src += files('os_macos.c')
-else
-  lib_src += files('os_linux.c')
 endif
 if get_option('s3_client')
   lib_src += files('s3c.cpp')

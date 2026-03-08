@@ -19,9 +19,13 @@ if get_option('cli') and get_option('cli_dump') and (
   error('"cli_dump" option requires "app_manager" to be enabled as well')
 endif
 add_project_arguments('-DTEK_SC_IMPL', language: ['c', 'cpp'])
+is_linux = host_machine.system() == 'linux' or host_machine.system() == 'android'
 is_windows = host_machine.system() == 'windows'
 is_macos = host_machine.system() == 'darwin'
-if is_windows
+compiler = meson.get_compiler('c')
+if is_linux
+  add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
+elif is_windows # is_linux
   add_project_arguments('-DUNICODE', '-D_UNICODE', language: ['c', 'cpp'])
   add_project_link_arguments('-municode', language: ['c', 'cpp'])
   winmod = import('windows')
@@ -37,12 +41,11 @@ if is_windows
   if num_elems == 3
     rc_version += ',0'
   endif # num_elems == 3
-elif is_macos # is_windows
+elif is_macos # is_linux elif is_windows
   add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
-else # is_windows elif is_macos
-  add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
-endif # is_windows elif is_macos else
-compiler = meson.get_compiler('c')
+else # is_linux elif is_windows elif is_macos
+  error('Unsupported host machine OS')
+endif # is_linux elif is_windows elif is_macos else
 # -Wno-attributes: Project code uses many attributes that are supported only by
 #    specific compilers or even specific compiler versions
 # -Wno-nullability-extension: Fallbacks for these attributes are provided by
@@ -80,7 +83,7 @@ if mz_needed
     mz_dep = dependency('minizip')
   endif # not mz_dep.found()
 endif # mz_needed
-liburing_valid = get_option('app_manager') and not is_windows
+liburing_valid = is_linux and get_option('app_manager')
 if liburing_valid
   liburing_dep = dependency('liburing', required: get_option('io_uring'))
 endif # liburing_valid
@@ -139,12 +142,10 @@ if get_option('steampipe')
   ]
 endif # get_option('steampipe')
 if get_option('app_manager')
-  lib_deps += subproject(
-    'ValveFileVDF'
-  ).get_variable('valve_file_vdf_dep')
-  if not is_windows and liburing_dep.found()
+  lib_deps += subproject('ValveFileVDF').get_variable('valve_file_vdf_dep')
+  if liburing_valid and liburing_dep.found()
     lib_deps += liburing_dep
-  endif # not is_windows and liburing_dep.found()
+  endif # liburing_valid and liburing_dep.found()
 endif # get_option('app_manager')
 subdir('src/lib')
 if is_windows
