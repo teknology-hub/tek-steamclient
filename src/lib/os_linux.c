@@ -49,11 +49,14 @@
 
 //===-- Conditional function declarations ---------------------------------===//
 
-#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 17)
-#define tscp_getenv secure_getenv
-#else // defined(__GLIBC__) && __GLIBC_PREREQ(2, 17)
 #define tscp_getenv getenv
-#endif // defined(__GLIBC__) && __GLIBC_PREREQ(2, 17) else
+
+#ifdef __GLIBC__
+#if __GLIBC_PREREQ(2, 17)
+#undef tscp_getenv
+#define tscp_getenv secure_getenv
+#endif // __GLIBC_PREREQ(2, 17)
+#endif // def __GLIBC__
 
 //===-- General functions -------------------------------------------------===//
 
