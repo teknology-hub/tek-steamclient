@@ -111,6 +111,12 @@ if is_linux
     'TEK_SCB_IO_URING': liburing_dep.found(),
   }
 endif # is_linux
+if mz_needed and mz_dep.name() == 'minizip-ng'
+  config += {
+    'TEK_SCB_MZNG_HDR_DIR': compiler.has_header('minizip-ng/mz.h',
+      dependencies: mz_dep)
+  }
+endif # mz_needed and mz_dep.name() == 'minizip-ng'
 configure_file(
   output: 'config.h',
   configuration: config

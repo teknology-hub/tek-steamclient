@@ -14,9 +14,17 @@
 //===----------------------------------------------------------------------===//
 #include "zip_api.h"
 
+#include "config.h" // IWYU pragma: keep
+
+#ifdef TEK_SCB_MZNG_HDR_DIR
 #include <minizip-ng/mz.h>
 #include <minizip-ng/mz_strm_mem.h>
 #include <minizip-ng/mz_zip.h>
+#else // def TEK_SCB_MZNG_HDR_DIR
+#include <mz.h>
+#include <mz_strm_mem.h>
+#include <mz_zip.h>
+#endif // def TEK_SCB_MZNG_HDR_DIR else
 
 void *tsci_zip_open_get_size(const void *data, int size,
                              int *uncompressed_size) {
