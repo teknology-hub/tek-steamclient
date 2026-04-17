@@ -221,19 +221,21 @@ libtek_steamclient = library(
   install: true,
   soversion: soversion
 )
-static_arg_arr = (
-  get_option('default_library') == 'static'
-  or (
-    get_option('default_library') == 'both'
-    and get_option('default_both_libraries') == 'static'
+pkgconfig = import('pkgconfig')
+if meson.version().version_compare('>=1.11.0')
+  pkgconfig.generate(
+    libtek_steamclient,
+    cflags_private: '-DTEK_SC_STATIC',
+    description: 'An open-source partial Steam client implementation',
+    url: 'https://github.com/teknology-hub/tek-steamclient'
   )
-) ? '-DTEK_SC_STATIC' : []
-import('pkgconfig').generate(
-  libtek_steamclient,
-  description: 'An open-source partial Steam client implementation',
-  extra_cflags: static_arg_arr,
-  url: 'https://github.com/teknology-hub/tek-steamclient'
-)
+else # meson.version().version_compare('>=1.11.0')
+  pkgconfig.generate(
+    libtek_steamclient,
+    description: 'An open-source partial Steam client implementation',
+    url: 'https://github.com/teknology-hub/tek-steamclient'
+  )
+endif # meson.version().version_compare('>=1.11.0') else
 
 ### tek-sc-cli
 cli_deps = []
@@ -241,6 +243,13 @@ if get_option('gettext')
   cli_deps += intl_dep
 endif # get_option('gettext')
 subdir('src/cli')
+static_arg_arr = (
+  get_option('default_library') == 'static'
+  or (
+    get_option('default_library') == 'both'
+    and get_option('default_both_libraries') == 'static'
+  )
+) ? '-DTEK_SC_STATIC' : []
 if is_windows
   cli_deps += win_deps
   configure_file(
