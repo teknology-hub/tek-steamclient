@@ -22,10 +22,10 @@
 #include "tek-steamclient/os.h"
 
 #include <ioringapi.h>
-#ifdef TEK_SCB_GETTEXT
+#if !defined(TEK_SC_STATIC) && defined(TEK_SCB_GETTEXT)
 #include <libintl.h>
 #include <locale.h>
-#endif // def TEK_SCB_GETTEXT
+#endif // !defined(TEK_SC_STATIC) && defined(TEK_SCB_GETTEXT)
 #include <limits.h>
 #include <ntstatus.h>
 #include <pthread.h>
@@ -1001,7 +1001,7 @@ bool tsci_os_file_move(tek_sc_os_handle src_dir_handle,
   if (!fallback) {
     status = NtSetInformationFile(handle, &isb, info, info_size,
                                   FileRenameInformationEx);
-    if (status == STATUS_INVALID_PARAMETER) {
+    if (status == STATUS_INVALID_PARAMETER || status == STATUS_NOT_SUPPORTED) {
       fallback = true;
     }
   }
