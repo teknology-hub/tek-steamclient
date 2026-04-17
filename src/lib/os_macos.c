@@ -687,10 +687,10 @@ void tsci_os_mem_free(const void *addr, size_t size) {
 bool tsci_os_futex_wait(const _Atomic(uint32_t) *addr, uint32_t old,
                         uint32_t timeout_ms) {
   return timeout_ms == UINT32_MAX
-             ? os_sync_wait_on_address(addr, old, sizeof old,
+             ? os_sync_wait_on_address((void *)addr, old, sizeof old,
                                        OS_SYNC_WAIT_ON_ADDRESS_NONE) >= 0
              : os_sync_wait_on_address_with_timeout(
-                   addr, old, sizeof old, OS_SYNC_WAIT_ON_ADDRESS_NONE,
+                   (void *)addr, old, sizeof old, OS_SYNC_WAIT_ON_ADDRESS_NONE,
                    OS_CLOCK_MACH_ABSOLUTE_TIME,
                    (uint64_t)timeout_ms * 1000000) >= 0;
 }
