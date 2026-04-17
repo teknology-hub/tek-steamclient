@@ -41,7 +41,7 @@ elif is_windows # is_linux
     rc_version += ',0'
   endif # num_elems == 3
 elif is_macos # is_linux elif is_windows
-  add_project_arguments('-mmacosx-version-min=13.3', language: ['c', 'cpp'])
+  add_project_arguments('-mmacosx-version-min=14.4', language: ['c', 'cpp'])
 else # is_linux elif is_windows elif is_macos
   error('Unsupported host machine OS')
 endif # is_linux elif is_windows elif is_macos else
@@ -214,7 +214,7 @@ libtek_steamclient = library(
   cpp_args: lib_args,
   c_static_args: '-DTEK_SC_STATIC',
   cpp_static_args: '-DTEK_SC_STATIC',
-  darwin_versions: [f'@soversion@.0.0', meson.project_version()],
+  darwin_versions: [f'@soversion@.0.0', meson.project_version().split('-')[0]],
   dependencies: lib_deps,
   gnu_symbol_visibility: 'hidden',
   include_directories: common_includes,
