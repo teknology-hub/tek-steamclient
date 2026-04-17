@@ -263,6 +263,7 @@ void cm_conn::handle_connection(CURLcode code) {
         const std::scoped_lock conn_lock{ctx.conn_mtx};
         ctx.conn_queue.emplace_back(ws_conn_request{
             .conn{*this}, .url{std::move(url)}, .timeout_ms = 5000});
+        uv_async_send(&ctx.loop_async);
         return;
       }
       if (num_conn_retries >= 3) {
@@ -283,6 +284,7 @@ void cm_conn::handle_connection(CURLcode code) {
       const std::scoped_lock lock{ctx.conn_mtx};
       ctx.conn_queue.emplace_back(ws_conn_request{
           .conn{*this}, .url{std::move(url)}, .timeout_ms = 5000});
+      uv_async_send(&ctx.loop_async);
       return;
     }
     // Otherwise report the error via callback
