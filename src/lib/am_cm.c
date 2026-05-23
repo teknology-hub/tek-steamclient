@@ -176,7 +176,8 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *_Nonnull client,
     tek_sc_err err;
     if (!tek_sc_err_success(&entry->result)) {
       if (entry->result.type == TEK_SC_ERR_TYPE_sub &&
-          entry->result.auxiliary == TEK_SC_ERRC_cm_access_token_denied &&
+          (entry->result.auxiliary == TEK_SC_ERRC_cm_access_token_denied ||
+           entry->result.auxiliary == TEK_SC_ERRC_cm_missing_token) &&
           !ctx->requested_tokens) {
 #ifdef TEK_SCB_S3C
         auto const req_res = tek_sc_s3c_ctx_get_pics_at(
