@@ -220,7 +220,10 @@ static void tscp_am_cb_app_info(tek_sc_cm_client *_Nonnull client,
     continue;
   failure:
     for (int j = i; j < data_pics->num_app_entries; ++j) {
-      free(data_pics->app_entries[j].data);
+      auto const entry = &data_pics->app_entries[j];
+      if (tek_sc_err_success(&entry->result)) {
+        free(entry->data);
+      }
     }
     free(data_pics->app_entries);
     free(data_pics);
