@@ -595,7 +595,6 @@ static bool handle_ppi(cm_conn &conn, const MessageHeader &,
                         .uri = url_buf};
       } // if (msg->data.result == CURLE_OK) else
     } // for (curl messages)
-    goto http_success;
   } // if (num_http)
   goto http_success;
 http_err:
